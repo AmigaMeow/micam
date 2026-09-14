@@ -22,7 +22,13 @@ import (
 	"github.com/micam/micam/internal/xiaomi"
 )
 
-// resolveSource 取源地址：优先缓存，其次向小米云申请。
+// resolveSource 取源地址。
+//
+// 策略：**优先用缓存**，即使看起来过期了。
+//
+// 为什么：cs2 凭据的实际有效期不确定（实测 8 小时还能用于部分设备），
+// 而小米云的 miss_get_vendor 有严格限流。
+// 所以策略是「先用缓存，真失败才刷新」。
 func (s *Server) resolveSource(dev *xiaomi.Device) (string, error) {
 	if v, ok := s.store.Source(dev.Did); ok {
 		return v, nil
@@ -540,6 +546,33 @@ func indexOf(haystack, needle []byte) int {
 		}
 	}
 	return -1
+}
+
+// handleSourceStatus 返回各设备的凭据状态（供客户端判断）。
+//
+// GET /api/live/source-status
+func (s *Server) handleSourceStatus(w http.ResponseWriter, r *http.Request) {
+	type devStatus struct {
+		Did       string `json:"did"`
+		Name      string `json:"name"`
+		HasSource bool   `json:"hasSource"`
+		AgeMin    int    `json:"ageMinutes"`
+		Cooldown  int    `json:"cooldownMinutes"`
+	}
+	var out []devStatus
+	for _, d := range s.store.Devices() {
+		st := devStatus{
+			Did:  d.Did,
+			Name: d.Name,
+		}
+		if _, ok := s.store.Source(d.Did); ok {
+			st.HasSource = true
+			st.AgeMin = int(s.store.SourceAge(d.Did).Minutes())
+		}
+		st.Cooldown = int(s.RefreshCooldownLeft(d.Did).Minutes())
+		out = append(out, st)
+	}
+	writeJSON(w, 200, map[string]any{"devices": out})
 }
 
 // ---- 源注入 ----

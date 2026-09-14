@@ -18,11 +18,14 @@ package main
 //   不用全局锁：全局锁在并发场景下容易双重解锁（panic: unlock of unlocked mutex）
 
 import (
+	"fmt"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/AlexxIT/go2rtc/pkg/core"
 	gxiaomi "github.com/AlexxIT/go2rtc/pkg/xiaomi"
+	"github.com/micam/micam/internal/stream"
 	"github.com/micam/micam/internal/xiaomi"
 )
 
@@ -82,6 +85,33 @@ func (s *Server) useConn(dev *xiaomi.Device) (*camConn, *mpegtsConsumer, func(),
 		return nil, nil, nil, err
 	}
 	prod, err := gxiaomi.Dial(src)
+
+	// 凭据失效时的处理策略：
+	//   1. 先清缓存，重新申请
+	//   2. 刷新失败（如小米云限流）时，如果还有旧凭据就继续用
+	//   3. 记录冷却时间，避免频繁刷新触发限流
+	if err != nil && isAuthError(err) {
+		logf("[%s] 凭据失效（%v），尝试刷新", dev.Did, err)
+
+		if !s.canRefresh(dev.Did) {
+			logf("[%s] 刷新冷却中，跳过（上次已尝试）", dev.Did)
+		} else {
+			s.markRefresh(dev.Did)
+
+			// 关键：先申请新凭据，成功才替换。
+			// 不要先删缓存 —— 否则申请失败（如限流）会导致彻底不可用。
+			newSrc, e2 := s.requestFreshSource(dev)
+			if e2 != nil {
+				logf("[%s] 刷新失败（保留旧凭据）: %v", dev.Did, e2)
+			} else if prod2, e3 := gxiaomi.Dial(newSrc); e3 != nil {
+				logf("[%s] 新凭据连接失败（保留旧凭据）: %v", dev.Did, e3)
+			} else {
+				prod, err = prod2, nil
+				s.store.SaveSource(dev.Did, newSrc)
+				logf("[%s] 凭据刷新成功", dev.Did)
+			}
+		}
+	}
 	if err != nil {
 		lock.Unlock()
 		return nil, nil, nil, err
@@ -144,6 +174,73 @@ func (s *Server) useConn(dev *xiaomi.Device) (*camConn, *mpegtsConsumer, func(),
 	}
 
 	return c, mc, release, nil
+}
+
+// 凭据刷新冷却（避免小米云限流）
+var (
+	refreshMu   sync.Mutex
+	refreshLast = map[string]time.Time{}
+)
+
+// requestFreshSource 向小米云申请新凭据（不动缓存）。
+func (s *Server) requestFreshSource(dev *xiaomi.Device) (string, error) {
+	sessions := s.store.AllSessions()
+	if len(sessions) == 0 {
+		return "", fmt.Errorf("未登录")
+	}
+	src, err := stream.BuildSource(sessions[0], dev, "cn")
+	if err != nil {
+		return "", err
+	}
+	return src, nil
+}
+
+// canRefresh 判断是否可以刷新。
+//
+// 冷却 30 分钟：小米云的 miss_get_vendor 限流很严，
+// 实测频繁刷新会导致 code=-12 throttle deny，
+// 而且限流恢复需要较长时间。
+func (s *Server) canRefresh(did string) bool {
+	refreshMu.Lock()
+	defer refreshMu.Unlock()
+	t, ok := refreshLast[did]
+	if !ok {
+		return true
+	}
+	return time.Since(t) > 30*time.Minute
+}
+
+// RefreshCooldownLeft 返回冷却剩余时间（供 API 提示用户）。
+func (s *Server) RefreshCooldownLeft(did string) time.Duration {
+	refreshMu.Lock()
+	defer refreshMu.Unlock()
+	t, ok := refreshLast[did]
+	if !ok {
+		return 0
+	}
+	left := 30*time.Minute - time.Since(t)
+	if left < 0 {
+		return 0
+	}
+	return left
+}
+
+// markRefresh 记录刷新时间。
+func (s *Server) markRefresh(did string) {
+	refreshMu.Lock()
+	refreshLast[did] = time.Now()
+	refreshMu.Unlock()
+}
+
+// isAuthError 判断是否为凭据失效错误。
+func isAuthError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "auth") ||
+		strings.Contains(msg, "failed") ||
+		strings.Contains(msg, "code") && strings.Contains(msg, "3")
 }
 
 // newConsumerFor 给 producer 建一个 mpegts consumer。

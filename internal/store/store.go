@@ -53,7 +53,8 @@ type Store struct {
 	qr       map[string]*QRSession
 	devices  map[string]*xiaomi.Device // did -> device（设备发现缓存）
 	devMu    sync.RWMutex
-	sources  map[string]string // did -> 完整 xiaomi:// 源（缓存，减少云端调用）
+	sources  map[string]string    // did -> 完整 xiaomi:// 源（缓存，减少云端调用）
+	srcTime  map[string]time.Time // did -> 源缓存时间（判断过期）
 	srcMu    sync.RWMutex
 }
 
@@ -65,6 +66,7 @@ func New(dataDir string) *Store {
 		qr:       map[string]*QRSession{},
 		devices:  map[string]*xiaomi.Device{},
 		sources:  map[string]string{},
+		srcTime:  map[string]time.Time{},
 	}
 	s.loadAccounts()
 	s.loadSources()
@@ -86,15 +88,40 @@ func (s *Store) loadSources() {
 	if err != nil {
 		return
 	}
-	var m map[string]string
-	if json.Unmarshal(raw, &m) == nil {
-		s.sources = m
+	// 新格式：{did: {src, time}}
+	var m map[string]struct {
+		Src  string    `json:"src"`
+		Time time.Time `json:"time"`
+	}
+	if json.Unmarshal(raw, &m) == nil && len(m) > 0 {
+		for did, v := range m {
+			s.sources[did] = v.Src
+			s.srcTime[did] = v.Time
+		}
+		return
+	}
+	// 兼容旧格式：{did: src}
+	var old map[string]string
+	if json.Unmarshal(raw, &old) == nil {
+		for did, src := range old {
+			s.sources[did] = src
+			// 旧格式没时间，视为很久以前（触发刷新）
+			s.srcTime[did] = time.Time{}
+		}
 	}
 }
 
-// saveSources 保存源缓存。
+// saveSources 保存源缓存（含时间戳）。
 func (s *Store) saveSources() error {
-	raw, err := json.MarshalIndent(s.sources, "", "  ")
+	type entry struct {
+		Src  string    `json:"src"`
+		Time time.Time `json:"time"`
+	}
+	m := map[string]entry{}
+	for did, src := range s.sources {
+		m[did] = entry{Src: src, Time: s.srcTime[did]}
+	}
+	raw, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -207,6 +234,27 @@ func (s *Store) Device(did string) (*xiaomi.Device, bool) {
 func (s *Store) SaveSource(did, src string) {
 	s.srcMu.Lock()
 	s.sources[did] = src
+	s.srcTime[did] = time.Now()
+	s.srcMu.Unlock()
+	_ = s.saveSources()
+}
+
+// SourceAge 返回源缓存的年龄。
+func (s *Store) SourceAge(did string) time.Duration {
+	s.srcMu.RLock()
+	defer s.srcMu.RUnlock()
+	t, ok := s.srcTime[did]
+	if !ok || t.IsZero() {
+		return 24 * time.Hour // 未知时间视为过期
+	}
+	return time.Since(t)
+}
+
+// DropSource 删除缓存的源（凭据失效时调用）。
+func (s *Store) DropSource(did string) {
+	s.srcMu.Lock()
+	delete(s.sources, did)
+	delete(s.srcTime, did)
 	s.srcMu.Unlock()
 	_ = s.saveSources()
 }

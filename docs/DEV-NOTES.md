@@ -520,7 +520,93 @@ ERROR: process exited immediately
 
 ---
 
-## 八、性能实测数据
+## 八、cs2 凭据过期与刷新（重要）
+
+### 8.1 症状
+
+某台设备突然所有播放请求失败：
+
+    miss: auth: {"result":"failed","code":3}
+
+而**截图却正常**（截图路径有重试，可能碰巧拿到新凭据）。
+
+### 8.2 根因
+
+cs2 凭据（sign / device_public / client_private）**有有效期**。
+
+实测：缓存 8 小时后失效。
+
+而代码之前**无条件信任缓存**，所以过期后一直失败。
+
+### 8.3 修复过程中的坑
+
+**第一个版本（错误的做法）**：
+
+    s.store.DropSource(did)          // 先删缓存
+    src, err := requestFreshSource() // 再申请
+    // 申请失败 -> 缓存已删 -> 彻底不可用
+
+小米云的 miss_get_vendor **限流很严**（code=-12 throttle deny），
+一旦申请失败，连旧凭据都没了。
+
+**第二版本（正确做法）**：
+
+    src, err := requestFreshSource(did)   // 先申请
+    if err != nil {
+        // 保留旧凭据，下次再试
+        return
+    }
+    // 申请成功才替换
+    s.store.SaveSource(did, src)
+
+**关键原则**：**申请成功才替换缓存，失败保留旧值**。
+
+### 8.4 冷却机制
+
+小米云限流触发后需要较长时间恢复（实测 10+ 分钟）。
+
+所以刷新加 **30 分钟冷却**：
+
+    func (s *Server) canRefresh(did string) bool {
+        t := refreshLast[did]
+        return time.Since(t) > 30*time.Minute
+    }
+
+### 8.5 客户端建议
+
+**客户端应该做的事**：
+
+1. **拉流失败要重试**（等 3-5 秒再试）
+2. **不要因为一次失败就放弃**
+3. **查询凭据状态**：
+
+        GET /api/live/source-status
+
+    返回：
+
+        {
+          "devices": [
+            {"did":"...", "name":"...", "hasSource":true,
+             "ageMinutes":120, "cooldownMinutes":0}
+          ]
+        }
+
+### 8.6 凭据状态缓存
+
+源缓存现在带时间戳：
+
+    {
+      "1000000101": {
+        "src": "xiaomi://...",
+        "time": "2026-09-15T05:49:54+08:00"
+      }
+    }
+
+**向后兼容**：旧的纯字符串格式也能读（视为时间未知）。
+
+---
+
+## 九、性能实测数据
 
 | 指标 | 数值 |
 |---|---|
@@ -533,7 +619,7 @@ ERROR: process exited immediately
 
 ---
 
-## 九、诊断方法论
+## 十、诊断方法论
 
 遇到「第一次成功、第二次失败」这类问题时，有效的排查步骤：
 

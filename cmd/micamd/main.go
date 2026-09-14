@@ -34,7 +34,7 @@ import (
 
 const (
 	appName    = "micam"
-	appVersion = "0.5.1"
+	appVersion = "0.5.2"
 )
 
 func main() {
@@ -312,6 +312,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/devices", s.handleDevices)
 
 	// 播放
+	mux.HandleFunc("/api/live/source-status", s.handleSourceStatus)
 	mux.HandleFunc("/api/live/hls", s.handleHLS)       // HLS 播放（2K 流畅）
 	mux.HandleFunc("/api/live/hls/info", s.handleHLSInfo) // HLS 能力信息
 	mux.HandleFunc("/api/live/mjpeg", s.handleMJPEG)   // MJPEG 流（<img> 直接显示）
