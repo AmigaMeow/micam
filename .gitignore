@@ -1,0 +1,26 @@
+# 构建产物
+dist/
+*.fpk
+platform/fnos/micam.fpk
+
+# 编译产物
+*.exe
+*.test
+*.out
+
+# 凭据（重要！）
+accounts.json
+sources.json
+*_token.cfg
+*.pem
+.env
+
+# 编辑器
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# 临时
+/tmp/
+*.log

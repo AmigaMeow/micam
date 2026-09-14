@@ -1,0 +1,107 @@
+#!/bin/bash
+# MiCam 生命周期脚本
+# 由飞牛应用框架调用：main start|stop|status|install|uninstall|upgrade
+
+set -u
+
+APP_NAME="micam"
+LOG_FILE="${TRIM_PKGVAR}/info.log"
+PID_FILE="${TRIM_PKGVAR}/app.pid"
+SOCKET_FILE="${TRIM_APPDEST}/app.sock"
+APP_BIN="${TRIM_APPDEST}/server/micamd"
+CONFIG_FILE="${TRIM_PKGETC}/config.json"
+
+log_msg() {
+    echo "$(date '+%Y-%m-%d %H:%M:%S') - $1" >> "${LOG_FILE}"
+}
+
+check_process() {
+    local pid="$1"
+    [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null
+}
+
+status() {
+    if [ -r "${PID_FILE}" ]; then
+        local pid
+        pid=$(head -n 1 "${PID_FILE}" | tr -d '[:space:]')
+        if check_process "$pid"; then
+            return 0
+        fi
+        rm -f "${PID_FILE}"
+    fi
+    return 1
+}
+
+start_process() {
+    if status; then
+        return 0
+    fi
+
+    log_msg "Starting process ..."
+
+    if [ ! -x "${APP_BIN}" ]; then
+        log_msg "ERROR: binary not executable: ${APP_BIN}"
+        return 1
+    fi
+
+    mkdir -p "${TRIM_PKGVAR}"
+    rm -f "${SOCKET_FILE}"
+
+    # 同时监听：Unix socket（飞牛网关）+ TCP（局域网客户端）
+    nohup "${APP_BIN}" \
+        --socket "${SOCKET_FILE}" \
+        --http ":8900" \
+        --config "${CONFIG_FILE}" \
+        --data "${TRIM_PKGVAR}" \
+        --ffmpeg "/usr/bin/ffmpeg" \
+        >> "${LOG_FILE}" 2>&1 &
+
+    printf "%s" "$!" > "${PID_FILE}"
+    log_msg "started pid=$!"
+
+    sleep 1
+    if ! status; then
+        log_msg "ERROR: process exited immediately"
+        return 1
+    fi
+    return 0
+}
+
+stop_process() {
+    log_msg "Stopping process ..."
+
+    if [ -r "${PID_FILE}" ]; then
+        local pid
+        pid=$(head -n 1 "${PID_FILE}" | tr -d '[:space:]')
+        if check_process "$pid"; then
+            kill "$pid" 2>/dev/null || true
+            local n=0
+            while check_process "$pid" && [ "$n" -lt 20 ]; do
+                sleep 1
+                n=$((n + 1))
+            done
+            if check_process "$pid"; then
+                kill -KILL "$pid" 2>/dev/null || true
+            fi
+        fi
+        rm -f "${PID_FILE}"
+    fi
+
+    rm -f "${SOCKET_FILE}"
+    return 0
+}
+
+case "${1:-}" in
+    start)
+        start_process
+        ;;
+    stop)
+        stop_process
+        ;;
+    status)
+        if status; then exit 0; else exit 3; fi
+        ;;
+    *)
+        exit 1
+        ;;
+esac

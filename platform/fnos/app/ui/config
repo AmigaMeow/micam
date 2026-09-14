@@ -1,0 +1,14 @@
+{
+    ".url": {
+        "micam.Application": {
+            "title": "小米摄像头",
+            "icon": "images/icon_{0}.png",
+            "type": "iframe",
+            "protocol": "",
+            "gatewaySocket": "app.sock",
+            "gatewayPrefix": "/app/micam",
+            "url": "/app/micam",
+            "allUsers": true
+        }
+    }
+}

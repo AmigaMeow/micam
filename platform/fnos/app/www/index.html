@@ -1,0 +1,698 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>小米摄像头</title>
+<style>
+:root{
+  --primary:#1677ff; --primary-hover:#4096ff; --primary-active:#0958d9;
+  --success:#52c41a; --warning:#faad14; --error:#ff4d4f;
+  --text:rgba(0,0,0,.88); --text-2:rgba(0,0,0,.65); --text-3:rgba(0,0,0,.45);
+  --border:#f0f0f0; --border-2:#d9d9d9; --split:rgba(5,5,5,.06);
+  --bg:#f5f5f5; --card:#fff; --hover:rgba(0,0,0,.04);
+  --sider:#001529; --sider-hover:rgba(255,255,255,.08);
+  --sider-text:rgba(255,255,255,.65); --sider-active:#fff;
+  --radius:8px; --radius-sm:6px; --radius-lg:12px;
+  --shadow:0 1px 2px 0 rgba(0,0,0,.03),0 1px 6px -1px rgba(0,0,0,.02),0 2px 4px 0 rgba(0,0,0,.02);
+  --shadow-hover:0 6px 16px 0 rgba(0,0,0,.08),0 3px 6px -4px rgba(0,0,0,.12),0 9px 28px 8px rgba(0,0,0,.05);
+  --font:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",Helvetica,Arial,sans-serif;
+}
+[data-theme="dark"]{
+  --text:rgba(255,255,255,.85); --text-2:rgba(255,255,255,.65); --text-3:rgba(255,255,255,.45);
+  --border:#303030; --border-2:#424242; --split:rgba(255,255,255,.08);
+  --bg:#141414; --card:#1f1f1f; --hover:rgba(255,255,255,.06);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font);font-size:14px;line-height:1.5715;color:var(--text);background:var(--bg);
+  -webkit-font-smoothing:antialiased;transition:background .2s,color .2s}
+svg{display:block}
+.layout{display:flex;height:100vh;overflow:hidden}
+.sider{width:208px;background:var(--sider);flex-shrink:0;display:flex;flex-direction:column;
+  transition:width .2s;overflow:hidden}
+.sider-logo{height:64px;display:flex;align-items:center;gap:12px;padding:0 24px;flex-shrink:0;
+  color:#fff;font-size:16px;font-weight:600;letter-spacing:.5px;border-bottom:1px solid rgba(255,255,255,.06)}
+.sider-logo .mark{width:30px;height:30px;border-radius:8px;flex-shrink:0;
+  background:linear-gradient(135deg,#00b96b,#009e5a);display:flex;align-items:center;
+  justify-content:center;box-shadow:0 2px 8px rgba(0,185,107,.35)}
+.menu{padding:12px 0;flex:1;overflow-y:auto}
+.menu-item{display:flex;align-items:center;gap:12px;height:44px;padding:0 24px;margin:2px 0;
+  color:var(--sider-text);cursor:pointer;font-size:14px;transition:all .2s;
+  border-left:3px solid transparent;user-select:none}
+.menu-item:hover{color:var(--sider-active);background:var(--sider-hover)}
+.menu-item.active{color:var(--sider-active);background:var(--primary);border-left-color:#fff}
+.menu-item svg{width:16px;height:16px;flex-shrink:0;opacity:.9}
+.sider-foot{padding:16px 24px;font-size:12px;color:rgba(255,255,255,.35);
+  border-top:1px solid rgba(255,255,255,.06)}
+.main{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.header{height:64px;background:var(--card);border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;padding:0 24px;flex-shrink:0}
+.header-left{display:flex;align-items:center;gap:12px}
+.header h1{font-size:16px;font-weight:500;letter-spacing:.2px}
+.header-right{display:flex;align-items:center;gap:16px;font-size:13px;color:var(--text-3)}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--success);display:inline-block;
+  box-shadow:0 0 0 2px rgba(82,196,26,.15)}
+.content{flex:1;overflow-y:auto;padding:24px}
+.content::-webkit-scrollbar{width:6px}
+.content::-webkit-scrollbar-thumb{background:var(--border-2);border-radius:3px}
+.card{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);
+  margin-bottom:16px;overflow:hidden}
+.card-head{padding:16px 24px;border-bottom:1px solid var(--split);display:flex;
+  align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.card-title{font-size:15px;font-weight:500}
+.card-body{padding:24px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:32px;
+  padding:0 15px;border-radius:var(--radius-sm);border:1px solid var(--border-2);
+  background:var(--card);color:var(--text);cursor:pointer;font-size:14px;font-family:var(--font);
+  transition:all .2s;white-space:nowrap;user-select:none}
+.btn:hover{color:var(--primary);border-color:var(--primary)}
+.btn:active{color:var(--primary-active);border-color:var(--primary-active)}
+.btn svg{width:14px;height:14px}
+.btn-primary{background:var(--primary);border-color:var(--primary);color:#fff;
+  box-shadow:0 2px 0 rgba(5,145,255,.1)}
+.btn-primary:hover{background:var(--primary-hover);border-color:var(--primary-hover);color:#fff}
+.btn-danger{color:var(--error);border-color:var(--error)}
+.btn-danger:hover{background:var(--error);border-color:var(--error);color:#fff}
+.btn-sm{height:24px;padding:0 7px;font-size:13px;border-radius:4px}
+.btn-sm svg{width:12px;height:12px}
+.btn:disabled{opacity:.5;cursor:not-allowed}
+.btn-group{display:flex;gap:8px;flex-wrap:wrap}
+.tag{display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 8px;
+  border-radius:4px;font-size:12px;line-height:1;border:1px solid transparent;white-space:nowrap}
+.tag-on{background:#f6ffed;color:#389e0d;border-color:#b7eb8f}
+.tag-off{background:#fff2f0;color:#cf1322;border-color:#ffccc7}
+.tag-share{background:#e6f4ff;color:#0958d9;border-color:#91caff}
+.tag-def{background:#fafafa;color:var(--text-2);border-color:var(--border-2)}
+[data-theme="dark"] .tag-on{background:#162312;border-color:#274916;color:#73d13d}
+[data-theme="dark"] .tag-off{background:#2c1618;border-color:#58181c;color:#ff7875}
+[data-theme="dark"] .tag-share{background:#111a2c;border-color:#15325b;color:#4096ff}
+[data-theme="dark"] .tag-def{background:#262626;border-color:#303030}
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:16px}
+.device{background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);
+  overflow:hidden;transition:box-shadow .25s,transform .25s;border:1px solid var(--border)}
+.device:hover{box-shadow:var(--shadow-hover);transform:translateY(-2px)}
+.dev-preview{position:relative;width:100%;aspect-ratio:16/9;background:#0a0a0a;
+  display:flex;align-items:center;justify-content:center;overflow:hidden;cursor:pointer}
+.dev-preview img{width:100%;height:100%;object-fit:contain;display:block}
+.dev-preview .ph{display:flex;flex-direction:column;align-items:center;gap:8px;
+  color:rgba(255,255,255,.35);font-size:13px;transition:color .2s}
+.dev-preview:hover .ph{color:rgba(255,255,255,.7)}
+.dev-preview .ph svg{width:32px;height:32px}
+.dev-badge{position:absolute;top:8px;right:8px;display:flex;gap:6px}
+.dev-body{padding:16px 20px}
+.dev-name{font-size:15px;font-weight:500;margin-bottom:8px;color:var(--text);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.dev-tags{display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap}
+.dev-meta{font-size:12px;color:var(--text-3);line-height:2}
+.dev-meta b{color:var(--text-2);font-weight:400}
+.dev-actions{display:flex;gap:8px;margin-top:14px;padding-top:14px;border-top:1px solid var(--split)}
+.player{background:#0a0a0a;border-radius:var(--radius);overflow:hidden;
+  aspect-ratio:16/9;display:flex;align-items:center;justify-content:center;position:relative}
+.player img{width:100%;height:100%;object-fit:contain;display:block}
+.player .ph{color:rgba(255,255,255,.35);font-size:14px;display:flex;
+  flex-direction:column;align-items:center;gap:10px}
+.player .ph svg{width:40px;height:40px}
+.player-bar{display:flex;align-items:center;gap:12px;margin-top:16px;flex-wrap:wrap}
+.tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}
+.ptz{display:flex;flex-direction:column;align-items:center;gap:8px;padding:16px;
+  background:var(--bg);border-radius:var(--radius);margin-top:16px}
+.ptz-grid{display:grid;grid-template-columns:repeat(3,42px);grid-template-rows:repeat(3,42px);gap:6px}
+.ptz-btn{width:42px;height:42px;border-radius:var(--radius-sm);border:1px solid var(--border-2);
+  background:var(--card);color:var(--text);cursor:pointer;display:flex;align-items:center;
+  justify-content:center;transition:all .2s;font-size:14px;font-family:var(--font)}
+.ptz-btn:hover{background:var(--primary);border-color:var(--primary);color:#fff}
+.ptz-btn:active{transform:scale(.94)}
+.ptz-btn:disabled{opacity:.4;cursor:not-allowed}
+.ptz-center{background:var(--primary);border-color:var(--primary);color:#fff}
+.ptz-info{font-size:12px;color:var(--text-3)}
+table{width:100%;border-collapse:separate;border-spacing:0}
+th{padding:12px 16px;text-align:left;font-weight:500;font-size:13px;color:var(--text-2);
+  background:#fafafa;border-bottom:1px solid var(--border)}
+[data-theme="dark"] th{background:#262626}
+td{padding:12px 16px;border-bottom:1px solid var(--split);font-size:13px}
+tbody tr:hover td{background:var(--hover)}
+tbody tr:last-child td{border-bottom:0}
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;
+  padding:64px 24px;color:var(--text-3);gap:12px}
+.empty svg{width:56px;height:56px;opacity:.25}
+.empty p{font-size:14px}
+.empty .sub{font-size:13px;color:var(--text-3);opacity:.8}
+.mask{position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:1000;
+  display:flex;align-items:center;justify-content:center;padding:24px;
+  animation:fadeIn .2s}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+.modal{background:var(--card);border-radius:var(--radius-lg);box-shadow:var(--shadow-hover);
+  min-width:360px;max-width:92vw;animation:zoomIn .2s}
+@keyframes zoomIn{from{transform:scale(.94);opacity:0}to{transform:scale(1);opacity:1}}
+.modal-head{padding:20px 24px 0;font-size:16px;font-weight:500}
+.modal-body{padding:20px 24px}
+.modal-foot{padding:0 24px 20px;display:flex;justify-content:flex-end;gap:8px}
+.qr-wrap{display:flex;flex-direction:column;align-items:center;gap:16px}
+.qr-wrap img{width:240px;height:240px;border-radius:var(--radius);background:#fff;padding:10px;
+  box-shadow:0 2px 8px rgba(0,0,0,.08)}
+.qr-tip{font-size:13px;color:var(--text-3)}
+.toast{position:fixed;top:24px;left:50%;transform:translateX(-50%);z-index:2000;
+  display:flex;align-items:center;gap:8px;padding:10px 16px;border-radius:var(--radius-sm);
+  background:var(--card);box-shadow:var(--shadow-hover);font-size:14px;
+  border:1px solid var(--border);animation:slideDown .25s}
+@keyframes slideDown{from{transform:translate(-50%,-16px);opacity:0}to{transform:translate(-50%,0);opacity:1}}
+.toast svg{width:16px;height:16px;flex-shrink:0}
+.toast-ok svg{color:var(--success)}
+.toast-err svg{color:var(--error)}
+.spin{width:20px;height:20px;border:2px solid var(--border-2);border-top-color:var(--primary);
+  border-radius:50%;animation:spin .7s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading{display:flex;align-items:center;justify-content:center;gap:10px;
+  padding:48px;color:var(--text-3);font-size:14px}
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="sider">
+    <div class="sider-logo">
+      <div class="mark">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><path d="M12 0C8.016 0 4.756.255 2.493 2.516C.23 4.776 0 8.033 0 12.012s.23 7.235 2.494 9.497C4.757 23.77 8.017 24 12 24s7.243-.23 9.506-2.491S24 15.99 24 12.012c0-3.984-.233-7.243-2.502-9.504C19.234.252 15.978 0 12 0M4.906 7.405h5.624c1.47 0 3.007.068 3.764.827c.746.746.827 2.233.83 3.676v4.54a.15.15 0 0 1-.152.147h-1.947a.15.15 0 0 1-.152-.148V11.83c-.002-.806-.048-1.634-.464-2.051c-.358-.36-1.026-.441-1.72-.458H7.158a.15.15 0 0 0-.151.147v6.98a.15.15 0 0 1-.152.148H4.906a.15.15 0 0 1-.15-.148V7.554a.15.15 0 0 1 .15-.149m12.131 0h1.949a.15.15 0 0 1 .15.15v8.892a.15.15 0 0 1-.15.148h-1.949a.15.15 0 0 1-.151-.148V7.554a.15.15 0 0 1 .151-.149M8.92 10.948h2.046c.083 0 .15.066.15.147v5.352a.15.15 0 0 1-.15.148H8.92a.15.15 0 0 1-.152-.148v-5.352a.15.15 0 0 1 .152-.147"/></svg>
+      </div>
+      <span>小米摄像头</span>
+    </div>
+    <nav class="menu" id="menu"></nav>
+    <div class="sider-foot">MiCam v0.3.0</div>
+  </aside>
+  <div class="main">
+    <header class="header">
+      <div class="header-left"><h1 id="pageTitle">设备列表</h1></div>
+      <div class="header-right">
+        <span><span class="dot"></span> 服务运行中</span>
+        <span id="sysInfo">—</span>
+      </div>
+    </header>
+    <div class="content" id="content"></div>
+  </div>
+</div>
+<svg style="display:none">
+<symbol id="i-device" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="6" width="14" height="12" rx="2"/><path d="m22 8-6 4 6 4V8Z"/></symbol>
+<symbol id="i-play" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></symbol>
+<symbol id="i-rec" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="3.5" fill="currentColor"/></symbol>
+<symbol id="i-user" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></symbol>
+<symbol id="i-set" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></symbol>
+<symbol id="i-cam-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M16 16v1a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V7a2 2 0 0 1 2-2h2m5.66 0H14a2 2 0 0 1 2 2v3.34"/><path d="m22 8-6 4 6 4V8Z"/><line x1="2" y1="2" x2="22" y2="22"/></symbol>
+<symbol id="i-snap" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></symbol>
+<symbol id="i-stop" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="1.5"/></symbol>
+<symbol id="i-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 12a9 9 0 0 1 15-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-15 6.7L3 16"/><path d="M3 21v-5h5"/></symbol>
+<symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></symbol>
+<symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></symbol>
+<symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></symbol>
+<symbol id="i-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></symbol>
+<symbol id="i-inbox" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol>
+<symbol id="i-qr" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><line x1="14" y1="14" x2="14" y2="21"/><line x1="21" y1="14" x2="21" y2="21"/><line x1="17" y1="18" x2="18" y2="18"/></symbol>
+</svg>
+<script>
+(function(){
+"use strict";
+
+// ===== 状态 =====
+var devices = [];
+var page = "devices";
+var currentDid = null;
+var liveTimer = null;
+
+// ===== 工具 =====
+function $(s){ return document.querySelector(s); }
+function api(path, opt){ return fetch(path, opt).then(function(r){ return r.json(); }); }
+function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g, function(c){
+  return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]; }); }
+function icon(name, size){
+  var s = size || 14;
+  return "<svg width=\""+s+"\" height=\""+s+"\"><use href=\"#i-"+name+"\"/></svg>";
+}
+function fmtSize(b){
+  if(b<1024) return b+" B";
+  if(b<1048576) return (b/1024).toFixed(1)+" KB";
+  if(b<1073741824) return (b/1048576).toFixed(1)+" MB";
+  return (b/1073741824).toFixed(2)+" GB";
+}
+function toast(msg, type){
+  var el = document.createElement("div");
+  el.className = "toast" + (type==="ok"?" toast-ok":type==="err"?" toast-err":"");
+  el.innerHTML = icon(type==="ok"?"check":type==="err"?"close":"refresh",16) + "<span>"+esc(msg)+"</span>";
+  document.body.appendChild(el);
+  setTimeout(function(){ el.style.opacity="0"; el.style.transition="opacity .3s";
+    setTimeout(function(){ el.remove(); }, 300); }, 2600);
+}
+function loading(text){
+  return "<div class=\"loading\"><div class=\"spin\"></div><span>"+(text||"加载中…")+"</span></div>";
+}
+function empty(iconName, title, sub, action){
+  return "<div class=\"empty\">"+icon(iconName,56)+"<p>"+esc(title)+"</p>"
+    + (sub?"<p class=\"sub\">"+esc(sub)+"</p>":"") + (action||"") + "</div>";
+}
+
+// ===== 菜单 =====
+var MENU = [
+  {k:"devices",   t:"设备列表", i:"device"},
+  {k:"live",      t:"实时预览", i:"play"},
+  {k:"recordings",t:"录像管理", i:"rec"},
+  {k:"accounts",  t:"账号管理", i:"user"},
+  {k:"settings",  t:"系统设置", i:"set"}
+];
+
+function renderMenu(){
+  $("#menu").innerHTML = MENU.map(function(m){
+    return "<div class=\"menu-item"+(m.k===page?" active":"")+"\" data-k=\""+m.k+"\">"
+      + icon(m.i,16) + "<span>"+m.t+"</span></div>";
+  }).join("");
+  Array.prototype.forEach.call(document.querySelectorAll(".menu-item"), function(el){
+    el.onclick = function(){
+      page = el.dataset.k;
+      var m = MENU.filter(function(x){ return x.k===page; })[0];
+      $("#pageTitle").textContent = m ? m.t : "";
+      stopLive();
+      renderMenu();
+      render();
+    };
+  });
+}
+
+// ===== 数据 =====
+function loadDevices(){
+  return api("/api/devices").then(function(r){
+    if(r.needLogin){ devices = []; return {needLogin:true}; }
+    devices = r.devices || [];
+    return {needLogin:false};
+  }).catch(function(e){ return {needLogin:false, error:e.message}; });
+}
+
+function render(){
+  var c = $("#content");
+  if(page==="devices") return renderDevices(c);
+  if(page==="live") return renderLive(c);
+  if(page==="recordings") return renderRecordings(c);
+  if(page==="accounts") return renderAccounts(c);
+  if(page==="settings") return renderSettings(c);
+}
+
+// ===== 页面：设备列表 =====
+function renderDevices(c){
+  c.innerHTML = loading();
+  loadDevices().then(function(st){
+    if(st.needLogin){
+      c.innerHTML = "<div class=\"card\">" + empty("qr","还没有添加小米账号","请用米家 App 扫码登录",
+        "<button class=\"btn btn-primary\" id=\"btnQR\">"+icon("plus")+"扫码添加账号</button>") + "</div>";
+      $("#btnQR").onclick = showQR;
+      return;
+    }
+    if(!devices.length){
+      c.innerHTML = "<div class=\"card\">" + empty("inbox","没有发现摄像头","","") + "</div>";
+      return;
+    }
+    var cards = devices.map(function(d){
+      var tags = d.isOnline
+        ? "<span class=\"tag tag-on\">在线</span>"
+        : "<span class=\"tag tag-off\">离线</span>";
+      if(d.shareFlag===1) tags += "<span class=\"tag tag-share\">共享</span>";
+      return "<div class=\"device\">"
+        + "<div class=\"dev-preview\" data-did=\""+esc(d.did)+"\">"
+        +   "<div class=\"ph\">"+icon("play",32)+"<span>点击预览</span></div>"
+        +   "<div class=\"dev-badge\">"+tags+"</div>"
+        + "</div>"
+        + "<div class=\"dev-body\">"
+        +   "<div class=\"dev-name\" title=\""+esc(d.name)+"\">"+esc(d.name)+"</div>"
+        +   "<div class=\"dev-meta\">"
+        +     "<div><b>型号</b> "+esc(d.model||"—")+"</div>"
+        +     "<div><b>IP</b> "+esc(d.localip||"—")+"</div>"
+        +     "<div><b>DID</b> "+esc(d.did)+"</div>"
+        +   "</div>"
+        +   "<div class=\"dev-actions\">"
+        +     "<button class=\"btn btn-sm btn-primary\" data-act=\"live\" data-did=\""+esc(d.did)+"\">"+icon("play",12)+"预览</button>"
+        +     "<button class=\"btn btn-sm\" data-act=\"snap\" data-did=\""+esc(d.did)+"\">"+icon("snap",12)+"截图</button>"
+        +     "<button class=\"btn btn-sm\" data-act=\"rec\" data-did=\""+esc(d.did)+"\">"+icon("rec",12)+"录像</button>"
+        +   "</div>"
+        + "</div></div>";
+    }).join("");
+    c.innerHTML = "<div class=\"grid\">"+cards+"</div>";
+    bindDeviceActions();
+  });
+}
+
+function bindDeviceActions(){
+  Array.prototype.forEach.call(document.querySelectorAll("[data-act]"), function(b){
+    b.onclick = function(ev){
+      ev.stopPropagation();
+      var did = b.dataset.did, act = b.dataset.act;
+      if(act==="live") gotoLive(did);
+      else if(act==="snap") snap(did);
+      else if(act==="rec") startRec(did);
+    };
+  });
+  Array.prototype.forEach.call(document.querySelectorAll(".dev-preview"), function(el){
+    el.onclick = function(){ gotoLive(el.dataset.did); };
+  });
+}
+
+function gotoLive(did){
+  page = "live";
+  currentDid = did;
+  $("#pageTitle").textContent = "实时预览";
+  renderMenu();
+  render();
+}
+
+// ===== 页面：实时预览 =====
+function renderLive(c){
+  c.innerHTML = loading();
+  loadDevices().then(function(st){
+    if(st.needLogin || !devices.length){
+      c.innerHTML = "<div class=\"card\">" + empty("inbox","请先添加账号并发现设备","","") + "</div>";
+      return;
+    }
+    var online = devices.filter(function(d){ return d.isOnline; });
+    if(!currentDid){
+      currentDid = (online[0] || devices[0]).did;
+    }
+    var tabs = devices.map(function(d){
+      return "<button class=\"btn btn-sm"+(d.did===currentDid?" btn-primary":"")+"\" data-tab=\""+esc(d.did)+"\">"
+        + (d.isOnline?"":"⊘ ") + esc(d.name) + "</button>";
+    }).join("");
+    c.innerHTML = "<div class=\"card\">"
+      + "<div class=\"card-head\"><span class=\"card-title\">实时画面</span>"
+      +   "<span style=\"font-size:12px;color:var(--text-3)\" id=\"liveHint\"></span></div>"
+      + "<div class=\"card-body\">"
+      +   "<div class=\"tabs\">"+tabs+"</div>"
+      +   "<div class=\"player\" id=\"player\">"
+      +     "<div class=\"ph\">"+icon("play",40)+"<span>正在连接…</span></div>"
+      +   "</div>"
+      +   "<div class=\"player-bar\">"
+      +     "<button class=\"btn\" id=\"btnStop\">"+icon("stop",12)+"停止</button>"
+      +     "<button class=\"btn\" id=\"btnSnap\">"+icon("snap",12)+"截图</button>"
+      +     "<button class=\"btn\" id=\"btnRec\">"+icon("rec",12)+"录像</button>"
+      +     "<span id=\"liveState\" style=\"font-size:13px;color:var(--text-3);margin-left:auto\"></span>"
+      +   "</div>"
+      +   "<div class=\"ptz\">"
+      +     "<div class=\"ptz-grid\">"
+      +       "<div></div>"
+      +       "<button class=\"ptz-btn\" data-ptz=\"5\" title=\"上\">▲</button>"
+      +       "<div></div>"
+      +       "<button class=\"ptz-btn\" data-ptz=\"2\" title=\"左\">◀</button>"
+      +       "<button class=\"ptz-btn ptz-center\" id=\"ptzHome\" title=\"查询位置\">●</button>"
+      +       "<button class=\"ptz-btn\" data-ptz=\"3\" title=\"右\">▶</button>"
+      +       "<div></div>"
+      +       "<button class=\"ptz-btn\" data-ptz=\"4\" title=\"下\">▼</button>"
+      +       "<div></div>"
+      +     "</div>"
+      +     "<div class=\"ptz-info\" id=\"ptzInfo\">云台：点击 ● 查询当前位置</div>"
+      +   "</div>"
+      + "</div></div>";
+    Array.prototype.forEach.call(document.querySelectorAll("[data-tab]"), function(b){
+      b.onclick = function(){ currentDid = b.dataset.tab; stopLive(); render(); };
+    });
+    $("#btnStop").onclick = stopLive;
+    $("#btnSnap").onclick = function(){ snap(currentDid); };
+    $("#btnRec").onclick = function(){ startRec(currentDid); };
+    Array.prototype.forEach.call(document.querySelectorAll("[data-ptz]"), function(b){
+      b.onclick = function(){ ptzMove(parseInt(b.dataset.ptz,10)); };
+    });
+    $("#ptzHome").onclick = ptzStatus;
+    startLive(currentDid);
+  });
+}
+
+function startLive(did){
+  var box = $("#player");
+  var st = $("#liveState");
+  var hint = $("#liveHint");
+  if(!box) return;
+  var dev = devices.filter(function(d){ return d.did===did; })[0];
+  if(dev && !dev.isOnline){
+    box.innerHTML = "<div class=\"ph\">"+icon("cam-off",40)+"<span>设备离线，无法播放</span></div>";
+    if(st) st.textContent = "离线";
+    return;
+  }
+  box.innerHTML = "<div class=\"ph\">"+icon("play",40)+"<span>正在连接…</span></div>";
+  if(st) st.textContent = "连接中";
+  if(hint) hint.textContent = "首次连接约 3-10 秒";
+
+  var img = new Image();
+  img.style.cssText = "width:100%;height:100%;object-fit:contain;display:block";
+  img.onload = function(){
+    if(st) st.textContent = "播放中";
+    if(hint) hint.textContent = "";
+  };
+  img.onerror = function(){
+    box.innerHTML = "<div class=\"ph\">"+icon("cam-off",40)+"<span>播放失败</span></div>";
+    if(st) st.textContent = "失败";
+    if(hint) hint.textContent = "摄像头可能被米家 App 占用";
+  };
+  img.src = "/api/live/mjpeg?did="+encodeURIComponent(did)+"&fps=5&w=1280&t="+Date.now();
+  box.innerHTML = "";
+  box.appendChild(img);
+  if(liveTimer) clearTimeout(liveTimer);
+  liveTimer = setTimeout(function(){
+    if(st && st.textContent==="连接中"){
+      st.textContent = "已连接";
+      if(hint) hint.textContent = "";
+    }
+  }, 8000);
+}
+
+function stopLive(){
+  if(liveTimer){ clearTimeout(liveTimer); liveTimer = null; }
+  var box = $("#player");
+  if(box){
+    var img = box.querySelector("img");
+    if(img) img.src = "";
+    box.innerHTML = "<div class=\"ph\">"+icon("play",40)+"<span>已停止</span></div>";
+  }
+  var st = $("#liveState");
+  if(st) st.textContent = "已停止";
+}
+
+// ===== 云台控制 =====
+function ptzStatus(){
+  var info = $("#ptzInfo");
+  if(!currentDid) return;
+  if(info) info.textContent = "云台：查询中…";
+  api("/api/ptz/status?did="+encodeURIComponent(currentDid)).then(function(r){
+    if(info) info.textContent = "云台：水平 " + r.angle + "° / 俯仰 " + r.elevation + "°";
+  }).catch(function(e){
+    if(info) info.textContent = "云台：查询失败（" + e.message + "）";
+  });
+}
+
+function ptzMove(op){
+  var info = $("#ptzInfo");
+  var btns = document.querySelectorAll("[data-ptz]");
+  Array.prototype.forEach.call(btns, function(b){ b.disabled = true; });
+  if(info) info.textContent = "云台：执行中…";
+  api("/api/ptz/move", {
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({did: currentDid, operation: op})
+  }).then(function(r){
+    Array.prototype.forEach.call(btns, function(b){ b.disabled = false; });
+    if(r.ok){
+      if(info) info.textContent = "云台：水平 " + r.angle + "° / 俯仰 " + r.elevation + "°";
+    } else {
+      if(info) info.textContent = "云台：失败 ret=" + r.ret;
+    }
+  }).catch(function(e){
+    Array.prototype.forEach.call(btns, function(b){ b.disabled = false; });
+    if(info) info.textContent = "云台：失败（" + e.message + "）";
+  });
+}
+
+// ===== 页面：录像管理 =====
+function renderRecordings(c){
+  c.innerHTML = loading();
+  Promise.all([api("/api/recordings"), loadDevices()]).then(function(res){
+    var recs = res[0].recordings || [];
+    var rows = recs.length ? recs.map(function(x){
+      return "<tr><td>"+esc(x.name)+"</td>"
+        + "<td>"+(x.running?"<span class=\"tag tag-on\">录制中</span>":"<span class=\"tag tag-def\">已停止</span>")+"</td>"
+        + "<td style=\"color:var(--text-3);font-size:12px\">"+esc(x.started||"—")+"</td>"
+        + "<td>"+(x.running?"<button class=\"btn btn-sm btn-danger\" data-stop=\""+esc(x.did)+"\">"+icon("stop",12)+"停止</button>":"—")+"</td></tr>";
+    }).join("") : "<tr><td colspan=\"4\">"+empty("rec","暂无录像任务","","")+"</td></tr>";
+
+    var opts = devices.map(function(d){ return "<option value=\""+esc(d.name)+"\">"+esc(d.name)+"</option>"; }).join("");
+
+    c.innerHTML = "<div class=\"card\">"
+      + "<div class=\"card-head\"><span class=\"card-title\">录像任务</span></div>"
+      + "<table><thead><tr><th>设备</th><th>状态</th><th>开始时间</th><th style=\"width:110px\">操作</th></tr></thead><tbody>"+rows+"</tbody></table>"
+      + "</div>"
+      + "<div class=\"card\">"
+      + "<div class=\"card-head\"><span class=\"card-title\">录像文件</span>"
+      +   "<div class=\"btn-group\">"
+      +     "<select class=\"btn\" id=\"fileDev\" style=\"min-width:180px\"><option value=\"\">选择设备…</option>"+opts+"</select>"
+      +     "<button class=\"btn\" id=\"btnClean\">"+icon("trash",12)+"清理过期</button>"
+      +   "</div></div>"
+      + "<div id=\"files\">"+empty("inbox","请选择设备查看录像","","")+"</div>"
+      + "</div>";
+
+    Array.prototype.forEach.call(document.querySelectorAll("[data-stop]"), function(b){
+      b.onclick = function(){ stopRec(b.dataset.stop); };
+    });
+    $("#fileDev").onchange = function(){ loadFiles(this.value); };
+    $("#btnClean").onclick = cleanup;
+  });
+}
+
+function loadFiles(name){
+  var box = $("#files");
+  if(!name){ box.innerHTML = empty("inbox","请选择设备查看录像","",""); return; }
+  box.innerHTML = loading();
+  api("/api/recordings/files?name="+encodeURIComponent(name)).then(function(r){
+    var files = r.files || [];
+    if(!files.length){ box.innerHTML = empty("inbox","暂无录像文件","",""); return; }
+    box.innerHTML = "<table><thead><tr><th>文件名</th><th style=\"width:110px\">大小</th><th style=\"width:180px\">时间</th></tr></thead><tbody>"
+      + files.map(function(f){
+          return "<tr><td style=\"font-family:ui-monospace,monospace;font-size:12px\">"+esc(f.name)+"</td>"
+            + "<td>"+fmtSize(f.size)+"</td>"
+            + "<td style=\"color:var(--text-3);font-size:12px\">"+esc(f.modTime)+"</td></tr>";
+        }).join("") + "</tbody></table>";
+  });
+}
+
+// ===== 页面：账号管理 =====
+function renderAccounts(c){
+  c.innerHTML = loading();
+  api("/api/accounts").then(function(r){
+    var list = Array.isArray(r) ? r : [];
+    var rows = list.length ? list.map(function(a){
+      return "<tr><td style=\"font-family:ui-monospace,monospace\">"+esc(a.userId)+"</td>"
+        + "<td style=\"color:var(--text-3);font-size:12px\">"+esc(a.addedAt||"—")+"</td>"
+        + "<td>"+(a.online?"<span class=\"tag tag-on\">已登录</span>":"<span class=\"tag tag-off\">离线</span>")+"</td></tr>";
+    }).join("") : "<tr><td colspan=\"3\">"+empty("user","还没有账号","扫码添加后即可发现设备","")+"</td></tr>";
+    c.innerHTML = "<div class=\"card\">"
+      + "<div class=\"card-head\"><span class=\"card-title\">小米账号</span>"
+      +   "<button class=\"btn btn-primary\" id=\"btnQR2\">"+icon("plus",12)+"扫码添加</button></div>"
+      + "<table><thead><tr><th>用户 ID</th><th>添加时间</th><th style=\"width:110px\">状态</th></tr></thead><tbody>"+rows+"</tbody></table>"
+      + "</div>";
+    $("#btnQR2").onclick = showQR;
+  });
+}
+
+// ===== 页面：系统设置 =====
+function renderSettings(c){
+  c.innerHTML = "<div class=\"card\">"
+    + "<div class=\"card-head\"><span class=\"card-title\">录像设置</span></div>"
+    + "<table>"
+    + "<tr><td style=\"width:180px;color:var(--text-2)\">录像目录</td><td style=\"font-family:ui-monospace,monospace;font-size:12px\">/vol1/@appdata/micam/recordings</td></tr>"
+    + "<tr><td style=\"color:var(--text-2)\">分片时长</td><td>30 秒</td></tr>"
+    + "<tr><td style=\"color:var(--text-2)\">保留天数</td><td>7 天</td></tr>"
+    + "<tr><td style=\"color:var(--text-2)\">磁盘保护</td><td>剩余低于 10 GB 自动停止录像</td></tr>"
+    + "</table></div>"
+    + "<div class=\"card\">"
+    + "<div class=\"card-head\"><span class=\"card-title\">关于</span></div>"
+    + "<table>"
+    + "<tr><td style=\"width:180px;color:var(--text-2)\">应用</td><td>MiCam（小米摄像头）</td></tr>"
+    + "<tr><td style=\"color:var(--text-2)\">版本</td><td>0.3.0</td></tr>"
+    + "<tr><td style=\"color:var(--text-2)\">连接方式</td><td>小米云 P2P 直连（不依赖 EasyNVR）</td></tr>"
+    + "<tr><td style=\"color:var(--text-2)\">后端</td><td><span class=\"tag tag-on\">运行中</span></td></tr>"
+    + "</table></div>";
+}
+
+// ===== 动作 =====
+function snap(did){
+  toast("正在抓图…");
+  fetch("/api/live/snapshot?did="+encodeURIComponent(did)+"&w=1920")
+    .then(function(r){ if(!r.ok) throw new Error("HTTP "+r.status); return r.blob(); })
+    .then(function(b){
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(b);
+      a.download = did+"_"+Date.now()+".jpg";
+      a.click();
+      toast("截图已保存","ok");
+    })
+    .catch(function(e){ toast("截图失败："+e.message,"err"); });
+}
+
+function startRec(did){
+  api("/api/recordings", {
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({did:did})
+  }).then(function(r){
+    if(r.ok) toast("已开始录像","ok");
+    else toast(r.msg||"启动失败","err");
+  }).catch(function(e){ toast("启动失败："+e.message,"err"); });
+}
+
+function stopRec(did){
+  api("/api/recordings/stop", {
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body: JSON.stringify({did:did})
+  }).then(function(){ toast("已停止录像","ok"); render(); });
+}
+
+function cleanup(){
+  api("/api/recordings/cleanup", {method:"POST"}).then(function(r){
+    toast("已清理 "+(r.deleted||0)+" 个文件，释放 "+(r.freedMB||0)+" MB","ok");
+  });
+}
+
+// ===== 扫码登录 =====
+function showQR(){
+  var mask = document.createElement("div");
+  mask.className = "mask";
+  mask.innerHTML = "<div class=\"modal\">"
+    + "<div class=\"modal-head\">扫码添加小米账号</div>"
+    + "<div class=\"modal-body\"><div class=\"qr-wrap\" id=\"qrWrap\">"+loading("正在获取二维码…")+"</div></div>"
+    + "<div class=\"modal-foot\"><button class=\"btn\" id=\"qrClose\">关闭</button></div></div>";
+  document.body.appendChild(mask);
+  var timer = null;
+  mask.querySelector("#qrClose").onclick = function(){ if(timer) clearInterval(timer); mask.remove(); };
+  mask.onclick = function(e){ if(e.target===mask){ if(timer) clearInterval(timer); mask.remove(); } };
+
+  api("/api/accounts/qr", {method:"POST"}).then(function(r){
+    if(!r.id){
+      mask.querySelector("#qrWrap").innerHTML = empty("close","获取失败", r.msg||"","");
+      return;
+    }
+    mask.querySelector("#qrWrap").innerHTML =
+      "<img src=\""+r.qrBase64+"\" alt=\"二维码\"><div class=\"qr-tip\">请用 <b>米家 App</b> 扫码登录</div>";
+    timer = setInterval(function(){
+      api("/api/accounts/qr/status?id="+encodeURIComponent(r.id)).then(function(s){
+        if(s.state==="success"){
+          clearInterval(timer); mask.remove();
+          toast("登录成功","ok");
+          loadDevices().then(function(){ render(); });
+        } else if(s.state==="scanned"){
+          var tip = mask.querySelector(".qr-tip");
+          if(tip) tip.innerHTML = "已扫码，请在手机上确认";
+        } else if(s.state==="failed"){
+          clearInterval(timer);
+          mask.querySelector("#qrWrap").innerHTML = empty("close","登录失败", s.error||"","");
+        }
+      });
+    }, 2000);
+  }).catch(function(e){
+    mask.querySelector("#qrWrap").innerHTML = empty("close","错误", e.message,"");
+  });
+}
+
+// ===== 宿主 SDK 集成 =====
+function initSDK(){
+  var s = document.createElement("script");
+  s.type = "module";
+  s.textContent = "import('https://unpkg.com/@trimjs/web-app/dist/index.js').then(function(m){
+    var app = new m.TrimApp();
+    return app.getPlatformConfig().then(function(c){
+      if(c.theme==="dark") document.documentElement.dataset.theme = "dark";
+      var el = document.getElementById("sysInfo");
+      if(el) el.textContent = "系统 " + (c.systemVersion||"") + " · " + (c.language||"");
+      if(app.isWeb===true && app.isStandaloneWeb===false){ app.$on("os/theme", function(t){
+        document.documentElement.dataset.theme = t==="dark"?"dark":"light"; }); }
+      return app.setTitle("小米摄像头");
+    });
+  }).catch(function(){
+    var el = document.getElementById("sysInfo");
+    if(el) el.textContent = "独立模式";
+  });";
+  document.body.appendChild(s);
+}
+
+// ===== 启动 =====
+renderMenu();
+render();
+initSDK();
+})();
+</script>
+</body>
+</html>
