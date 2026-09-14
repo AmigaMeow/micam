@@ -3,6 +3,11 @@ dist/
 *.fpk
 platform/fnos/micam.fpk
 
+# 编译的二进制（构建时生成）
+platform/fnos/app/server/micamd
+platform/fnos/app/server/*
+!platform/fnos/app/server/.gitkeep
+
 # 编译产物
 *.exe
 *.test
