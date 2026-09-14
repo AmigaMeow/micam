@@ -88,6 +88,14 @@ bash build/build-fnos.sh
 | `GET /api/recordings/files?name=` | 录像文件列表 |
 | `POST /api/recordings/cleanup` | 清理过期录像 |
 
+## 贡献
+
+欢迎提交硬件适配信息！不同 NAS 的 CPU / 核显差异很大，社区反馈能帮我们做得更好。
+
+**最简单的方式**：MiCam → 系统设置 → 导出诊断包 → 提交到 [Issues](https://github.com/AmigaMeow/micam/issues)
+
+详见 [贡献指南](docs/CONTRIBUTING.md)。
+
 ## 文档
 
 - [开发笔记](docs/DEV-NOTES.md) — cs2 直连踩坑全记录

@@ -271,6 +271,18 @@ func (s *Server) ensureHLS(dev *xiaomi.Device, fps, width int) error {
 	return nil
 }
 
+// cleanHLSOnStart 启动时清理残留的 HLS 缓存。
+//
+// HLS 分片会快速累积（实测 2K 下约 70MB/分钟），
+// 所以启动时必须清理上次的残留。
+func (s *Server) cleanHLSOnStart() {
+	dir := filepath.Join(s.dataDir, "hls")
+	if _, err := os.Stat(dir); err == nil {
+		_ = os.RemoveAll(dir)
+		logf("已清理 HLS 缓存: %s", dir)
+	}
+}
+
 // hlsReaper 回收空闲的 HLS 会话。
 func (s *Server) hlsReaper(did string) {
 	t := time.NewTicker(30 * time.Second)

@@ -34,7 +34,7 @@ import (
 
 const (
 	appName    = "micam"
-	appVersion = "0.5.0"
+	appVersion = "0.5.1"
 )
 
 func main() {
@@ -84,6 +84,9 @@ func main() {
 
 	// 初始化日志文件（daemon 化后 stdout 会丢）
 	initLogFile(*dataDir)
+
+	// 清理上次残留的 HLS 缓存
+	srvCleanHLS(*dataDir)
 
 	// 首次启动时把前端从应用目录部署到数据目录
 	deployWeb(*dataDir)
@@ -241,6 +244,15 @@ func daemonize() {
 	os.Exit(0)
 }
 
+// srvCleanHLS 清理 HLS 缓存目录。
+func srvCleanHLS(dataDir string) {
+	dir := filepath.Join(dataDir, "hls")
+	if _, err := os.Stat(dir); err == nil {
+		_ = os.RemoveAll(dir)
+		log.Printf("已清理 HLS 缓存: %s", dir)
+	}
+}
+
 // deployWeb 把前端页面从应用目录复制到数据目录（首次启动时）。
 //
 // 为什么需要：静态文件在 TRIM_APPDEST/www，
@@ -307,6 +319,10 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/live/inject", s.handleInjectSource) // 单帧 JPEG
 
 	// 云台
+	// 诊断信息导出（方便提交问题）
+	mux.HandleFunc("/api/diag/report", s.handleDiagReport)
+	mux.HandleFunc("/api/diag/bundle", s.handleDiagBundle)
+
 	// 安装向导 / 自检
 	mux.HandleFunc("/api/setup/check", s.handleSetupCheck)
 	mux.HandleFunc("/api/setup/repair", s.handleSetupRepair)

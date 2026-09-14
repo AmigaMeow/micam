@@ -922,6 +922,20 @@ function renderWizard(c){
 // ===== 页面：系统设置 =====
 function renderSettings(c){
   c.innerHTML = "<div class=\"card\">"
+    + "<div class=\"card-head\"><span class=\"card-title\">诊断与反馈</span></div>"
+    + "<div style=\"padding:20px 24px\">"
+    +   "<p style=\"font-size:13px;color:var(--text-3);margin-bottom:16px\">"
+    +     "遇到问题时，导出诊断包并提交到 GitHub Issues，我们会据此做适配。"
+    +     "所有敏感信息（账号/凭据/IP）已自动脱敏。"
+    +   "</p>"
+    +   "<div class=\"btn-group\">"
+    +     "<button class=\"btn btn-primary\" id=\"btnDiagBundle\">" + icon("inbox",14) + "导出诊断包</button>"
+    +     "<button class=\"btn\" id=\"btnDiagReport\">" + icon("device",14) + "查看诊断报告</button>"
+    +     "<button class=\"btn\" id=\"btnShowLog\">" + icon("rec",14) + "查看日志</button>"
+    +   "</div>"
+    +   "<div id=\"diagResult\" style=\"margin-top:16px\"></div>"
+    + "</div></div>"
+    + "<div class=\"card\">"
     + "<div class=\"card-head\"><span class=\"card-title\">录像设置</span></div>"
     + "<table>"
     + "<tr><td style=\"width:180px;color:var(--text-2)\">录像目录</td><td style=\"font-family:ui-monospace,monospace;font-size:12px\">/vol1/@appdata/micam/recordings</td></tr>"
@@ -1040,6 +1054,56 @@ function initSDK(){
       if(el) el.textContent = "独立模式";
     });
 }
+
+// ===== 诊断功能 =====
+document.addEventListener("click", function(e){
+  var t = e.target;
+  if(!t || !t.id) return;
+
+  if(t.id === "btnDiagBundle"){
+    toast("正在生成诊断包…");
+    window.open(apiUrl("/api/diag/bundle"), "_blank");
+    setTimeout(function(){ toast("诊断��已开始下载", "ok"); }, 1500);
+  }
+
+  if(t.id === "btnDiagReport"){
+    var box = document.getElementById("diagResult");
+    if(box) box.innerHTML = loading("加载中…");
+    api("/api/diag/report").then(function(r){
+      var el = document.getElementById("diagResult");
+      if(!el) return;
+      var hw = r.hardware || {};
+      var enc = (hw.encoders || []).map(function(x){
+        return x.name + (x.hardware ? " (硬件)" : " (软件)");
+      }).join("、");
+      el.innerHTML = "<table style=\"font-size:12px\">"
+        + "<tr><td style=\"width:120px;color:var(--text-3)\">版本</td><td>" + esc(r.app.version) + "</td></tr>"
+        + "<tr><td style=\"color:var(--text-3)\">CPU</td><td>" + esc(hw.cpuModel || "-") + "</td></tr>"
+        + "<tr><td style=\"color:var(--text-3)\">核心数</td><td>" + (hw.cpuCores || "-") + "</td></tr>"
+        + "<tr><td style=\"color:var(--text-3)\">核显</td><td>" + (hw.hasDRI ? "有" : "无") + "</td></tr>"
+        + "<tr><td style=\"color:var(--text-3)\">GPU</td><td style=\"word-break:break-all\">" + esc(hw.gpuInfo || "-") + "</td></tr>"
+        + "<tr><td style=\"color:var(--text-3)\">首选编码器</td><td>" + esc(hw.preferred || "-") + "</td></tr>"
+        + "<tr><td style=\"color:var(--text-3)\">可用编码器</td><td>" + esc(enc) + "</td></tr>"
+        + "<tr><td style=\"color:var(--text-3)\">Go 版本</td><td>" + esc((r.runtime||{}).goVersion || "-") + "</td></tr>"
+        + "<tr><td style=\"color:var(--text-3)\">设备数</td><td>" + ((r.devices||[]).length) + "</td></tr>"
+        + "</table>";
+    });
+  }
+
+  if(t.id === "btnShowLog"){
+    var box2 = document.getElementById("diagResult");
+    if(box2) box2.innerHTML = loading("加载中…");
+    fetch(apiUrl("/api/diag/bundle")).then(function(resp){
+      return resp.arrayBuffer();
+    }).then(function(){
+      var el2 = document.getElementById("diagResult");
+      if(el2) el2.innerHTML = "<div style=\"font-size:13px;color:var(--text-3)\">日志已包含在诊断包中，请点击「导出诊断包」下载查看。</div>";
+    }).catch(function(){
+      var el3 = document.getElementById("diagResult");
+      if(el3) el3.innerHTML = "<div style=\"font-size:13px;color:var(--text-3)\">请点击「导出诊断包」下载日志。</div>";
+    });
+  }
+});
 
 // ===== 加载 hls.js（HLS 播放库）=====
 (function(){
