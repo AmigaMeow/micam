@@ -263,6 +263,22 @@ func (s *Server) handleMJPEG(w http.ResponseWriter, r *http.Request) {
 	readBuf := make([]byte, 64*1024)
 	sent := 0
 
+	// 首帧看门狗：如果 15 秒还没出帧，说明连接坏了，直接断开让客户端重试
+	// （浏览器/客户端会自动重连，届时会重建摄像头连接）
+	firstFrame := make(chan struct{})
+	go func() {
+		select {
+		case <-firstFrame:
+		case <-time.After(15 * time.Second):
+			logf("[mjpeg] %s 首帧超时，断开连接", did)
+			if flusher != nil {
+				flusher.Flush()
+			}
+			// 关闭 stdout 让主循环退出
+			_ = stdout.Close()
+		}
+	}()
+
 	for {
 		n, err := stdout.Read(readBuf)
 		if n > 0 {
@@ -300,6 +316,9 @@ func (s *Server) handleMJPEG(w http.ResponseWriter, r *http.Request) {
 				}
 				if _, werr := w.Write([]byte("\r\n")); werr != nil {
 					return
+				}
+				if sent == 0 {
+					close(firstFrame) // 首帧已出，取消看门狗
 				}
 				sent++
 				if flusher != nil {

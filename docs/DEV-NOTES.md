@@ -425,7 +425,36 @@ open('/tmp/f.js','w',encoding='utf-8').write(m.group(1))
 node --check /tmp/f.js
 ~~~
 
-### 7.7 端口冲突会导致启动失败
+### 7.7 摄像头连接被占用后需要自愈
+
+**症状**：界面显示「已连接」但**画面一直不出来**。
+
+**原因**：cs2 同一设备只允许一路连接。
+如果上一次的连接没完全释放（客户端异常断开、反复测试等），
+新请求会连上但**拿不到数据**。
+
+**修复**：加**首帧看门狗** —— 15 秒内没出帧就主动断开，
+让客户端重连（届时会重建摄像头连接）。
+
+~~~go
+firstFrame := make(chan struct{})
+go func() {
+    select {
+    case <-firstFrame:
+    case <-time.After(15 * time.Second):
+        logf("[mjpeg] %s 首帧超时，断开连接", did)
+        _ = stdout.Close()   // 让主循环退出
+    }
+}()
+
+// 出第一帧时取消看门狗
+if sent == 0 { close(firstFrame) }
+~~~
+
+**注意**：双镜头机型（如 CW500 `isa.camera.hlmax`）的流结构不同，
+但实测轨道正常（video H265 + audio OPUS），能正常出图。
+
+### 7.8 端口冲突会导致启动失败
 
 **症状**：应用中心报 `start app error: 10330`。
 
@@ -438,7 +467,7 @@ ERROR: process exited immediately
 
 **教训**：装了应用中心版本后，**必须删掉手动创建的 systemd 服务**。
 
-### 7.8 网关何时重新加载配置
+### 7.9 网关何时重新加载配置
 
 网关（`trim_http_cgi`）在**应用启动时**注册路由：
 
