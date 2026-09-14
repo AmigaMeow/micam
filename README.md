@@ -1,5 +1,10 @@
 # MiCam — 飞牛 fnOS 小米摄像头插件
 
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Go](https://img.shields.io/badge/Go-1.21+-00ADD8.svg)](https://go.dev)
+[![fnOS](https://img.shields.io/badge/fnOS-1.2.0401+-green.svg)](https://www.fnnas.com)
+[![Version](https://img.shields.io/badge/version-0.3.1-blue.svg)](../../releases)
+
 在飞牛 NAS 上接入小米/米家摄像头：扫码登录、实时预览、录像、云台控制。
 
 **不依赖 EasyNVR**，直连小米云 P2P（cs2 协议）。
@@ -20,9 +25,11 @@
 
 ### 安装
 
-1. 下载 `micam.fpk`
-2. 飞牛 → 应用中心 → 手动安装
-3. 打开「小米摄像头」→ 扫码登录
+1. 从 [Releases](../../releases) 下载 `micam.fpk`
+2. 飞牛 → 应用中心 → **手动安装** → 选择 fpk
+3. 打开「小米摄像头」→ 用**米家 App** 扫码登录
+
+> 支持 x86_64 架构，fnOS 1.2.0401+
 
 ### 从源码构建
 
@@ -42,10 +49,25 @@ bash build/build-fnos.sh
 ```
 摄像头 --cs2(TCP)--> go2rtc Producer --> 内存管道 --> ffmpeg --> HTTP
                           |
-                          +--> 录像（-c copy 不转码）
+                          +--> 录像（-c copy 不转码，原画质）
                           |
                           +--> 云台（0x112 电机指令）
 ```
+
+**关键设计**：
+- **go2rtc 编译期内嵌** —— 无外部依赖，不与其他 go2rtc 冲突
+- **双监听** —— Unix socket（飞牛网关）+ TCP 8900（局域网/Mac App）
+- **每设备串行** —— cs2 同一设备只允许一路连接
+- **连接自愈** —— 客户端断开时主动释放，连续失败自动重建
+
+## 性能
+
+| 指标 | 实测 |
+|---|---|
+| MJPEG 首帧 | **0.7 秒** |
+| 快照 | **3-6 秒** |
+| Dial 耗时 | 0.3-0.9 秒 |
+| 录像码率 | ~110 KB/s（原画质 HEVC） |
 
 ## API
 
