@@ -176,7 +176,7 @@ tbody tr:last-child td{border-bottom:0}
       <span>小米摄像头</span>
     </div>
     <nav class="menu" id="menu"></nav>
-    <div class="sider-foot">MiCam v0.3.3</div>
+    <div class="sider-foot">MiCam v0.3.4</div>
   </aside>
   <div class="main">
     <header class="header">
@@ -218,7 +218,27 @@ var liveTimer = null;
 
 // ===== 工具 =====
 function $(s){ return document.querySelector(s); }
-function api(path, opt){ return fetch(path, opt).then(function(r){ return r.json(); }); }
+
+// 计算 API 基础路径。
+//
+// 关键：通过飞牛网关访问时，页面 URL 是 /app/micam/，
+// 此时必须请求 /app/micam/api/xxx 而不是 /api/xxx
+// （后者会打到飞牛根路径，不是我们的应用）。
+var API_BASE = (function(){
+  var p = location.pathname;
+  // 去掉末尾的 index.html 或 /
+  p = p.replace(/\/index\.html$/, "").replace(/\/$/, "");
+  // 如果路径以 /app/<name> 结尾，就用它作为前缀
+  if (/\/app\/[^/]+$/.test(p)) return p;
+  return "";
+})();
+
+function apiUrl(path){
+  // path 形如 "/api/devices"
+  return API_BASE + path;
+}
+
+function api(path, opt){ return fetch(apiUrl(path), opt).then(function(r){ return r.json(); }); }
 function esc(s){ return String(s==null?"":s).replace(/[&<>"]/g, function(c){
   return {"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]; }); }
 function icon(name, size){
@@ -442,7 +462,7 @@ function startLive(did){
     if(st) st.textContent = "失败";
     if(hint) hint.textContent = "摄像头可能被米家 App 占用";
   };
-  img.src = "/api/live/mjpeg?did="+encodeURIComponent(did)+"&fps=5&w=1280&t="+Date.now();
+  img.src = apiUrl("/api/live/mjpeg?did="+encodeURIComponent(did)+"&fps=5&w=1280&t="+Date.now());
   box.innerHTML = "";
   box.appendChild(img);
   if(liveTimer) clearTimeout(liveTimer);
@@ -583,7 +603,7 @@ function renderSettings(c){
     + "<div class=\"card-head\"><span class=\"card-title\">关于</span></div>"
     + "<table>"
     + "<tr><td style=\"width:180px;color:var(--text-2)\">应用</td><td>MiCam（小米摄像头）</td></tr>"
-    + "<tr><td style=\"color:var(--text-2)\">版本</td><td>0.3.3</td></tr>"
+    + "<tr><td style=\"color:var(--text-2)\">版本</td><td>0.3.4</td></tr>"
     + "<tr><td style=\"color:var(--text-2)\">连接方式</td><td>小米云 P2P 直连（不依赖 EasyNVR）</td></tr>"
     + "<tr><td style=\"color:var(--text-2)\">后端</td><td><span class=\"tag tag-on\">运行中</span></td></tr>"
     + "</table></div>";
@@ -592,7 +612,7 @@ function renderSettings(c){
 // ===== 动作 =====
 function snap(did){
   toast("正在抓图…");
-  fetch("/api/live/snapshot?did="+encodeURIComponent(did)+"&w=1920")
+  fetch(apiUrl("/api/live/snapshot?did="+encodeURIComponent(did)+"&w=1920"))
     .then(function(r){ if(!r.ok) throw new Error("HTTP "+r.status); return r.blob(); })
     .then(function(b){
       var a = document.createElement("a");
@@ -669,23 +689,26 @@ function showQR(){
 
 // ===== 宿主 SDK 集成 =====
 function initSDK(){
-  var s = document.createElement("script");
-  s.type = "module";
-  s.textContent = "import('https://unpkg.com/@trimjs/web-app/dist/index.js').then(function(m){
-    var app = new m.TrimApp();
-    return app.getPlatformConfig().then(function(c){
-      if(c.theme==="dark") document.documentElement.dataset.theme = "dark";
+  // 动态加载宿主 SDK（失败则降级为独立模式）
+  import("https://unpkg.com/@trimjs/web-app/dist/index.js")
+    .then(function(m){
+      var app = new m.TrimApp();
+      return app.getPlatformConfig().then(function(c){
+        if(c.theme === "dark") document.documentElement.dataset.theme = "dark";
+        var el = document.getElementById("sysInfo");
+        if(el) el.textContent = "系统 " + (c.systemVersion || "") + " · " + (c.language || "");
+        if(app.isWeb === true && app.isStandaloneWeb === false){
+          app.$on("os/theme", function(t){
+            document.documentElement.dataset.theme = t === "dark" ? "dark" : "light";
+          });
+        }
+        return app.setTitle("小米摄像头");
+      });
+    })
+    .catch(function(){
       var el = document.getElementById("sysInfo");
-      if(el) el.textContent = "系统 " + (c.systemVersion||"") + " · " + (c.language||"");
-      if(app.isWeb===true && app.isStandaloneWeb===false){ app.$on("os/theme", function(t){
-        document.documentElement.dataset.theme = t==="dark"?"dark":"light"; }); }
-      return app.setTitle("小米摄像头");
+      if(el) el.textContent = "独立模式";
     });
-  }).catch(function(){
-    var el = document.getElementById("sysInfo");
-    if(el) el.textContent = "独立模式";
-  });";
-  document.body.appendChild(s);
 }
 
 // ===== 启动 =====

@@ -301,7 +301,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{
 		"ok":      true,
 		"app":     appName,
-		"version": "0.3.3",
+		"version": "0.3.4",
 	})
 }
 

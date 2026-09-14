@@ -374,7 +374,58 @@ func daemonize() {
 **另一个坑**：daemon 化后 `$!` 拿不到真实 PID，
 要用 `pgrep -f "${APP_BIN}"` 找。
 
-### 7.6 端口冲突会导致启动失败
+### 7.6 前端 API 路径必须动态计算（重要）
+
+**症状**：飞牛界面打开后**一片空白** —— 侧边栏和内容区都没渲染。
+
+**根因有两个**：
+
+**① JS 语法错误导致整个脚本崩溃**
+
+~~~js
+// 错误写法：字符串里有未转义的换行
+s.textContent = "import('...').then(function(m){
+  ...多行代码...
+});";
+~~~
+
+这会让整个 IIFE 抛 SyntaxError，**所有渲染代码都不执行**。
+
+**修复**：用真正的动态 import，不要塞进字符串。
+
+**② API 路径用了绝对路径**
+
+前端写 `fetch("/api/devices")`，但通过网关访问时页面在 `/app/micam/`，
+请求 `/api/devices` 会打到**飞牛根路径**，不是我们的应用。
+
+**修复**：动态计算 base。
+
+~~~js
+var API_BASE = (function(){
+  var p = location.pathname;
+  p = p.replace(/\/index\.html$/, "").replace(/\/$/, "");
+  if (/\/app\/[^/]+$/.test(p)) return p;   // 网关模式
+  return "";                                 // 直连模式
+})();
+
+function apiUrl(path){ return API_BASE + path; }
+~~~
+
+**排查方法**：把 JS 提取出来用 `node --check` 检查语法。
+
+~~~bash
+# 提取 <script> 内容
+python3 -c "
+import re
+html = open('index.html', encoding='utf-8').read()
+m = re.search(r'<script[^>]*>(.*?)</script>', html, re.S)
+open('/tmp/f.js','w',encoding='utf-8').write(m.group(1))
+"
+# 检查语法
+node --check /tmp/f.js
+~~~
+
+### 7.7 端口冲突会导致启动失败
 
 **症状**：应用中心报 `start app error: 10330`。
 
@@ -387,7 +438,7 @@ ERROR: process exited immediately
 
 **教训**：装了应用中心版本后，**必须删掉手动创建的 systemd 服务**。
 
-### 7.7 网关何时重新加载配置
+### 7.8 网关何时重新加载配置
 
 网关（`trim_http_cgi`）在**应用启动时**注册路由：
 
