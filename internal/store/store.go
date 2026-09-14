@@ -205,6 +205,52 @@ func (s *Store) AllSessions() []*xiaomi.Session {
 	return out
 }
 
+// SessionForDevice 找能访问该设备的账号会话。
+//
+// 关键：不同设备属于不同账号，用错账号会返回 -704010000。
+func (s *Store) SessionForDevice(did string) *xiaomi.Session {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	// 遍历所有账号，找到包含该设备的
+	for _, a := range s.accounts {
+		sess := s.sessions[a.UserID]
+		if sess == nil {
+			continue
+		}
+		// 查自有设备
+		if devs, err := sess.Devices(); err == nil {
+			for _, d := range devs {
+				if d.Did == did {
+					return sess
+				}
+			}
+		}
+		// 查共享设备
+		if homes, err := sess.Homes(); err == nil {
+			for _, h := range homes {
+				if h.ShareFlag == 0 {
+					continue
+				}
+				if devs, err := sess.SharedDevices(h.ID, h.OwnerID()); err == nil {
+					for _, d := range devs {
+						if d.Did == did {
+							return sess
+						}
+					}
+				}
+			}
+		}
+	}
+	// 找不到就返回第一个
+	for _, a := range s.accounts {
+		if sess := s.sessions[a.UserID]; sess != nil {
+			return sess
+		}
+	}
+	return nil
+}
+
 // HasAccounts 是否已有账号。
 func (s *Store) HasAccounts() bool {
 	s.mu.Lock()

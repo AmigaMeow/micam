@@ -34,7 +34,7 @@ import (
 
 const (
 	appName    = "micam"
-	appVersion = "0.6.0"
+	appVersion = "0.6.1"
 )
 
 func main() {
@@ -84,6 +84,9 @@ func main() {
 
 	// 初始化日志文件（daemon 化后 stdout 会丢）
 	initLogFile(*dataDir)
+
+	// 初始化 miot-spec 缓存
+	xiaomi.InitSpecCache(filepath.Join(*dataDir, "specs"))
 
 	// 清理上次残留的 HLS 缓存
 	srvCleanHLS(*dataDir)
@@ -310,6 +313,8 @@ func (s *Server) routes(mux *http.ServeMux) {
 
 	// 设备
 	mux.HandleFunc("/api/devices", s.handleDevices)
+	mux.HandleFunc("/api/devices/all", s.handleAllDevices)
+	mux.HandleFunc("/api/homes", s.handleHomes)
 
 	// 播放
 	mux.HandleFunc("/api/live/source-status", s.handleSourceStatus)

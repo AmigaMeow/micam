@@ -47,6 +47,24 @@ type Device struct {
 	Extra     map[string]any `json:"extra"`
 }
 
+// DeviceType 返回设备类型（model 的中间段）。
+//
+// 例：
+//   chuangmi.camera.029a02  -> camera
+//   xiaomi.airc.h55h00      -> airc
+//   viomi.hood.c1           -> hood
+//   bean.switch.blns1       -> switch
+//   xiaomi.wifispeaker.l05b -> wifispeaker
+//   linp.sensor_ht.ks2bb    -> sensor_ht
+//   blt.3.qdt0mj0c4400      -> 3
+func (d *Device) DeviceType() string {
+	parts := strings.Split(strings.ToLower(d.Model), ".")
+	if len(parts) >= 2 {
+		return parts[1]
+	}
+	return "other"
+}
+
 // IsCamera 判断是否摄像头类设备。
 func (d *Device) IsCamera() bool {
 	m := d.Model
