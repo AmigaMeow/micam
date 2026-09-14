@@ -326,6 +326,11 @@ tbody tr:last-child td{border-bottom:0}
 .spin{width:20px;height:20px;border:2px solid var(--border-2);border-top-color:var(--primary);
   border-radius:50%;animation:spin .7s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
+.stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px}
+.stat-box{padding:14px 16px;background:var(--hover);border-radius:8px}
+.stat-label{font-size:12px;color:var(--text-3);margin-bottom:6px}
+.stat-value{font-size:20px;font-weight:600;line-height:1.2}
+.stat-sub{font-size:11px;color:var(--text-3);margin-top:4px}
 .loading{display:flex;align-items:center;justify-content:center;gap:10px;
   padding:48px;color:var(--text-3);font-size:14px}
 /* ============ 移动端适配 ============ */
@@ -577,6 +582,7 @@ function isMobile(){
 var MENU = [
   {k:"devices",   t:"设备列表", i:"device"},
   {k:"live",      t:"实时预览", i:"play"},
+  {k:"storage",   t:"存储监控", i:"inbox"},
   {k:"recordings",t:"录像管理", i:"rec"},
   {k:"accounts",  t:"账号管理", i:"user"},
   {k:"setup",     t:"安装向导", i:"check"},
@@ -661,6 +667,7 @@ function render(){
   var c = $("#content");
   if(page==="devices") return renderDevices(c);
   if(page==="live") return renderLive(c);
+  if(page==="storage") return renderStorage(c);
   if(page==="recordings") return renderRecordings(c);
   if(page==="accounts") return renderAccounts(c);
   if(page==="setup") return renderWizard(c);
@@ -1090,6 +1097,129 @@ function ptzMove(op){
       setTimeout(function(){ startLive(currentDid); }, 1500);
     }
   });
+}
+
+// ===== 页面：存储监控 =====
+function renderStorage(c){
+  c.innerHTML = loading("正在统计存储…");
+  api("/api/storage").then(function(d){
+    var disk = d.disk || {};
+    var rec = d.recordings || {};
+    var cams = d.cameras || [];
+
+    // 磁盘用量颜色
+    var pct = disk.usedPercent || 0;
+    var barColor = pct > 90 ? "var(--error)" : (pct > 75 ? "var(--warning)" : "var(--success)");
+
+    var html = ""
+      // 磁盘卡片
+      + "<div class=\"card\">"
+      +   "<div class=\"card-head\"><span class=\"card-title\">" + icon("inbox",15) + " 磁盘空间</span>"
+      +     "<span style=\"font-size:12px;color:var(--text-3)\">" + esc(disk.path||"") + "</span></div>"
+      +   "<div style=\"padding:20px 24px\">"
+      +     "<div style=\"display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px\">"
+      +       "<span style=\"font-size:26px;font-weight:600\">" + fmtSize(disk.usedGB, "GB") + "</span>"
+      +       "<span style=\"font-size:13px;color:var(--text-3)\">共 " + fmtSize(disk.totalGB, "GB") + "</span>"
+      +     "</div>"
+      +     "<div class=\"progress\" style=\"height:8px\">"
+      +       "<div class=\"progress-bar\" style=\"width:" + pct.toFixed(1) + "%;background:" + barColor + "\"></div>"
+      +     "</div>"
+      +     "<div style=\"display:flex;justify-content:space-between;margin-top:10px;font-size:12px\">"
+      +       "<span style=\"color:" + barColor + "\">已用 " + pct.toFixed(1) + "%</span>"
+      +       "<span style=\"color:var(--text-3)\">剩余 " + fmtSize(disk.freeGB, "GB") + "</span>"
+      +     "</div>"
+      +     (d.estimateHours > 0
+          ? "<div style=\"margin-top:14px;padding:10px 12px;background:var(--hover);border-radius:8px;font-size:12px;color:var(--text-2)\">"
+            + icon("rec",12) + " 按当前码率估算，剩余空间约可录 <b>" + Math.round(d.estimateHours) + " 小时</b>"
+            + "</div>"
+          : "")
+      +   "</div>"
+      + "</div>"
+
+      // 录像统计
+      + "<div class=\"card\">"
+      +   "<div class=\"card-head\"><span class=\"card-title\">" + icon("rec",15) + " 录像存储</span>"
+      +     "<button class=\"btn btn-sm\" id=\"btnCleanupPreview\">清理预览</button></div>"
+      +   "<div style=\"padding:20px 24px\">"
+      +     "<div class=\"stat-grid\">"
+      +       statBox("录像占用", fmtSize(rec.totalGB, "GB"), rec.fileCount + " 个文件")
+      +       statBox("分片时长", (rec.segment||"—"), "自动分段")
+      +       statBox("保留天数", (rec.keepDays||0) + " 天", rec.enabled ? "自动清理开启" : "自动清理关闭")
+      +       statBox("磁盘阈值", (rec.minFreeGB||0) + " GB", "低于则停止录像")
+      +     "</div>"
+      +   "</div>"
+      + "</div>"
+
+      // 各摄像头
+      + "<div class=\"card\">"
+      +   "<div class=\"card-head\"><span class=\"card-title\">" + icon("cam",15) + " 摄像头存储</span></div>"
+      +   "<div class=\"table-wrap\"><table>"
+      +     "<thead><tr><th>设备</th><th>状态</th><th>录像</th><th>文件</th><th>占用</th><th>最新</th></tr></thead>"
+      +     "<tbody>"
+      +       (cams.length ? cams.map(function(x){
+            return "<tr>"
+              + "<td><div style=\"font-weight:500\">" + esc(x.name) + "</div>"
+              +   "<div style=\"font-size:11px;color:var(--text-3)\">" + esc(x.model||"") + "</div></td>"
+              + "<td>" + (x.online ? "<span class=\"tag tag-on\">在线</span>" : "<span class=\"tag tag-off\">离线</span>") + "</td>"
+              + "<td>" + (x.recording ? "<span class=\"tag tag-on\">录制中</span>" : "<span style=\"color:var(--text-3)\">—</span>") + "</td>"
+              + "<td>" + (x.files||0) + "</td>"
+              + "<td>" + fmtSizeMB(x.sizeMB) + "</td>"
+              + "<td style=\"font-size:11px;color:var(--text-3)\">" + esc(x.lastTime || "—") + "</td>"
+              + "</tr>";
+          }).join("") : "<tr><td colspan=\"6\" style=\"text-align:center;color:var(--text-3);padding:24px\">暂无摄像头</td></tr>")
+      +     "</tbody>"
+      +   "</table></div>"
+      + "</div>";
+
+    c.innerHTML = html;
+
+    var btn = $("#btnCleanupPreview");
+    if(btn) btn.onclick = showCleanupPreview;
+  }).catch(function(e){
+    c.innerHTML = "<div class=\"card\">" + empty("close","读取失败", e.message, "") + "</div>";
+  });
+}
+
+// 统计格子
+function statBox(label, value, sub){
+  return "<div class=\"stat-box\">"
+    + "<div class=\"stat-label\">" + esc(label) + "</div>"
+    + "<div class=\"stat-value\">" + esc(value) + "</div>"
+    + "<div class=\"stat-sub\">" + esc(sub) + "</div>"
+    + "</div>";
+}
+
+// 大小格式化（GB）
+function fmtSize(v, unit){
+  if(v == null) return "—";
+  if(v < 0.01) return (v * 1024).toFixed(0) + " MB";
+  if(v < 1) return v.toFixed(2) + " GB";
+  return v.toFixed(1) + " GB";
+}
+// 大小格式化（MB 输入）
+function fmtSizeMB(v){
+  if(v == null) return "—";
+  if(v < 1) return (v * 1024).toFixed(0) + " KB";
+  if(v < 1024) return v.toFixed(1) + " MB";
+  return (v / 1024).toFixed(2) + " GB";
+}
+
+// 清理预览
+function showCleanupPreview(){
+  toast("正在统计…");
+  api("/api/storage/cleanup-preview").then(function(d){
+    if(!d.fileCount){
+      toast("没有可清理的文件（保留 " + d.keepDays + " 天）", "ok");
+      return;
+    }
+    var msg = "将清理 " + d.fileCount + " 个文件，释放 " + fmtSizeMB(d.totalMB) + "\n保留最近 " + d.keepDays + " 天\n\n确定执行？";
+    if(!confirm(msg)) return;
+    toast("正在清理…");
+    api("/api/recordings/cleanup", { method: "POST" }).then(function(r){
+      toast("已清理 " + (r.deleted||0) + " 个文件，释放 " + fmtSizeMB(r.freedMB||0), "ok");
+      setTimeout(function(){ render(); }, 1200);
+    }).catch(function(e){ toast("清理失败：" + e.message, "err"); });
+  }).catch(function(e){ toast("查询失败：" + e.message, "err"); });
 }
 
 // ===== 页面：录像管理 =====

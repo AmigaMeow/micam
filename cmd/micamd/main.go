@@ -34,7 +34,7 @@ import (
 
 const (
 	appName    = "micam"
-	appVersion = "0.6.1"
+	appVersion = "0.7.0"
 )
 
 func main() {
@@ -85,9 +85,6 @@ func main() {
 	// 初始化日志文件（daemon 化后 stdout 会丢）
 	initLogFile(*dataDir)
 
-	// 初始化 miot-spec 缓存
-	xiaomi.InitSpecCache(filepath.Join(*dataDir, "specs"))
-
 	// 清理上次残留的 HLS 缓存
 	srvCleanHLS(*dataDir)
 
@@ -110,6 +107,9 @@ func main() {
 		FFmpegPath: *ffmpegPath,
 	})
 	log.Printf("录像目录: %s (启用=%v)", recDir, cfg.RecordEnabled)
+
+	// 存储守护：定时检查磁盘，超阈值自动清理旧录像
+	startStorageGuard(srv.rec)
 
 	_ = rtspPort // 保留参数，当前用管道方案，不需要 RTSP 中转
 
@@ -324,12 +324,6 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/live/snapshot", s.handleSnap)
 	mux.HandleFunc("/api/live/inject", s.handleInjectSource) // 单帧 JPEG
 
-	// 设备控制（MIoT）
-	mux.HandleFunc("/api/device/controls", s.handleDeviceControls)
-	mux.HandleFunc("/api/device/control", s.handleDeviceControl)
-	mux.HandleFunc("/api/device/action", s.handleDeviceAction)
-	mux.HandleFunc("/api/device/scan", s.handleControlScan)
-
 	// 云台
 	// 诊断信息导出（方便提交问题）
 	mux.HandleFunc("/api/diag/report", s.handleDiagReport)
@@ -343,6 +337,10 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/ptz/move", s.handlePTZMove)
 
 	// 录像
+	// 存储监控
+	mux.HandleFunc("/api/storage", s.handleStorage)
+	mux.HandleFunc("/api/storage/cleanup-preview", s.handleCleanupPreview)
+
 	mux.HandleFunc("/api/recordings", s.handleRecordings)       // GET 列表 / POST 开始
 	mux.HandleFunc("/api/recordings/stop", s.handleRecordStop)  // POST 停止
 	mux.HandleFunc("/api/recordings/files", s.handleRecordFiles) // GET 文件列表

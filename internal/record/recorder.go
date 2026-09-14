@@ -309,6 +309,52 @@ func (m *Manager) Cleanup() (int, int64, error) {
 	return n, freed, err
 }
 
+// DiskUsage 磁盘使用情况。
+type DiskUsage struct {
+	TotalGB  float64 `json:"totalGB"`
+	UsedGB   float64 `json:"usedGB"`
+	FreeGB   float64 `json:"freeGB"`
+	UsedPct  float64 `json:"usedPercent"`
+	Path     string  `json:"path"`
+	Err      string  `json:"err,omitempty"`
+}
+
+// DiskUsageOf 查询目录所在磁盘的使用情况。
+func DiskUsageOf(dir string) DiskUsage {
+	du := DiskUsage{Path: dir}
+	_ = os.MkdirAll(dir, 0o755)
+
+	var st syscallStatfs
+	if err := statfs(dir, &st); err != nil {
+		du.Err = err.Error()
+		return du
+	}
+
+	bs := float64(st.Bsize)
+	du.TotalGB = float64(st.Blocks) * bs / (1 << 30)
+	du.FreeGB = float64(st.Bavail) * bs / (1 << 30)
+	du.UsedGB = du.TotalGB - float64(st.Bfree)*bs/(1 << 30)
+	if du.TotalGB > 0 {
+		du.UsedPct = du.UsedGB / du.TotalGB * 100
+	}
+	return du
+}
+
+// DirUsage 统计目录占用（递归）。
+func DirUsage(dir string) (int64, int, error) {
+	var total int64
+	var count int
+	err := filepath.Walk(dir, func(p string, info os.FileInfo, err error) error {
+		if err != nil || info == nil || info.IsDir() {
+			return nil
+		}
+		total += info.Size()
+		count++
+		return nil
+	})
+	return total, count, err
+}
+
 // ---- 工具 ----
 
 // checkDisk 检查磁盘剩余空间。
