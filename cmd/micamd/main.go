@@ -34,7 +34,7 @@ import (
 
 const (
 	appName    = "micam"
-	appVersion = "0.5.2"
+	appVersion = "0.6.0"
 )
 
 func main() {
@@ -318,6 +318,12 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/live/mjpeg", s.handleMJPEG)   // MJPEG 流（<img> 直接显示）
 	mux.HandleFunc("/api/live/snapshot", s.handleSnap)
 	mux.HandleFunc("/api/live/inject", s.handleInjectSource) // 单帧 JPEG
+
+	// 设备控制（MIoT）
+	mux.HandleFunc("/api/device/controls", s.handleDeviceControls)
+	mux.HandleFunc("/api/device/control", s.handleDeviceControl)
+	mux.HandleFunc("/api/device/action", s.handleDeviceAction)
+	mux.HandleFunc("/api/device/scan", s.handleControlScan)
 
 	// 云台
 	// 诊断信息导出（方便提交问题）

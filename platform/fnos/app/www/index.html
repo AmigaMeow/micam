@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>小米摄像头</title>
 <style>
 :root{
@@ -205,6 +205,118 @@ tbody tr:last-child td{border-bottom:0}
 @keyframes spin{to{transform:rotate(360deg)}}
 .loading{display:flex;align-items:center;justify-content:center;gap:10px;
   padding:48px;color:var(--text-3);font-size:14px}
+/* ============ 移动端适配 ============ */
+/* 汉堡菜单按钮（仅移动端显示） */
+.hamburger{display:none;width:40px;height:40px;border-radius:8px;border:0;
+  background:transparent;color:var(--text);cursor:pointer;align-items:center;
+  justify-content:center;flex-shrink:0;-webkit-tap-highlight-color:transparent}
+.hamburger:active{background:var(--hover)}
+.hamburger svg{width:20px;height:20px}
+
+/* 侧边栏遮罩（移动端） */
+.sider-mask{display:none;position:fixed;inset:0;background:rgba(0,0,0,.45);
+  z-index:99;-webkit-tap-highlight-color:transparent}
+
+/* 触摸优化：按钮最小 44px 高 */
+.btn{min-height:36px}
+.btn-sm{min-height:32px}
+@media (hover:none){
+  .btn:hover{border-color:var(--border-2);color:var(--text)}
+  .btn-primary:hover{background:var(--primary);border-color:var(--primary)}
+  .device:hover{box-shadow:var(--shadow);transform:none}
+  .menu-item:hover{background:transparent;color:var(--sider-text)}
+  .menu-item.active:hover{background:var(--primary);color:#fff}
+}
+
+/* ===== 手机竖屏 ===== */
+@media (max-width:640px){
+  .sider{position:fixed;left:0;top:0;bottom:0;z-index:100;
+    transform:translateX(-100%);transition:transform .25s ease;
+    box-shadow:2px 0 12px rgba(0,0,0,.15);padding-top:env(safe-area-inset-top)}
+  .sider.open{transform:translateX(0)}
+  .sider-mask.show{display:block}
+  .hamburger{display:flex}
+
+  .header{height:56px;padding:0 12px;padding-top:env(safe-area-inset-top);
+    height:calc(56px + env(safe-area-inset-top))}
+  .header h1{font-size:15px}
+  .header-right{font-size:12px;gap:10px}
+  .header-right .sysinfo-hide{display:none}
+
+  .content{padding:12px;padding-bottom:calc(12px + env(safe-area-inset-bottom))}
+  .card{margin-bottom:10px;border-radius:10px}
+  .card-head{padding:12px 16px}
+  .card-body{padding:16px}
+  .card-title{font-size:14px}
+
+  .grid{grid-template-columns:1fr;gap:10px}
+
+  .device{border-radius:10px}
+  .dev-body{padding:12px 14px}
+  .dev-name{font-size:14px}
+  .dev-actions{margin-top:10px;padding-top:10px;gap:6px}
+
+  /* 播放器全宽 */
+  .player{border-radius:10px}
+  .player-bar{gap:8px;margin-top:12px}
+  .player-bar .btn{flex:1;min-width:0;padding:0 8px;font-size:13px}
+  .player-bar select{flex:1;min-width:0}
+
+  /* 云台面板放大触摸区 */
+  .ptz{padding:12px 8px;margin-top:12px}
+  .ptz-grid{grid-template-columns:repeat(3,52px);grid-template-rows:repeat(3,52px);gap:8px}
+  .ptz-btn{width:52px;height:52px;font-size:16px;border-radius:10px}
+
+  /* 表格横向滚动 */
+  table{font-size:12px}
+  th,td{padding:10px 12px}
+  .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+
+  /* 弹窗全屏 */
+  .modal{min-width:auto;width:calc(100vw - 32px);max-width:400px;border-radius:12px}
+  .modal-head{padding:16px 18px 0;font-size:15px}
+  .modal-body{padding:16px 18px}
+  .modal-foot{padding:0 18px 16px}
+  .qr-wrap img{width:min(240px,70vw);height:min(240px,70vw)}
+
+  /* Toast 适配 */
+  .toast{top:auto;bottom:calc(24px + env(safe-area-inset-bottom));
+    left:16px;right:16px;transform:none;justify-content:center;
+    animation:slideUp .25s}
+  @keyframes slideUp{from{transform:translateY(16px);opacity:0}to{transform:translateY(0);opacity:1}}
+
+  /* 向导 */
+  .wizard-hero{padding:24px 16px 16px}
+  .wizard-hero h2{font-size:19px}
+  .wizard-hero .logo{width:56px;height:56px}
+  .wizard-steps{margin:18px 0;padding:0 12px}
+  .wizard-step .num{width:26px;height:26px;font-size:12px}
+  .wizard-step .label{font-size:11px}
+  .check-item{padding:12px 16px;gap:10px}
+  .check-name{font-size:13px}
+  .wizard-actions{padding:16px;flex-direction:column}
+  .wizard-actions .btn{width:100%}
+}
+
+/* ===== 平板 ===== */
+@media (min-width:641px) and (max-width:1024px){
+  .sider{width:180px}
+  .grid{grid-template-columns:repeat(auto-fill,minmax(280px,1fr))}
+  .content{padding:16px}
+}
+
+/* ===== 横屏手机 ===== */
+@media (max-width:812px) and (orientation:landscape){
+  .header{height:48px;height:calc(48px + env(safe-area-inset-top))}
+  .content{padding:8px}
+  .player{max-height:calc(100vh - 200px)}
+}
+
+/* ===== 触摸反馈 ===== */
+.btn:active,.menu-item:active,.dev-preview:active{
+  transform:scale(.97);transition:transform .1s}
+.ptz-btn:active{transform:scale(.92)}
+
 </style>
 </head>
 <body>
@@ -221,9 +333,18 @@ tbody tr:last-child td{border-bottom:0}
   </aside>
   <div class="main">
     <header class="header">
-      <div class="header-left"><h1 id="pageTitle">设备列表</h1></div>
+      <div class="header-left">
+        <button class="hamburger" id="btnMenu" aria-label="菜单">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <line x1="3" y1="6" x2="21" y2="6"/>
+            <line x1="3" y1="12" x2="21" y2="12"/>
+            <line x1="3" y1="18" x2="21" y2="18"/>
+          </svg>
+        </button>
+        <h1 id="pageTitle">设备列表</h1>
+      </div>
       <div class="header-right">
-        <span><span class="dot"></span> 服务运行中</span>
+        <span class="sysinfo-hide"><span class="dot"></span> 服务运行中</span>
         <span id="sysInfo">—</span>
       </div>
     </header>
@@ -310,6 +431,25 @@ function empty(iconName, title, sub, action){
     + (sub?"<p class=\"sub\">"+esc(sub)+"</p>":"") + (action||"") + "</div>";
 }
 
+// ===== 移动端菜单 =====
+function openSider(){
+  var s = document.querySelector(".sider");
+  var m = document.getElementById("siderMask");
+  if(s) s.classList.add("open");
+  if(m) m.classList.add("show");
+  document.body.style.overflow = "hidden";
+}
+function closeSider(){
+  var s = document.querySelector(".sider");
+  var m = document.getElementById("siderMask");
+  if(s) s.classList.remove("open");
+  if(m) m.classList.remove("show");
+  document.body.style.overflow = "";
+}
+function isMobile(){
+  return window.innerWidth <= 640;
+}
+
 // ===== 菜单 =====
 var MENU = [
   {k:"devices",   t:"设备列表", i:"device"},
@@ -333,9 +473,57 @@ function renderMenu(){
       stopLive();
       renderMenu();
       render();
+      if(isMobile()) closeSider();
     };
   });
 }
+
+// ===== 绑定移动端交互 =====
+(function(){
+  var btn = document.getElementById("btnMenu");
+  var mask = document.getElementById("siderMask");
+  if(btn) btn.onclick = function(e){ e.stopPropagation(); openSider(); };
+  if(mask) mask.onclick = closeSider;
+
+  // 窗口变化时重置状态
+  var lastMobile = isMobile();
+  window.addEventListener("resize", function(){
+    var now = isMobile();
+    if(now !== lastMobile){
+      lastMobile = now;
+      if(!now) closeSider();
+    }
+  });
+
+  // 左滑手势打开菜单（边缘滑动）
+  var touchStartX = 0, touchStartY = 0;
+  document.addEventListener("touchstart", function(e){
+    if(!isMobile()) return;
+    touchStartX = e.touches[0].clientX;
+    touchStartY = e.touches[0].clientY;
+  }, { passive: true });
+
+  document.addEventListener("touchend", function(e){
+    if(!isMobile()) return;
+    var dx = e.changedTouches[0].clientX - touchStartX;
+    var dy = Math.abs(e.changedTouches[0].clientY - touchStartY);
+    // 从屏幕左边缘（<30px）右滑，或任意位置右滑 >80px
+    if(dy < 60 && dx > 80){
+      var s = document.querySelector(".sider");
+      if(s && !s.classList.contains("open")) openSider();
+    }
+    // 左滑关闭
+    if(dy < 60 && dx < -80){
+      var s2 = document.querySelector(".sider");
+      if(s2 && s2.classList.contains("open")) closeSider();
+    }
+  }, { passive: true });
+
+  // ESC 关闭
+  document.addEventListener("keydown", function(e){
+    if(e.key === "Escape") closeSider();
+  });
+})();
 
 // ===== 数据 =====
 function loadDevices(){
