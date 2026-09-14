@@ -221,6 +221,8 @@ func (s *Server) handleMJPEG(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 关键：不用 ffmpeg 的 mpjpeg（它的 boundary 固定是 "ffmpeg"，不可自定义，
+	// 而且输出格式不规范）。改成 ffmpeg 输出连续 JPEG 帧，我们自己组装 multipart。
 	args := []string{
 		"-hide_banner", "-loglevel", "error",
 		"-analyzeduration", "10M",
@@ -230,7 +232,7 @@ func (s *Server) handleMJPEG(w http.ResponseWriter, r *http.Request) {
 		"-f", "mpegts", "-i", "pipe:0",
 		"-vf", fmt.Sprintf("fps=%d,scale=%d:-2", fps, width),
 		"-c:v", "mjpeg", "-q:v", "7",
-		"-f", "mpjpeg",
+		"-f", "image2pipe",
 		"pipe:1",
 	}
 	cmd, stdout, errBuf, cleanup, err := s.runFFmpeg(r.Context(), dev, args)
@@ -244,7 +246,9 @@ func (s *Server) handleMJPEG(w http.ResponseWriter, r *http.Request) {
 		_, _ = cmd.Process.Wait()
 	}()
 
-	w.Header().Set("Content-Type", "multipart/x-mixed-replace; boundary=frame")
+	const boundary = "mjpegframe"
+
+	w.Header().Set("Content-Type", "multipart/x-mixed-replace; boundary="+boundary)
 	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
 	w.Header().Set("Pragma", "no-cache")
 
@@ -254,24 +258,88 @@ func (s *Server) handleMJPEG(w http.ResponseWriter, r *http.Request) {
 		flusher.Flush()
 	}
 
-	buf := make([]byte, 32*1024)
+	// 从连续 JPEG 字节流里切出完整帧（FFD8...FFD9），组装成标准 multipart
+	var pending []byte
+	readBuf := make([]byte, 64*1024)
+	sent := 0
+
 	for {
-		n, err := stdout.Read(buf)
+		n, err := stdout.Read(readBuf)
 		if n > 0 {
-			if _, werr := w.Write(buf[:n]); werr != nil {
-				return
+			pending = append(pending, readBuf[:n]...)
+
+			// 尽可能多地切出完整帧
+			for {
+				start := indexOf(pending, []byte{0xFF, 0xD8, 0xFF})
+				if start < 0 {
+					// 没有帧头，保留尾部少量数据
+					if len(pending) > 2 {
+						pending = pending[len(pending)-2:]
+					}
+					break
+				}
+				end := indexOf(pending[start+2:], []byte{0xFF, 0xD9})
+				if end < 0 {
+					// 帧不完整，等更多数据
+					if start > 0 {
+						pending = pending[start:]
+					}
+					break
+				}
+				frame := pending[start : start+2+end+2]
+				pending = pending[start+2+end+2:]
+
+				// 组装 multipart 帧
+				CRLF := "\r\n"
+				hdr := fmt.Sprintf("--%s"+CRLF+"Content-Type: image/jpeg"+CRLF+"Content-Length: %d"+CRLF+CRLF, boundary, len(frame))
+				if _, werr := w.Write([]byte(hdr)); werr != nil {
+					return
+				}
+				if _, werr := w.Write(frame); werr != nil {
+					return
+				}
+				if _, werr := w.Write([]byte("\r\n")); werr != nil {
+					return
+				}
+				sent++
+				if flusher != nil {
+					flusher.Flush()
+				}
 			}
-			if flusher != nil {
-				flusher.Flush()
+
+			// 防止 pending 无限增长
+			if len(pending) > 8<<20 {
+				pending = pending[len(pending)-1<<20:]
 			}
 		}
 		if err != nil {
 			if errBuf.Len() > 0 {
 				logf("[mjpeg] ffmpeg: %s", errBuf.String())
 			}
+			logf("[mjpeg] 流结束，已发送 %d 帧", sent)
 			return
 		}
 	}
+}
+
+// indexOf 查找子串位置。
+func indexOf(haystack, needle []byte) int {
+	if len(needle) == 0 || len(haystack) < len(needle) {
+		return -1
+	}
+	for i := 0; i <= len(haystack)-len(needle); i++ {
+		match := true
+		for j := 0; j < len(needle); j++ {
+			if haystack[i+j] != needle[j] {
+				match = false
+				break
+			}
+		}
+		if match {
+			return i
+		}
+	}
+	return -1
 }
 
 // ---- 源注入 ----

@@ -1,5 +1,5 @@
 appname               = micam
-version               = 0.3.1
+version               = 0.3.3
 display_name          = 小米摄像头
 desc                  = 在飞牛上接入小米/米家摄像头：扫码登录、实时预览、录像、云台控制
 platform              = x86

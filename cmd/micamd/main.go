@@ -18,6 +18,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"syscall"
@@ -41,8 +42,19 @@ func main() {
 		devMode    = flag.Bool("dev", false, "开发模式：额外开放调试接口")
 		rtspPort   = flag.Int("rtsp", 18554, "内置 RTSP 中转端口（供 ffmpeg 使用）")
 		ffmpegPath = flag.String("ffmpeg", "ffmpeg", "ffmpeg 可执行文件路径")
+		daemonMode = flag.Bool("daemon", false, "后台运行（自己 daemon 化）")
 	)
 	flag.Parse()
+
+	// daemon 化：重新 exec 自己并脱离父进程
+	//
+	// 为什么需要：shell 的 nohup/setsid 在 systemd 或 sudo 环境下
+	// 不可靠（父会话退出时子进程仍会被杀）。
+	// 自己 fork + setsid 最可靠。
+	if *daemonMode && os.Getenv("MICAM_DAEMONIZED") == "" {
+		daemonize()
+		return
+	}
 
 	// 数据目录：优先命令行，其次 TRIM_PKGVAR，最后当前目录
 	if *dataDir == "" {
@@ -178,6 +190,36 @@ func (s *Server) ffmpegPath() string {
 	return "ffmpeg"
 }
 
+// daemonize 重新 exec 自己并脱离父进程。
+func daemonize() {
+	exe, err := os.Executable()
+	if err != nil {
+		log.Fatalf("获取自身路径失败: %v", err)
+	}
+
+	args := os.Args[1:]
+	// 去掉 --daemon，避免无限递归
+	var filtered []string
+	for _, a := range args {
+		if a != "--daemon" && a != "-daemon" {
+			filtered = append(filtered, a)
+		}
+	}
+
+	cmd := exec.Command(exe, filtered...)
+	cmd.Env = append(os.Environ(), "MICAM_DAEMONIZED=1")
+	cmd.Stdin = nil
+	cmd.Stdout = nil
+	cmd.Stderr = nil
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
+
+	if err := cmd.Start(); err != nil {
+		log.Fatalf("daemon 化失败: %v", err)
+	}
+	// 父进程退出，子进程继续
+	os.Exit(0)
+}
+
 // deployWeb 把前端页面从应用目录复制到数据目录（首次启动时）。
 //
 // 为什么需要：静态文件在 TRIM_APPDEST/www，
@@ -259,7 +301,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{
 		"ok":      true,
 		"app":     appName,
-		"version": "0.3.1",
+		"version": "0.3.3",
 	})
 }
 

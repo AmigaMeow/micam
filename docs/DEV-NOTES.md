@@ -106,7 +106,50 @@ flusher.Flush()   // <- 关键！否则 Content-Length: 0
 
 会导致浏览器把响应当一次性请求，`<img>` 不渲染流。
 
-### 3.3 客户端断开必须主动释放
+### 3.3 MJPEG 的 multipart 要自己组装（重要）
+
+**症状**（Mac 反馈）：
+- 响应头写 `boundary=frame`，实际流里是 `--ffmpeg`
+- `Content-Length` 与实际字节不一致
+- 客户端不能只信 Content-Length
+
+**原因**：ffmpeg 的 `-f mpjpeg` **boundary 固定是 "ffmpeg"，不可自定义**，
+而且它的输出格式不规范。
+
+**解决**：不用 `mpjpeg`，改成 ffmpeg 输出连续 JPEG 帧，
+**自己组装标准 multipart**：
+
+~~~go
+// ffmpeg 参数：输出连续 JPEG
+"-f", "image2pipe",   // 不是 mpjpeg！
+
+// 自己切帧 + 组装
+const boundary = "mjpegframe"
+w.Header().Set("Content-Type", "multipart/x-mixed-replace; boundary="+boundary)
+
+// 从字节流里切 FFD8...FFD9
+for {
+    start := indexOf(pending, []byte{0xFF, 0xD8, 0xFF})
+    end := indexOf(pending[start+2:], []byte{0xFF, 0xD9})
+    frame := pending[start : start+2+end+2]
+
+    hdr := fmt.Sprintf("--%s"+CRLF+"Content-Type: image/jpeg"+CRLF+
+        "Content-Length: %d"+CRLF+CRLF, boundary, len(frame))
+    w.Write([]byte(hdr))
+    w.Write(frame)
+    w.Write([]byte(CRLF))
+    flusher.Flush()
+}
+~~~
+
+**效果**：
+~~~
+响应头 boundary: mjpegframe
+实际分隔符:      --mjpegframe     ✅ 一致
+帧数: 29，Content-Length 次数: 29  ✅ 每帧都准确
+~~~
+
+### 3.4 客户端断开必须主动释放
 
 **这是最大的坑**，症状：第一次请求成功，第二次开始全部卡死。
 
@@ -291,7 +334,60 @@ ln := listeners[0]
 httpSrv.Serve(ln)
 ~~~
 
-### 7.5 网关何时重新加载配置
+### 7.5 启动脚本：必须用 --daemon（重要）
+
+**症状**：应用中心启动失败，日志显示「启动后 1 秒收到退出信号」。
+
+~~~
+21:33:34 监听 TCP: :8900
+21:33:35 收到退出信号，正在关闭...
+21:33:35 已退出
+~~~
+
+**原因**：shell 的 `nohup &` 和 `setsid` 在 **systemd / sudo 环境下不可靠** ——
+父会话退出时子进程仍会被 SIGHUP 杀掉。
+
+**解决**：让程序**自己 daemon 化**。
+
+~~~go
+// 加 --daemon 参数
+if *daemonMode && os.Getenv("MICAM_DAEMONIZED") == "" {
+    daemonize()
+    return
+}
+
+func daemonize() {
+    exe, _ := os.Executable()
+    cmd := exec.Command(exe, filteredArgs...)
+    cmd.Env = append(os.Environ(), "MICAM_DAEMONIZED=1")
+    cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}  // 关键
+    cmd.Start()
+    os.Exit(0)  // 父进程退出，子进程继续
+}
+~~~
+
+启动脚本里：
+~~~bash
+"${APP_BIN}" --daemon --socket ... --http :8900 ... >> "${LOG_FILE}" 2>&1 < /dev/null
+~~~
+
+**另一个坑**：daemon 化后 `$!` 拿不到真实 PID，
+要用 `pgrep -f "${APP_BIN}"` 找。
+
+### 7.6 端口冲突会导致启动失败
+
+**症状**：应用中心报 `start app error: 10330`。
+
+**原因**：之前手动创建的 systemd 服务占着 8900 端口。
+
+~~~
+监听 TCP 失败: listen tcp :8900: bind: address already in use
+ERROR: process exited immediately
+~~~
+
+**教训**：装了应用中心版本后，**必须删掉手动创建的 systemd 服务**。
+
+### 7.7 网关何时重新加载配置
 
 网关（`trim_http_cgi`）在**应用启动时**注册路由：
 

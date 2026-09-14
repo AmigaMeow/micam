@@ -27,7 +27,12 @@ status() {
         if check_process "$pid"; then
             return 0
         fi
+        # PID 残留，清理
         rm -f "${PID_FILE}"
+    fi
+    # 兜底：按进程名找（daemon 化后 PID 可能对不上）
+    if pgrep -f "${APP_BIN}" >/dev/null 2>&1; then
+        return 0
     fi
     return 1
 }
@@ -48,23 +53,31 @@ start_process() {
     rm -f "${SOCKET_FILE}"
 
     # 同时监听：Unix socket（飞牛网关）+ TCP（局域网客户端）
-    nohup "${APP_BIN}" \
+    #
+    # 关键：用 --daemon 让程序自己 daemon 化。
+    # shell 的 nohup/setsid 在 systemd/sudo 环境下不可靠
+    # （父会话退出时子进程仍会被 SIGHUP 杀掉，表现为「启动后 1 秒退出」）。
+    "${APP_BIN}" \
+        --daemon \
         --socket "${SOCKET_FILE}" \
         --http ":8900" \
         --config "${CONFIG_FILE}" \
         --data "${TRIM_PKGVAR}" \
         --ffmpeg "/usr/bin/ffmpeg" \
-        >> "${LOG_FILE}" 2>&1 &
+        >> "${LOG_FILE}" 2>&1 < /dev/null
 
-    printf "%s" "$!" > "${PID_FILE}"
-    log_msg "started pid=$!"
-
-    sleep 1
-    if ! status; then
-        log_msg "ERROR: process exited immediately"
-        return 1
+    # daemon 化后，用 pgrep 找真实 PID
+    sleep 2
+    local realpid
+    realpid=$(pgrep -f "${APP_BIN}" | head -1)
+    if [ -n "$realpid" ]; then
+        printf "%s" "$realpid" > "${PID_FILE}"
+        log_msg "started pid=$realpid"
+        return 0
     fi
-    return 0
+
+    log_msg "ERROR: process exited immediately"
+    return 1
 }
 
 stop_process() {
