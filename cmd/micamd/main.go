@@ -34,7 +34,7 @@ import (
 
 const (
 	appName    = "micam"
-	appVersion = "0.4.0"
+	appVersion = "0.5.0"
 )
 
 func main() {
@@ -81,6 +81,9 @@ func main() {
 
 	cfg := config.Load(*configPath)
 	st := store.New(*dataDir)
+
+	// 初始化日志文件（daemon 化后 stdout 会丢）
+	initLogFile(*dataDir)
 
 	// 首次启动时把前端从应用目录部署到数据目录
 	deployWeb(*dataDir)
@@ -210,11 +213,25 @@ func daemonize() {
 		}
 	}
 
+	// 关键：把 stdout/stderr 重定向到日志文件
+	// 否则 daemon 化后所有日志都进 /dev/null
+	logPath := os.Getenv("TRIM_PKGVAR")
+	if logPath == "" {
+		logPath = "."
+	}
+	logPath = filepath.Join(logPath, "micamd.log")
+	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		logFile = nil
+	}
+
 	cmd := exec.Command(exe, filtered...)
 	cmd.Env = append(os.Environ(), "MICAM_DAEMONIZED=1")
 	cmd.Stdin = nil
-	cmd.Stdout = nil
-	cmd.Stderr = nil
+	if logFile != nil {
+		cmd.Stdout = logFile
+		cmd.Stderr = logFile
+	}
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 
 	if err := cmd.Start(); err != nil {
@@ -283,6 +300,8 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/devices", s.handleDevices)
 
 	// 播放
+	mux.HandleFunc("/api/live/hls", s.handleHLS)       // HLS 播放（2K 流畅）
+	mux.HandleFunc("/api/live/hls/info", s.handleHLSInfo) // HLS 能力信息
 	mux.HandleFunc("/api/live/mjpeg", s.handleMJPEG)   // MJPEG 流（<img> 直接显示）
 	mux.HandleFunc("/api/live/snapshot", s.handleSnap)
 	mux.HandleFunc("/api/live/inject", s.handleInjectSource) // 单帧 JPEG

@@ -5,11 +5,43 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"os"
+	"path/filepath"
+	"sync"
 	"time"
 )
 
+// 日志文件句柄（daemon 化后 stdout 可能丢失，这里双写）
+var (
+	logFileMu sync.Mutex
+	logFile   *os.File
+)
+
+// initLogFile 打开日志文件。
+func initLogFile(dir string) {
+	if dir == "" {
+		return
+	}
+	_ = os.MkdirAll(dir, 0o755)
+	f, err := os.OpenFile(filepath.Join(dir, "micamd.log"),
+		os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err == nil {
+		logFileMu.Lock()
+		logFile = f
+		logFileMu.Unlock()
+	}
+}
+
 func logf(f string, a ...any) {
-	log.Printf(f, a...)
+	msg := fmt.Sprintf(f, a...)
+	log.Print(msg)
+
+	logFileMu.Lock()
+	if logFile != nil {
+		_, _ = fmt.Fprintf(logFile, "%s %s\n", time.Now().Format("2006-01-02 15:04:05"), msg)
+		_ = logFile.Sync()
+	}
+	logFileMu.Unlock()
 }
 
 func newPipe() (*io.PipeReader, *io.PipeWriter) {

@@ -255,6 +255,8 @@ tbody tr:last-child td{border-bottom:0}
 var devices = [];
 var page = "devices";
 var currentDid = null;
+var liveWidth = 0;      // 0 = 2K 原画
+var liveMode = "hls";   // hls / mjpeg
 var liveTimer = null;
 
 // ===== 工具 =====
@@ -444,14 +446,19 @@ function renderLive(c){
       +   "<div class=\"player\" id=\"player\">"
       +     "<div class=\"ph\">"+icon("play",40)+"<span>正在连接…</span></div>"
       +   "</div>"
-      +   "<div class=\"progress\" id=\"progWrap\" style=\"display:none\">"
-      +     "<div class=\"progress-bar\" id=\"progBar\"></div>"
-      +   "</div>"
-      +   "<div class=\"progress-text\" id=\"progText\" style=\"display:none\"></div>"
       +   "<div class=\"player-bar\">"
       +     "<button class=\"btn\" id=\"btnStop\">"+icon("stop",12)+"停止</button>"
       +     "<button class=\"btn\" id=\"btnSnap\">"+icon("snap",12)+"截图</button>"
       +     "<button class=\"btn\" id=\"btnRec\">"+icon("rec",12)+"录像</button>"
+      +     "<select class=\"btn\" id=\"selMode\" style=\"min-width:120px\">"
+      +       "<option value=\"hls\">流畅模式 (HLS)</option>"
+      +       "<option value=\"mjpeg\">兼容模式 (MJPEG)</option>"
+      +     "</select>"
+      +     "<select class=\"btn\" id=\"selQuality\" style=\"min-width:110px\">"
+      +       "<option value=\"0\">2K 原画</option>"
+      +       "<option value=\"1280\">高清 1280</option>"
+      +       "<option value=\"640\">流畅 640</option>"
+      +     "</select>"
       +     "<span id=\"liveState\" style=\"font-size:13px;color:var(--text-3);margin-left:auto\"></span>"
       +   "</div>"
       +   "<div class=\"ptz\">"
@@ -473,6 +480,14 @@ function renderLive(c){
       b.onclick = function(){ currentDid = b.dataset.tab; stopLive(); render(); };
     });
     $("#btnStop").onclick = stopLive;
+    $("#selQuality").onchange = function(){
+      liveWidth = parseInt(this.value, 10) || 0;
+      if(currentDid) startLive(currentDid);
+    };
+    $("#selMode").onchange = function(){
+      liveMode = this.value;
+      if(currentDid) startLive(currentDid);
+    };
     $("#btnSnap").onclick = function(){ snap(currentDid); };
     $("#btnRec").onclick = function(){ startRec(currentDid); };
     Array.prototype.forEach.call(document.querySelectorAll("[data-ptz]"), function(b){
@@ -494,48 +509,166 @@ function startLive(did){
     if(st) st.textContent = "离线";
     return;
   }
-  // 显示进度条
-  var progWrap = $("#progWrap");
-  var progBar = $("#progBar");
-  var progText = $("#progText");
-  if(progWrap) progWrap.style.display = "block";
-  if(progText) progText.style.display = "block";
+
+  if(liveMode === "hls"){ startLiveHLS(did); return; }
+  startLiveMJPEG(did);
+}
+
+// HLS 播放（推荐：2K 流畅，CPU 低）
+function startLiveHLS(did){
+  var box = $("#player");
+  var st = $("#liveState");
+  var hint = $("#liveHint");
 
   var pct = 0;
-  // 说明：部分机型（如 CW500）关键帧间隔长达 15 秒以上，
-  // 首帧可能要等 20-40 秒，所以进度提示要耐心。
   var steps = [
-    [0,  "正在连接摄像头…"],
-    [10, "建立 P2P 通道…"],
-    [25, "等待视频流…"],
-    [45, "等待关键帧（部分机型较慢）…"],
-    [65, "解码首帧…"],
-    [80, "即将显示…"]
+    [5,  "正在连接摄像头…"],
+    [20, "转码中（首次约 5-10 秒）…"],
+    [45, "生成播放分片…"],
+    [70, "即将播放…"]
   ];
-  if(progBar) progBar.style.width = "0%";
-  if(progText) progText.textContent = "正在连接摄像头…";
+
+  box.innerHTML = "<div class=\"loading-overlay\" id=\"liveOverlay\">"
+    + "<div class=\"spin\"></div>"
+    + "<div class=\"txt\" id=\"liveStep\">正在连接摄像头…</div>"
+    + "<div style=\"width:200px\"><div class=\"progress\" style=\"margin-top:0\">"
+    +   "<div class=\"progress-bar\" id=\"liveBar\" style=\"width:5%\"></div>"
+    + "</div></div>"
+    + "<div class=\"txt\" id=\"livePct\" style=\"font-size:12px;opacity:.7\">5%</div>"
+    + "</div>";
 
   var stepIdx = 0;
   var progTimer = setInterval(function(){
     stepIdx++;
     if(stepIdx < steps.length){
       pct = steps[stepIdx][0];
-      if(progBar) progBar.style.width = pct + "%";
-      if(progText) progText.textContent = steps[stepIdx][1];
-    } else {
-      pct = Math.min(pct + 2, 95);
-      if(progBar) progBar.style.width = pct + "%";
+      var bar = document.getElementById("liveBar");
+      var stp = document.getElementById("liveStep");
+      var pctEl = document.getElementById("livePct");
+      if(bar) bar.style.width = pct + "%";
+      if(stp) stp.textContent = steps[stepIdx][1];
+      if(pctEl) pctEl.textContent = pct + "%";
     }
-  }, 3000);   // 每 3 秒推进一步
+  }, 2000);
 
   function clearProg(){
     if(progTimer) clearInterval(progTimer);
-    if(progWrap) progWrap.style.display = "none";
-    if(progText) progText.style.display = "none";
+    var ov = document.getElementById("liveOverlay");
+    if(ov) ov.remove();
+  }
+
+  if(st) st.textContent = "连接中";
+  if(hint) hint.textContent = "HLS 模式（2K 流畅）";
+
+  // 用 video 元素播放 HLS
+  var video = document.createElement("video");
+  video.style.cssText = "width:100%;height:100%;object-fit:contain;display:block;background:#000";
+  video.autoplay = true;
+  video.muted = true;
+  video.playsInline = true;
+  video.controls = false;
+
+  var src = apiUrl("/api/live/hls?did="+encodeURIComponent(did)+"&fps=15&w="+liveWidth);
+
+  if(video.canPlayType("application/vnd.apple.mpegurl")){
+    // Safari 原生支持 HLS
+    video.src = src;
+  } else if(window.Hls && window.Hls.isSupported()){
+    // 其他浏览器用 hls.js
+    var hls = new window.Hls({ lowLatencyMode: false, liveSyncDurationCount: 2 });
+    hls.loadSource(src);
+    hls.attachMedia(video);
+    hls.on(window.Hls.Events.ERROR, function(e, data){
+      if(data.fatal){
+        if(hint) hint.textContent = "HLS 播放失败，可切换到兼容模式";
+        clearProg();
+      }
+    });
+  } else {
+    // 没有 hls.js，降级到 MJPEG
+    if(hint) hint.textContent = "浏览器不支持 HLS，已降级到兼容模式";
+    clearProg();
+    startLiveMJPEG(did);
+    return;
+  }
+
+  video.onplaying = function(){
+    if(st) st.textContent = "播放中";
+    clearProg();
+  };
+  video.onerror = function(){
+    if(hint) hint.textContent = "播放失败，可切换到兼容模式";
+    clearProg();
+  };
+
+  box.innerHTML = "";
+  box.appendChild(video);
+  video.play().catch(function(){});
+
+  if(liveTimer) clearTimeout(liveTimer);
+  liveTimer = setTimeout(function(){
+    if(st && st.textContent === "连接中"){
+      st.textContent = "播放中";
+    }
+    clearProg();
+  }, 45000);
+}
+
+// MJPEG 播放（兼容模式）
+function startLiveMJPEG(did){
+  var box = $("#player");
+  var st = $("#liveState");
+  var hint = $("#liveHint");
+  // 进度覆盖层（在画面内显示，不在外面）
+
+  var pct = 0;
+  // 说明：部分机型（如 CW500）关键帧间隔长达 15 秒以上，
+  // 首帧可能要等 20-40 秒，所以进度提示要耐心。
+  var steps = [
+    [5,  "正在连接摄像头…"],
+    [15, "建立 P2P 通道…"],
+    [30, "等待视频流…"],
+    [50, "等待关键帧（部分机型较慢）…"],
+    [70, "解码首帧…"],
+    [85, "即将显示…"]
+  ];
+
+  // 进度覆盖层直接放在画面里
+  box.innerHTML = "<div class=\"loading-overlay\" id=\"liveOverlay\">"
+    + "<div class=\"spin\"></div>"
+    + "<div class=\"txt\" id=\"liveStep\">正在连接摄像头…</div>"
+    + "<div style=\"width:200px\"><div class=\"progress\" style=\"margin-top:0\">"
+    +   "<div class=\"progress-bar\" id=\"liveBar\" style=\"width:5%\"></div>"
+    + "</div></div>"
+    + "<div class=\"txt\" id=\"livePct\" style=\"font-size:12px;opacity:.7\">5%</div>"
+    + "</div>";
+
+  var stepIdx = 0;
+  var progTimer = setInterval(function(){
+    stepIdx++;
+    if(stepIdx < steps.length){
+      pct = steps[stepIdx][0];
+      var bar = document.getElementById("liveBar");
+      var stp = document.getElementById("liveStep");
+      var pctEl = document.getElementById("livePct");
+      if(bar) bar.style.width = pct + "%";
+      if(stp) stp.textContent = steps[stepIdx][1];
+      if(pctEl) pctEl.textContent = pct + "%";
+    } else {
+      pct = Math.min(pct + 1, 95);
+      var bar2 = document.getElementById("liveBar");
+      var pctEl2 = document.getElementById("livePct");
+      if(bar2) bar2.style.width = pct + "%";
+      if(pctEl2) pctEl2.textContent = pct + "%";
+    }
+  }, 2500);
+
+  function clearProg(){
+    if(progTimer) clearInterval(progTimer);
+    var ov = document.getElementById("liveOverlay");
+    if(ov) ov.remove();
   }
   window.__clearProg = clearProg;
-
-  box.innerHTML = "<div class=\"ph\">"+icon("play",40)+"<span>正在连接…</span></div>";
   if(st) st.textContent = "连接中";
   if(hint) hint.textContent = "首次连接约 3-10 秒";
 
@@ -546,15 +679,19 @@ function startLive(did){
     if(hint) hint.textContent = "";
     if(window.__clearProg) window.__clearProg();
   };
+  // MJPEG 是流，onload 可能不触发，用定时器兜底清除
+  setTimeout(function(){
+    if(window.__clearProg) window.__clearProg();
+  }, 45000);
   img.onerror = function(){
     box.innerHTML = "<div class=\"ph\">"+icon("cam-off",40)+"<span>播放失败</span></div>";
     if(st) st.textContent = "失败";
     if(hint) hint.textContent = "摄像头可能被米家 App 占用";
     if(window.__clearProg) window.__clearProg();
   };
-  // 参数说明：1280px + 15fps 对 2K 摄像头太重，会导致首帧超时
-  // 用 640px + 8fps，兼顾清晰度和流畅度
-  img.src = apiUrl("/api/live/mjpeg?did="+encodeURIComponent(did)+"&fps=8&w=640&t="+Date.now());
+  // 画质参数：w=0 表示不缩放（保持源分辨率 2K = 2560x1440）
+  // 需要降低带宽时可以改成 w=1280 或 w=640
+  img.src = apiUrl("/api/live/mjpeg?did="+encodeURIComponent(did)+"&fps=12&w="+liveWidth+"&t="+Date.now());
   box.innerHTML = "";
   box.appendChild(img);
   // MJPEG 是无限流，onload 可能不触发，用定时器兜底
@@ -585,9 +722,16 @@ function ptzStatus(){
   var info = $("#ptzInfo");
   if(!currentDid) return;
   if(info) info.textContent = "云台：查询中…";
+
+  var timeoutId = setTimeout(function(){
+    if(info) info.textContent = "云台：查询超时";
+  }, 8000);
+
   api("/api/ptz/status?did="+encodeURIComponent(currentDid)).then(function(r){
+    clearTimeout(timeoutId);
     if(info) info.textContent = "云台：水平 " + r.angle + "° / 俯仰 " + r.elevation + "°";
   }).catch(function(e){
+    clearTimeout(timeoutId);
     if(info) info.textContent = "云台：查询失败（" + e.message + "）";
   });
 }
@@ -597,19 +741,43 @@ function ptzMove(op){
   var btns = document.querySelectorAll("[data-ptz]");
   Array.prototype.forEach.call(btns, function(b){ b.disabled = true; });
   if(info) info.textContent = "云台：执行中…";
+
+  // 重要：cs2 同一设备只允许一路连接。
+  // 云台操作会挤掉视频流，所以先主动断开视频，操作完再重连。
+  var img = document.querySelector("#liveImg");
+  var wasPlaying = img && img.src;
+  if(img && wasPlaying){
+    img.src = "";
+  }
+
+  // 5 秒超时保护（避免按钮永久卡住）
+  var timeoutId = setTimeout(function(){
+    Array.prototype.forEach.call(btns, function(b){ b.disabled = false; });
+    if(info) info.textContent = "云台：超时（摄像头可能忙）";
+  }, 8000);
+
   api("/api/ptz/move", {
     method:"POST", headers:{"Content-Type":"application/json"},
     body: JSON.stringify({did: currentDid, operation: op})
   }).then(function(r){
+    clearTimeout(timeoutId);
     Array.prototype.forEach.call(btns, function(b){ b.disabled = false; });
     if(r.ok){
       if(info) info.textContent = "云台：水平 " + r.angle + "° / 俯仰 " + r.elevation + "°";
     } else {
       if(info) info.textContent = "云台：失败 ret=" + r.ret;
     }
+    // 恢复视频（延迟 1.5 秒让摄像头释放连接）
+    if(wasPlaying){
+      setTimeout(function(){ startLive(currentDid); }, 1500);
+    }
   }).catch(function(e){
+    clearTimeout(timeoutId);
     Array.prototype.forEach.call(btns, function(b){ b.disabled = false; });
     if(info) info.textContent = "云台：失败（" + e.message + "）";
+    if(wasPlaying){
+      setTimeout(function(){ startLive(currentDid); }, 1500);
+    }
   });
 }
 
@@ -774,7 +942,7 @@ function renderSettings(c){
 // ===== 动作 =====
 function snap(did){
   toast("正在抓图…");
-  fetch(apiUrl("/api/live/snapshot?did="+encodeURIComponent(did)+"&w=1920"))
+  fetch(apiUrl("/api/live/snapshot?did="+encodeURIComponent(did)+"&w=0"))
     .then(function(r){ if(!r.ok) throw new Error("HTTP "+r.status); return r.blob(); })
     .then(function(b){
       var a = document.createElement("a");
@@ -872,6 +1040,14 @@ function initSDK(){
       if(el) el.textContent = "独立模式";
     });
 }
+
+// ===== 加载 hls.js（HLS 播放库）=====
+(function(){
+  var s = document.createElement("script");
+  s.src = "https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js";
+  s.onerror = function(){ console.warn("hls.js 加载失败，HLS 模式将不可用"); };
+  document.head.appendChild(s);
+})();
 
 // ===== 启动 =====
 renderMenu();

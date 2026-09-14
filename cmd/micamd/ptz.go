@@ -39,6 +39,9 @@ type ptzResp struct {
 	Elevation int `json:"elevation"`
 }
 
+// ptzMu 云台专用锁：只串行化云台操作，不影响视频流。
+var ptzMu sync.Mutex
+
 // ptzSession 一次云台操作会话。
 type ptzSession struct {
 	conn *cs2.Conn
@@ -62,6 +65,8 @@ func (s *Server) openPTZ(dev *xiaomi.Device) (*ptzSession, error) {
 	if err != nil {
 		return nil, fmt.Errorf("连接摄像头失败（可能被视频占用）: %w", err)
 	}
+	// 短超时：云台是交互操作，不能让用户等
+	_ = conn.SetDeadline(time.Now().Add(6 * time.Second))
 
 	key, err := crypto.CalcSharedKey(q.Get("device_public"), q.Get("client_private"))
 	if err != nil {
@@ -135,7 +140,7 @@ func (p *ptzSession) send(op int) (*ptzResp, error) {
 	select {
 	case res := <-ch:
 		return res.r, res.err
-	case <-time.After(8 * time.Second):
+	case <-time.After(5 * time.Second):
 		return nil, fmt.Errorf("等待响应超时")
 	}
 }
@@ -156,11 +161,13 @@ func (s *Server) handlePTZStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 串行化：云台和视频共用一条 P2P 通道
-	lock := didLock(did)
-	lock.Lock()
-	defer lock.Unlock()
+	// 云台专用锁（不阻塞视频流）
+	ptzMu.Lock()
+	defer ptzMu.Unlock()
 
+	// 注意：不共用 MJPEG 的锁！
+	// MJPEG 是长连接，持锁不放会导致云台永远等不到。
+	// 云台自己建短连接，用完即关。
 	sess, err := s.openPTZ(dev)
 	if err != nil {
 		writeErr(w, 502, err.Error())
@@ -211,9 +218,9 @@ func (s *Server) handlePTZMove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	lock := didLock(req.Did)
-	lock.Lock()
-	defer lock.Unlock()
+	// 云台专用锁（不阻塞视频流）
+	ptzMu.Lock()
+	defer ptzMu.Unlock()
 
 	sess, err := s.openPTZ(dev)
 	if err != nil {

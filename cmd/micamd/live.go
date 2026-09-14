@@ -14,6 +14,7 @@ import (
 	"net/http"
 	"os/exec"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -133,6 +134,7 @@ func (s *Server) runFFmpeg(ctx context.Context, dev *xiaomi.Device, args []strin
 		defer stdin.Close()
 		buf := make([]byte, 64*1024)
 		var total int64
+		prevMB := 0
 		for {
 			n, rerr := pr.Read(buf)
 			if n > 0 {
@@ -141,6 +143,11 @@ func (s *Server) runFFmpeg(ctx context.Context, dev *xiaomi.Device, args []strin
 					return
 				}
 				total += int64(n)
+			}
+			// 每 1MB 记录一次进度（便于排查）
+			if total > 0 && total/1048576 > int64(prevMB) {
+				prevMB = int(total / 1048576)
+				logf("[feed] %s 已写入 %d MB", dev.Did, prevMB)
 			}
 			if rerr != nil {
 				logf("[feed] %s 结束，共写入 %d 字节", dev.Did, total)
@@ -167,6 +174,113 @@ func (s *Server) runFFmpeg(ctx context.Context, dev *xiaomi.Device, args []strin
 	return cmd, stdout, errBuf, cleanup, nil
 }
 
+// vfScale 生成视频滤镜参数。
+//
+// width=0 表示不缩放（保持源分辨率，2K 摄像头就是 2560x1440）。
+func vfScale(fps, width int) string {
+	var parts []string
+	if fps > 0 {
+		parts = append(parts, fmt.Sprintf("fps=%d", fps))
+	}
+	if width > 0 {
+		parts = append(parts, fmt.Sprintf("scale=%d:-2", width))
+	}
+	if len(parts) == 0 {
+		return "null"
+	}
+	return strings.Join(parts, ",")
+}
+
+// runFFmpegBlocking 用阻塞管道启动 ffmpeg（HLS 等需要数据完整性的场景）。
+//
+// 与 runFFmpeg 的区别：
+//   - runFFmpeg 用 bufferedPipe（超限丢数据）—— 适合 MJPEG（丢帧可接受）
+//   - runFFmpegBlocking 用 io.Pipe（阻塞背压）—— 适合 HLS（TS 流不能损坏）
+//
+// 为什么 HLS 不能丢数据：
+//   bufferedPipe 超限时从中间截断，会破坏 TS 包的 188 字节对齐，
+//   导致 ffmpeg 无法解析，表现为「收到数据但不出分片」。
+func (s *Server) runFFmpegBlocking(dev *xiaomi.Device, args []string) (*exec.Cmd, io.ReadCloser, *bytes.Buffer, func(), error) {
+	_, mc, release, err := s.useConn(dev)
+	if err != nil {
+		return nil, nil, nil, nil, err
+	}
+
+	cmd := exec.Command(s.ffmpegPath(), args...)
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		release()
+		return nil, nil, nil, nil, err
+	}
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		release()
+		return nil, nil, nil, nil, err
+	}
+	errBuf := &bytes.Buffer{}
+	cmd.Stderr = errBuf
+	if err := cmd.Start(); err != nil {
+		release()
+		return nil, nil, nil, nil, err
+	}
+
+	// 阻塞管道：consumer 写入会等 ffmpeg 消费，不丢数据
+	pr, pw := io.Pipe()
+	consDone := make(chan struct{})
+	go func() {
+		defer close(consDone)
+		defer recoverPanic("hls-consumer")
+		defer pw.Close()
+		_, _ = mc.Consumer().WriteTo(pw)
+	}()
+
+	// 独立协程：从阻塞管道拷到 ffmpeg stdin
+	feedDone := make(chan struct{})
+	go func() {
+		defer close(feedDone)
+		defer recoverPanic("hls-feeder")
+		defer stdin.Close()
+		buf := make([]byte, 64*1024)
+		var total int64
+		for {
+			n, rerr := pr.Read(buf)
+			if n > 0 {
+				if _, werr := stdin.Write(buf[:n]); werr != nil {
+					logf("[hls-feed] %s 写入失败（已写 %d 字节）: %v", dev.Did, total, werr)
+					return
+				}
+				total += int64(n)
+			}
+			if rerr != nil {
+				logf("[hls-feed] %s 结束，共 %d 字节", dev.Did, total)
+				return
+			}
+		}
+	}()
+
+	var once sync.Once
+	cleanup := func() {
+		once.Do(func() {
+			_ = pr.Close()
+			release()
+			select {
+			case <-consDone:
+			case <-time.After(3 * time.Second):
+			}
+			select {
+			case <-feedDone:
+			case <-time.After(2 * time.Second):
+			}
+		})
+	}
+	return cmd, stdout, errBuf, cleanup, nil
+}
+
+// runFFmpegWithArgs 用给定参数启动 ffmpeg（HLS 等场景用）。
+func (s *Server) runFFmpegWithArgs(dev *xiaomi.Device, args []string) (*exec.Cmd, io.ReadCloser, *bytes.Buffer, func(), error) {
+	return s.runFFmpegBlocking(dev, args)
+}
+
 // ---- 快照 ----
 
 func (s *Server) handleSnap(w http.ResponseWriter, r *http.Request) {
@@ -176,9 +290,7 @@ func (s *Server) handleSnap(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	width, _ := strconv.Atoi(r.URL.Query().Get("w"))
-	if width <= 0 {
-		width = 1280
-	}
+	// width=0 表示不缩放（保持 2K）
 
 	dev, err := s.ensureDevice(did)
 	if err != nil {
@@ -205,7 +317,7 @@ func (s *Server) handleSnap(w http.ResponseWriter, r *http.Request) {
 		"-skip_frame", "nokey",
 		"-f", "mpegts", "-i", "pipe:0",
 		"-frames:v", "1",
-		"-vf", fmt.Sprintf("scale=%d:-2", width),
+		"-vf", vfScale(0, width),
 		"-f", "image2", "-c:v", "mjpeg",
 		"pipe:1",
 	}
@@ -250,17 +362,15 @@ func (s *Server) handleMJPEG(w http.ResponseWriter, r *http.Request) {
 	if fps <= 0 {
 		fps = 8
 	}
-	// 上限保护：2K 摄像头转码很重，fps 太高会导致首帧超时
-	if fps > 10 {
-		fps = 10
+	// 上限保护：实测 15fps 对 2K 流没问题
+	if fps > 15 {
+		fps = 15
 	}
 	width, _ := strconv.Atoi(r.URL.Query().Get("w"))
-	if width <= 0 {
-		width = 640
-	}
-	// 上限保护：1280 对 2K 流压力大，实测 960 是安全上限
-	if width > 960 {
-		width = 960
+	// width=0 表示不缩放（保持源分辨率 2K）
+	// 上限保护：源流是 2560x1440（2K），默认不缩放
+	if width > 2560 {
+		width = 2560
 	}
 
 	logf("[mjpeg] 请求 did=%s fps=%d w=%d", did, fps, width)
@@ -283,11 +393,13 @@ func (s *Server) handleMJPEG(w http.ResponseWriter, r *http.Request) {
 		"-hide_banner", "-loglevel", "error",
 		"-analyzeduration", "10M",
 		"-probesize", "10M",
-		"-fflags", "+discardcorrupt+genpts",
+		// 容错：丢弃损坏帧，等关键帧
+		"-fflags", "+discardcorrupt+genpts+igndts",
 		"-err_detect", "ignore_err",
+		"-flags", "+low_delay",
 		"-f", "mpegts", "-i", "pipe:0",
-		"-vf", fmt.Sprintf("fps=%d,scale=%d:-2", fps, width),
-		"-c:v", "mjpeg", "-q:v", "7",
+		"-vf", vfScale(fps, width),
+		"-c:v", "mjpeg", "-q:v", "3",   // 质量 3（1最好，31最差）
 		"-f", "image2pipe",
 		"pipe:1",
 	}
@@ -320,6 +432,8 @@ func (s *Server) handleMJPEG(w http.ResponseWriter, r *http.Request) {
 	var pending []byte
 	readBuf := make([]byte, 64*1024)
 	sent := 0
+	decoded := 0   // 解码出的总帧数（含被跳过的）
+	skipN := 3     // 跳过前 N 帧：解码器从流中途开始，前几帧缺参考帧会花屏
 
 	// 首帧看门狗。
 	//
@@ -365,6 +479,12 @@ func (s *Server) handleMJPEG(w http.ResponseWriter, r *http.Request) {
 				}
 				frame := pending[start : start+2+end+2]
 				pending = pending[start+2+end+2:]
+
+				// 跳过预热帧（缺参考帧导致的花屏）
+				decoded++
+				if decoded <= skipN {
+					continue
+				}
 
 				// 组装 multipart 帧
 				CRLF := "\r\n"
