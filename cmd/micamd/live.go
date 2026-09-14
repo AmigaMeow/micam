@@ -38,16 +38,17 @@ func (s *Server) resolveSource(dev *xiaomi.Device) (string, error) {
 	return src, nil
 }
 
-// ensureDevice 取设备：设备缓存 -> 源缓存 -> 云端刷新。
+// ensureDevice 取设备。
+//
+// 重要：优先返回【有真实 IP 的】设备。
+// 源缓存构造的占位设备没有 IP，会导致后续连接异常。
 func (s *Server) ensureDevice(did string) (*xiaomi.Device, error) {
-	if d, ok := s.store.Device(did); ok {
+	// 1) 设备缓存里有真实信息（有 IP）直接用
+	if d, ok := s.store.Device(did); ok && d.LocalIP != "" {
 		return d, nil
 	}
-	if _, ok := s.store.Source(did); ok {
-		d := &xiaomi.Device{Did: did, Name: "摄像头 " + did, IsOnline: true}
-		s.store.CacheDevices([]xiaomi.Device{*d})
-		return d, nil
-	}
+
+	// 2) 从云端刷新真实设备信息
 	var all []xiaomi.Device
 	seen := map[string]bool{}
 	for _, sess := range s.store.AllSessions() {
@@ -62,11 +63,20 @@ func (s *Server) ensureDevice(did string) (*xiaomi.Device, error) {
 			}
 		}
 	}
-	if len(all) == 0 {
-		return nil, fmt.Errorf("未发现任何设备（可能未登录）")
+	if len(all) > 0 {
+		s.store.CacheDevices(all)
+		if d, ok := s.store.Device(did); ok {
+			return d, nil
+		}
 	}
-	s.store.CacheDevices(all)
+
+	// 3) 云端拿不到，退回占位设备（至少有源缓存）
 	if d, ok := s.store.Device(did); ok {
+		return d, nil
+	}
+	if _, ok := s.store.Source(did); ok {
+		d := &xiaomi.Device{Did: did, Name: "摄像头 " + did, IsOnline: true}
+		s.store.CacheDevices([]xiaomi.Device{*d})
 		return d, nil
 	}
 	return nil, fmt.Errorf("设备不存在: %s", did)
@@ -81,30 +91,63 @@ func (s *Server) runFFmpeg(ctx context.Context, dev *xiaomi.Device, args []strin
 		return nil, nil, nil, nil, err
 	}
 
-	pr := newBufferedPipe(16 << 20)
-	done := make(chan struct{})
-	go func() {
-		defer close(done)
-		_, _ = mc.Consumer().WriteTo(pr)
-	}()
-
+	// 关键：不用 cmd.Stdin = pipe。
+	//
+	// Go 的 exec.Cmd 对 Stdin 的处理是「启动后同步拷贝」，
+	// 配合 bufferedPipe 的丢数据策略，会导致 ffmpeg 收到不完整的流
+	// （表现为 "PPS id out of range" + 0 帧）。
+	//
+	// 改成：显式拿 StdinPipe，用独立协程全速写入。
 	cmd := exec.CommandContext(ctx, s.ffmpegPath(), args...)
-	cmd.Stdin = pr
+	stdin, err := cmd.StdinPipe()
+	if err != nil {
+		release()
+		return nil, nil, nil, nil, err
+	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		pr.Close()
 		release()
-		<-done
 		return nil, nil, nil, nil, err
 	}
 	errBuf := &bytes.Buffer{}
 	cmd.Stderr = errBuf
 	if err := cmd.Start(); err != nil {
-		pr.Close()
 		release()
-		<-done
 		return nil, nil, nil, nil, err
 	}
+
+	// 全速读取 consumer 并写入 ffmpeg stdin
+	pr := newBufferedPipe(32 << 20)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		defer recoverPanic("consumer")
+		_, _ = mc.Consumer().WriteTo(pr)
+	}()
+
+	// 独立协程：从缓冲队列读到 ffmpeg stdin
+	feedDone := make(chan struct{})
+	go func() {
+		defer close(feedDone)
+		defer recoverPanic("feeder")
+		defer stdin.Close()
+		buf := make([]byte, 64*1024)
+		var total int64
+		for {
+			n, rerr := pr.Read(buf)
+			if n > 0 {
+				if _, werr := stdin.Write(buf[:n]); werr != nil {
+					logf("[feed] %s 写入失败（已写 %d 字节）: %v", dev.Did, total, werr)
+					return
+				}
+				total += int64(n)
+			}
+			if rerr != nil {
+				logf("[feed] %s 结束，共写入 %d 字节", dev.Did, total)
+				return
+			}
+		}
+	}()
 
 	var once sync.Once
 	cleanup := func() {
@@ -114,6 +157,10 @@ func (s *Server) runFFmpeg(ctx context.Context, dev *xiaomi.Device, args []strin
 			select {
 			case <-done:
 			case <-time.After(3 * time.Second):
+			}
+			select {
+			case <-feedDone:
+			case <-time.After(2 * time.Second):
 			}
 		})
 	}
@@ -201,21 +248,30 @@ func (s *Server) handleMJPEG(w http.ResponseWriter, r *http.Request) {
 	}
 	fps, _ := strconv.Atoi(r.URL.Query().Get("fps"))
 	if fps <= 0 {
-		fps = 5
+		fps = 8
 	}
-	if fps > 15 {
-		fps = 15
+	// 上限保护：2K 摄像头转码很重，fps 太高会导致首帧超时
+	if fps > 10 {
+		fps = 10
 	}
 	width, _ := strconv.Atoi(r.URL.Query().Get("w"))
 	if width <= 0 {
 		width = 640
 	}
+	// 上限保护：1280 对 2K 流压力大，实测 960 是安全上限
+	if width > 960 {
+		width = 960
+	}
+
+	logf("[mjpeg] 请求 did=%s fps=%d w=%d", did, fps, width)
 
 	dev, err := s.ensureDevice(did)
 	if err != nil {
+		logf("[mjpeg] ensureDevice 失败: %v", err)
 		writeErr(w, 400, err.Error())
 		return
 	}
+	logf("[mjpeg] 设备: %s online=%v ip=%s", dev.Name, dev.IsOnline, dev.LocalIP)
 	if !dev.IsOnline && dev.LocalIP != "" {
 		writeErr(w, 503, "设备离线（"+dev.Name+"），无法播放")
 		return
@@ -237,9 +293,11 @@ func (s *Server) handleMJPEG(w http.ResponseWriter, r *http.Request) {
 	}
 	cmd, stdout, errBuf, cleanup, err := s.runFFmpeg(r.Context(), dev, args)
 	if err != nil {
+		logf("[mjpeg] runFFmpeg 失败: %v", err)
 		writeErr(w, 502, "连接摄像头失败: "+err.Error())
 		return
 	}
+	logf("[mjpeg] ffmpeg 已启动")
 	defer func() {
 		cleanup()
 		_ = cmd.Process.Kill()
@@ -263,18 +321,21 @@ func (s *Server) handleMJPEG(w http.ResponseWriter, r *http.Request) {
 	readBuf := make([]byte, 64*1024)
 	sent := 0
 
-	// 首帧看门狗：如果 15 秒还没出帧，说明连接坏了，直接断开让客户端重试
-	// （浏览器/客户端会自动重连，届时会重建摄像头连接）
+	// 首帧看门狗。
+	//
+	// 重要：某些机型（如 CW500 isa.camera.hlmax）的关键帧间隔很长
+	// （实测 >15 秒），所以超时要给足，否则会误判为连接失败。
+	//
+	// 注意：这里【不能】调用 flusher.Flush()！
+	// 主循环在写响应，看门狗并发 Flush 会导致
+	// "concurrent write to response" panic，直接杀掉进程。
 	firstFrame := make(chan struct{})
 	go func() {
+		defer recoverPanic("watchdog")
 		select {
 		case <-firstFrame:
-		case <-time.After(15 * time.Second):
-			logf("[mjpeg] %s 首帧超时，断开连接", did)
-			if flusher != nil {
-				flusher.Flush()
-			}
-			// 关闭 stdout 让主循环退出
+		case <-time.After(45 * time.Second):
+			logf("[mjpeg] %s 首帧超时（45秒），断开连接", did)
 			_ = stdout.Close()
 		}
 	}()

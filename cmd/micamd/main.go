@@ -21,6 +21,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"runtime"
 	"syscall"
 	"time"
 
@@ -301,7 +302,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{
 		"ok":      true,
 		"app":     appName,
-		"version": "0.3.5",
+		"version": "0.3.7",
 	})
 }
 
@@ -477,9 +478,27 @@ func stripPrefixMiddleware(next http.Handler, prefix string) http.Handler {
 func logMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		start := time.Now()
+		defer func() {
+			if rec := recover(); rec != nil {
+				log.Printf("PANIC %s %s: %v", r.Method, r.URL.Path, rec)
+				// 打印堆栈便于定位
+				buf := make([]byte, 8192)
+				n := runtime.Stack(buf, false)
+				log.Printf("堆栈: %s", string(buf[:n]))
+			}
+		}()
 		next.ServeHTTP(w, r)
 		log.Printf("%s %s %v", r.Method, r.URL.Path, time.Since(start))
 	})
+}
+
+// recoverPanic 兜底：任何 goroutine 的 panic 都不应该杀掉整个进程。
+func recoverPanic(name string) {
+	if rec := recover(); rec != nil {
+		buf := make([]byte, 8192)
+		n := runtime.Stack(buf, false)
+		log.Printf("PANIC in %s: %v | %s", name, rec, string(buf[:n]))
+	}
 }
 
 func base64Encode(b []byte) string {

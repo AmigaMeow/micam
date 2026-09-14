@@ -50,6 +50,9 @@ func didLock(did string) *sync.Mutex {
 	return l
 }
 
+// connTimeout 连接超时：超过这个时间没数据就视为坏连接。
+const connTimeout = 12 * time.Second
+
 // useConn 独占使用某设备的连接。
 //
 // 返回的 release 必须在用完时调用（建议 defer）。
@@ -59,10 +62,17 @@ func (s *Server) useConn(dev *xiaomi.Device) (*camConn, *mpegtsConsumer, func(),
 	lock.Lock()
 
 	// 关掉可能残留的旧连接
+	//
+	// 关键：卡死的连接必须强制清理，否则新连接拿不到数据
 	connMu.Lock()
 	if old, ok := conns[dev.Did]; ok {
+		logf("[%s] 发现残留连接，强制清理", dev.Did)
 		_ = old.prod.Stop()
 		delete(conns, dev.Did)
+		// 等摄像头端释放会话
+		connMu.Unlock()
+		time.Sleep(1500 * time.Millisecond)
+		connMu.Lock()
 	}
 	connMu.Unlock()
 
@@ -95,10 +105,11 @@ func (s *Server) useConn(dev *xiaomi.Device) (*camConn, *mpegtsConsumer, func(),
 
 	logf("已连接摄像头: %s (%s)", dev.Name, dev.Did)
 
-	// 启动 producer 读循环
+	// 启动 producer 读循环（加 recover，避免 panic 杀进程）
 	prodDone := make(chan struct{})
 	go func() {
 		defer close(prodDone)
+		defer recoverPanic("producer " + dev.Did)
 		_ = prod.Start()
 	}()
 

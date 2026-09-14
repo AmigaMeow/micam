@@ -125,6 +125,13 @@ svg{display:block}
 .ptz-btn:disabled{opacity:.4;cursor:not-allowed}
 .ptz-center{background:var(--primary);border-color:var(--primary);color:#fff}
 .ptz-info{font-size:12px;color:var(--text-3)}
+.progress{width:100%;height:4px;background:var(--border);border-radius:2px;overflow:hidden;margin-top:12px}
+.progress-bar{height:100%;background:var(--primary);border-radius:2px;transition:width .3s;width:0}
+.progress-text{font-size:12px;color:var(--text-3);text-align:center;margin-top:6px}
+.loading-overlay{position:absolute;inset:0;background:rgba(0,0,0,.75);display:flex;
+  flex-direction:column;align-items:center;justify-content:center;gap:12px;color:#fff;z-index:10}
+.loading-overlay .spin{border-color:rgba(255,255,255,.2);border-top-color:#fff;width:28px;height:28px}
+.loading-overlay .txt{font-size:13px;opacity:.9}
 table{width:100%;border-collapse:separate;border-spacing:0}
 th{padding:12px 16px;text-align:left;font-weight:500;font-size:13px;color:var(--text-2);
   background:#fafafa;border-bottom:1px solid var(--border)}
@@ -176,7 +183,7 @@ tbody tr:last-child td{border-bottom:0}
       <span>小米摄像头</span>
     </div>
     <nav class="menu" id="menu"></nav>
-    <div class="sider-foot">MiCam v0.3.5</div>
+    <div class="sider-foot">MiCam v0.3.7</div>
   </aside>
   <div class="main">
     <header class="header">
@@ -401,6 +408,10 @@ function renderLive(c){
       +   "<div class=\"player\" id=\"player\">"
       +     "<div class=\"ph\">"+icon("play",40)+"<span>正在连接…</span></div>"
       +   "</div>"
+      +   "<div class=\"progress\" id=\"progWrap\" style=\"display:none\">"
+      +     "<div class=\"progress-bar\" id=\"progBar\"></div>"
+      +   "</div>"
+      +   "<div class=\"progress-text\" id=\"progText\" style=\"display:none\"></div>"
       +   "<div class=\"player-bar\">"
       +     "<button class=\"btn\" id=\"btnStop\">"+icon("stop",12)+"停止</button>"
       +     "<button class=\"btn\" id=\"btnSnap\">"+icon("snap",12)+"截图</button>"
@@ -447,6 +458,47 @@ function startLive(did){
     if(st) st.textContent = "离线";
     return;
   }
+  // 显示进度条
+  var progWrap = $("#progWrap");
+  var progBar = $("#progBar");
+  var progText = $("#progText");
+  if(progWrap) progWrap.style.display = "block";
+  if(progText) progText.style.display = "block";
+
+  var pct = 0;
+  // 说明：部分机型（如 CW500）关键帧间隔长达 15 秒以上，
+  // 首帧可能要等 20-40 秒，所以进度提示要耐心。
+  var steps = [
+    [0,  "正在连接摄像头…"],
+    [10, "建立 P2P 通道…"],
+    [25, "等待视频流…"],
+    [45, "等待关键帧（部分机型较慢）…"],
+    [65, "解码首帧…"],
+    [80, "即将显示…"]
+  ];
+  if(progBar) progBar.style.width = "0%";
+  if(progText) progText.textContent = "正在连接摄像头…";
+
+  var stepIdx = 0;
+  var progTimer = setInterval(function(){
+    stepIdx++;
+    if(stepIdx < steps.length){
+      pct = steps[stepIdx][0];
+      if(progBar) progBar.style.width = pct + "%";
+      if(progText) progText.textContent = steps[stepIdx][1];
+    } else {
+      pct = Math.min(pct + 2, 95);
+      if(progBar) progBar.style.width = pct + "%";
+    }
+  }, 3000);   // 每 3 秒推进一步
+
+  function clearProg(){
+    if(progTimer) clearInterval(progTimer);
+    if(progWrap) progWrap.style.display = "none";
+    if(progText) progText.style.display = "none";
+  }
+  window.__clearProg = clearProg;
+
   box.innerHTML = "<div class=\"ph\">"+icon("play",40)+"<span>正在连接…</span></div>";
   if(st) st.textContent = "连接中";
   if(hint) hint.textContent = "首次连接约 3-10 秒";
@@ -456,22 +508,28 @@ function startLive(did){
   img.onload = function(){
     if(st) st.textContent = "播放中";
     if(hint) hint.textContent = "";
+    if(window.__clearProg) window.__clearProg();
   };
   img.onerror = function(){
     box.innerHTML = "<div class=\"ph\">"+icon("cam-off",40)+"<span>播放失败</span></div>";
     if(st) st.textContent = "失败";
     if(hint) hint.textContent = "摄像头可能被米家 App 占用";
+    if(window.__clearProg) window.__clearProg();
   };
-  img.src = apiUrl("/api/live/mjpeg?did="+encodeURIComponent(did)+"&fps=5&w=1280&t="+Date.now());
+  // 参数说明：1280px + 15fps 对 2K 摄像头太重，会导致首帧超时
+  // 用 640px + 8fps，兼顾清晰度和流畅度
+  img.src = apiUrl("/api/live/mjpeg?did="+encodeURIComponent(did)+"&fps=8&w=640&t="+Date.now());
   box.innerHTML = "";
   box.appendChild(img);
+  // MJPEG 是无限流，onload 可能不触发，用定时器兜底
   if(liveTimer) clearTimeout(liveTimer);
   liveTimer = setTimeout(function(){
-    if(st && st.textContent==="连接中"){
+    if(st && st.textContent === "连接中"){
       st.textContent = "已连接";
       if(hint) hint.textContent = "";
     }
-  }, 8000);
+    if(window.__clearProg) window.__clearProg();
+  }, 40000);   // 部分机型首帧慢，给 40 秒
 }
 
 function stopLive(){
@@ -603,7 +661,7 @@ function renderSettings(c){
     + "<div class=\"card-head\"><span class=\"card-title\">关于</span></div>"
     + "<table>"
     + "<tr><td style=\"width:180px;color:var(--text-2)\">应用</td><td>MiCam（小米摄像头）</td></tr>"
-    + "<tr><td style=\"color:var(--text-2)\">版本</td><td>0.3.5</td></tr>"
+    + "<tr><td style=\"color:var(--text-2)\">版本</td><td>0.3.7</td></tr>"
     + "<tr><td style=\"color:var(--text-2)\">连接方式</td><td>小米云 P2P 直连（不依赖 EasyNVR）</td></tr>"
     + "<tr><td style=\"color:var(--text-2)\">后端</td><td><span class=\"tag tag-on\">运行中</span></td></tr>"
     + "</table></div>";
