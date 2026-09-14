@@ -132,6 +132,40 @@ svg{display:block}
   flex-direction:column;align-items:center;justify-content:center;gap:12px;color:#fff;z-index:10}
 .loading-overlay .spin{border-color:rgba(255,255,255,.2);border-top-color:#fff;width:28px;height:28px}
 .loading-overlay .txt{font-size:13px;opacity:.9}
+/* 安装向导 */
+.wizard{max-width:760px;margin:0 auto}
+.wizard-hero{text-align:center;padding:32px 24px 24px}
+.wizard-hero .logo{width:64px;height:64px;border-radius:16px;margin:0 auto 16px;
+  background:linear-gradient(135deg,#00b96b,#009e5a);display:flex;align-items:center;
+  justify-content:center;box-shadow:0 8px 24px rgba(0,185,107,.25)}
+.wizard-hero h2{font-size:22px;font-weight:600;margin-bottom:8px}
+.wizard-hero p{font-size:14px;color:var(--text-3)}
+.wizard-steps{display:flex;gap:8px;margin:24px 0;padding:0 24px}
+.wizard-step{flex:1;text-align:center;position:relative}
+.wizard-step .num{width:28px;height:28px;border-radius:50%;background:var(--border);
+  color:var(--text-3);display:flex;align-items:center;justify-content:center;
+  margin:0 auto 8px;font-size:13px;font-weight:500;transition:all .3s}
+.wizard-step.done .num{background:var(--success);color:#fff}
+.wizard-step.active .num{background:var(--primary);color:#fff;
+  box-shadow:0 0 0 4px rgba(22,119,255,.15)}
+.wizard-step .label{font-size:12px;color:var(--text-3)}
+.wizard-step.active .label{color:var(--primary);font-weight:500}
+.check-list{display:flex;flex-direction:column;gap:2px}
+.check-item{display:flex;align-items:center;gap:12px;padding:14px 24px;
+  border-bottom:1px solid var(--split);transition:background .2s}
+.check-item:last-child{border-bottom:0}
+.check-item:hover{background:var(--hover)}
+.check-icon{width:22px;height:22px;border-radius:50%;flex-shrink:0;
+  display:flex;align-items:center;justify-content:center;font-size:12px;color:#fff}
+.check-icon.ok{background:var(--success)}
+.check-icon.warn{background:var(--warning)}
+.check-icon.error{background:var(--error)}
+.check-body{flex:1;min-width:0}
+.check-name{font-size:14px;font-weight:500;margin-bottom:2px}
+.check-detail{font-size:12px;color:var(--text-3);word-break:break-all}
+.check-hint{font-size:12px;color:var(--warning);margin-top:4px}
+.wizard-actions{padding:20px 24px;display:flex;gap:12px;justify-content:center;
+  border-top:1px solid var(--split);flex-wrap:wrap}
 table{width:100%;border-collapse:separate;border-spacing:0}
 th{padding:12px 16px;text-align:left;font-weight:500;font-size:13px;color:var(--text-2);
   background:#fafafa;border-bottom:1px solid var(--border)}
@@ -280,6 +314,7 @@ var MENU = [
   {k:"live",      t:"实时预览", i:"play"},
   {k:"recordings",t:"录像管理", i:"rec"},
   {k:"accounts",  t:"账号管理", i:"user"},
+  {k:"setup",     t:"安装向导", i:"check"},
   {k:"settings",  t:"系统设置", i:"set"}
 ];
 
@@ -315,6 +350,7 @@ function render(){
   if(page==="live") return renderLive(c);
   if(page==="recordings") return renderRecordings(c);
   if(page==="accounts") return renderAccounts(c);
+  if(page==="setup") return renderWizard(c);
   if(page==="settings") return renderSettings(c);
 }
 
@@ -647,6 +683,74 @@ function renderAccounts(c){
   });
 }
 
+// ===== 页面：安装向导 =====
+function renderWizard(c){
+  c.innerHTML = loading("正在检查环境…");
+  api("/api/setup/check").then(function(st){
+    var icons = { ok: "✓", warn: "!", error: "✕" };
+    var items = (st.checks || []).map(function(x){
+      return "<div class=\"check-item\">"
+        + "<div class=\"check-icon " + x.level + "\">" + (icons[x.level] || "?") + "</div>"
+        + "<div class=\"check-body\">"
+        +   "<div class=\"check-name\">" + esc(x.name) + "</div>"
+        +   "<div class=\"check-detail\">" + esc(x.detail) + "</div>"
+        +   (x.hint ? "<div class=\"check-hint\">提示：" + esc(x.hint) + "</div>" : "")
+        + "</div></div>";
+    }).join("");
+
+    // 步骤条
+    var step1 = st.hasAccounts ? "done" : "active";
+    var step2 = st.hasAccounts && st.deviceCount > 0 ? "done" : (st.hasAccounts ? "active" : "");
+    var step3 = st.deviceCount > 0 ? "active" : "";
+
+    var actions = "";
+    if (!st.hasAccounts){
+      actions = "<button class=\"btn btn-primary\" id=\"wzQR\">" + icon("qr",14) + "扫码添加小米账号</button>";
+    } else if (st.deviceCount === 0){
+      actions = "<button class=\"btn btn-primary\" id=\"wzRefresh\">" + icon("refresh",14) + "重新发现设备</button>";
+    } else {
+      actions = "<button class=\"btn btn-primary\" id=\"wzGo\">" + icon("play",14) + "开始使用</button>";
+    }
+    actions += "<button class=\"btn\" id=\"wzRepair\">" + icon("set",14) + "一键修复</button>";
+    actions += "<button class=\"btn\" id=\"wzRecheck\">" + icon("refresh",14) + "重新检查</button>";
+
+    c.innerHTML = "<div class=\"wizard\">"
+      + "<div class=\"card\">"
+      +   "<div class=\"wizard-hero\">"
+      +     "<div class=\"logo\"><svg width=\"32\" height=\"32\" viewBox=\"0 0 24 24\" fill=\"#fff\"><path d=\"M12 0C8.016 0 4.756.255 2.493 2.516C.23 4.776 0 8.033 0 12.012s.23 7.235 2.494 9.497C4.757 23.77 8.017 24 12 24s7.243-.23 9.506-2.491S24 15.99 24 12.012c0-3.984-.233-7.243-2.502-9.504C19.234.252 15.978 0 12 0M4.906 7.405h5.624c1.47 0 3.007.068 3.764.827c.746.746.827 2.233.83 3.676v4.54a.15.15 0 0 1-.152.147h-1.947a.15.15 0 0 1-.152-.148V11.83c-.002-.806-.048-1.634-.464-2.051c-.358-.36-1.026-.441-1.72-.458H7.158a.15.15 0 0 0-.151.147v6.98a.15.15 0 0 1-.152.148H4.906a.15.15 0 0 1-.15-.148V7.554a.15.15 0 0 1 .15-.149m12.131 0h1.949a.15.15 0 0 1 .15.15v8.892a.15.15 0 0 1-.15.148h-1.949a.15.15 0 0 1-.151-.148V7.554a.15.15 0 0 1 .151-.149M8.92 10.948h2.046c.083 0 .15.066.15.147v5.352a.15.15 0 0 1-.15.148H8.92a.15.15 0 0 1-.152-.148v-5.352a.15.15 0 0 1 .152-.147\"/></svg></div>"
+      +     "<h2>欢迎使用 MiCam</h2>"
+      +     "<p>在飞牛 NAS 上接入小米/米家摄像头</p>"
+      +   "</div>"
+      +   "<div class=\"wizard-steps\">"
+      +     "<div class=\"wizard-step " + step1 + "\"><div class=\"num\">1</div><div class=\"label\">登录账号</div></div>"
+      +     "<div class=\"wizard-step " + step2 + "\"><div class=\"num\">2</div><div class=\"label\">发现设备</div></div>"
+      +     "<div class=\"wizard-step " + step3 + "\"><div class=\"num\">3</div><div class=\"label\">开始使用</div></div>"
+      +   "</div>"
+      +   "<div class=\"check-list\">" + items + "</div>"
+      +   "<div class=\"wizard-actions\">" + actions + "</div>"
+      + "</div></div>";
+
+    var go = document.getElementById("wzGo");
+    if (go) go.onclick = function(){ page = "devices"; $("#pageTitle").textContent = "设备列表"; renderMenu(); render(); };
+    var qr = document.getElementById("wzQR");
+    if (qr) qr.onclick = showQR;
+    var rf = document.getElementById("wzRefresh");
+    if (rf) rf.onclick = function(){ toast("正在重新发现设备…"); loadDevices().then(function(){ renderWizard(c); }); };
+    document.getElementById("wzRecheck").onclick = function(){ renderWizard(c); };
+    document.getElementById("wzRepair").onclick = function(){
+      toast("正在修复…");
+      api("/api/setup/repair", { method: "POST" }).then(function(r){
+        var msg = (r.fixed || []).join("；") || "无需修复";
+        if (r.failed && r.failed.length) msg += " | 失败：" + r.failed.join("；");
+        toast(msg, r.ok ? "ok" : "err");
+        setTimeout(function(){ renderWizard(c); }, 1500);
+      });
+    };
+  }).catch(function(e){
+    c.innerHTML = "<div class=\"card\">" + empty("close", "检查失败", e.message, "") + "</div>";
+  });
+}
+
 // ===== 页面：系统设置 =====
 function renderSettings(c){
   c.innerHTML = "<div class=\"card\">"
@@ -771,7 +875,17 @@ function initSDK(){
 
 // ===== 启动 =====
 renderMenu();
-render();
+// 首次使用（没账号）自动进向导
+api("/api/setup/check").then(function(st){
+  if (st.stage === "welcome") {
+    page = "setup";
+    $("#pageTitle").textContent = "安装向导";
+    renderMenu();
+  }
+  render();
+}).catch(function(){
+  render();
+});
 initSDK();
 })();
 </script>

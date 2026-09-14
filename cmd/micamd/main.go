@@ -32,7 +32,10 @@ import (
 	"github.com/micam/micam/internal/xiaomi"
 )
 
-const appName = "micam"
+const (
+	appName    = "micam"
+	appVersion = "0.4.0"
+)
 
 func main() {
 	var (
@@ -285,6 +288,10 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/live/inject", s.handleInjectSource) // 单帧 JPEG
 
 	// 云台
+	// 安装向导 / 自检
+	mux.HandleFunc("/api/setup/check", s.handleSetupCheck)
+	mux.HandleFunc("/api/setup/repair", s.handleSetupRepair)
+
 	mux.HandleFunc("/api/ptz/status", s.handlePTZStatus)
 	mux.HandleFunc("/api/ptz/move", s.handlePTZMove)
 
@@ -302,7 +309,7 @@ func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{
 		"ok":      true,
 		"app":     appName,
-		"version": "0.3.7",
+		"version": appVersion,
 	})
 }
 

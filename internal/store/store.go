@@ -129,6 +129,15 @@ func (s *Store) saveAccounts() error {
 	return os.WriteFile(s.accountsFile(), raw, 0o600)
 }
 
+// ReloadAccounts 重新从磁盘加载账号（修复用）。
+func (s *Store) ReloadAccounts() {
+	s.mu.Lock()
+	s.accounts = nil
+	s.sessions = map[string]*xiaomi.Session{}
+	s.mu.Unlock()
+	s.loadAccounts()
+}
+
 // Accounts 返回账号列表（不含敏感字段）。
 func (s *Store) Accounts() []map[string]any {
 	s.mu.Lock()
