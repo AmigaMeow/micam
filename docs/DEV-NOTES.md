@@ -209,7 +209,102 @@ ffmpeg -f mpegts -i pipe:0 \
 
 ---
 
-## 七、性能实测数据
+## 七、飞牛网关集成（重要）
+
+### 7.1 网关前缀必须自己剥
+
+**症状**：应用中心装完后打开是 **404 page not found**。
+
+**原因**：飞牛网关按 `gatewayPrefix` 转发时会**保留前缀**：
+
+~~~
+浏览器请求: /app/micam/api/health
+网关转发:   /app/micam/api/health   <- 前缀还在！
+我们的服务: 只注册了 /api/health -> 404
+~~~
+
+**解决**：加 middleware 剥掉前缀。
+
+~~~go
+func stripPrefixMiddleware(next http.Handler, prefix string) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        if prefix != "" && strings.HasPrefix(r.URL.Path, prefix) {
+            p := strings.TrimPrefix(r.URL.Path, prefix)
+            if p == "" { p = "/" }
+            r2 := r.Clone(r.Context())
+            r2.URL.Path = p
+            next.ServeHTTP(w, r2)
+            return
+        }
+        next.ServeHTTP(w, r)
+    })
+}
+~~~
+
+### 7.2 网关的 socket 路径映射
+
+网关读的是 **`/var/apps/<app>/target/app.sock`**，
+而 `/var/apps/<app>/target` 是指向 `/vol1/@appcenter/<app>` 的符号链接。
+
+所以 socket 建在 `${TRIM_APPDEST}/app.sock` 就是对的（路径会自动映射）。
+
+**验证方法**：
+~~~bash
+# 看网关是否注册了你的应用
+journalctl -u trim_http_cgi | grep "upstream register" | grep micam
+
+# 期望看到：
+# upstream register [/app/micam] micam.Application /var/apps/micam/target/app.sock
+~~~
+
+### 7.3 网关的鉴权层（别被误导）
+
+直接 curl 网关会返回 **`invalid token`**，这是**正常的** —— 
+网关有鉴权层，浏览器带着登录 cookie 才能通过。
+
+**不要以为路由没通**。验证路由应该直接测 socket：
+
+~~~bash
+curl --unix-socket /vol1/@appcenter/micam/app.sock http://localhost/app/micam
+~~~
+
+### 7.4 双监听（必须）
+
+**问题**：只监听 Unix socket 的话，**局域网客户端（如 Mac App）访问不了**。
+
+**解决**：同时监听两个。
+
+~~~bash
+micamd --socket ${TRIM_APPDEST}/app.sock \   # 飞牛界面（网关）
+       --http   :8900                        # 局域网 / Mac App
+~~~
+
+代码里用多个 listener 同时 Serve：
+
+~~~go
+for i := 1; i < len(listeners); i++ {
+    go func(l net.Listener) {
+        httpSrv.Serve(l)
+    }(listeners[i])
+}
+ln := listeners[0]
+httpSrv.Serve(ln)
+~~~
+
+### 7.5 网关何时重新加载配置
+
+网关（`trim_http_cgi`）在**应用启动时**注册路由：
+
+~~~
+20:58:31 trim_http_cgi: upstream register [/app/micam] ... service register success.
+~~~
+
+**注意**：网关进程本身不需要重启，安装/启动应用时它会自动注册。
+如果没看到注册日志，检查 `ui/config` 的 `gatewayPrefix` / `gatewaySocket`。
+
+---
+
+## 八、性能实测数据
 
 | 指标 | 数值 |
 |---|---|
@@ -222,7 +317,7 @@ ffmpeg -f mpegts -i pipe:0 \
 
 ---
 
-## 八、诊断方法论
+## 九、诊断方法论
 
 遇到「第一次成功、第二次失败」这类问题时，有效的排查步骤：
 
