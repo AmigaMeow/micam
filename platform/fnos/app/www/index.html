@@ -457,7 +457,7 @@ tbody tr:last-child td{border-bottom:0}
       <span>小米摄像头</span>
     </div>
     <nav class="menu" id="menu"></nav>
-    <div class="sider-foot">MiCam v0.3.7</div>
+    <div class="sider-foot">MiCam <span id="appVer">v—</span></div>
   </aside>
   <div class="main">
     <header class="header">
@@ -688,11 +688,21 @@ function renderDevices(c){
       c.innerHTML = "<div class=\"card\">" + empty("inbox","没有发现摄像头","","") + "</div>";
       return;
     }
-    var cards = devices.map(function(d){
+    // 统计（含共享设备）
+  var onlineCount = devices.filter(function(d){ return d.isOnline; }).length;
+  var sharedCount = devices.filter(function(d){ return d.shared || d.shareFlag===1; }).length;
+  var summary = "<div class=\"card\" style=\"margin-bottom:12px\">"
+    + "<div style=\"padding:14px 20px;display:flex;gap:24px;flex-wrap:wrap;font-size:13px\">"
+    +   "<span>共 <b>" + devices.length + "</b> 台</span>"
+    +   "<span style=\"color:var(--success)\">在线 <b>" + onlineCount + "</b></span>"
+    +   (sharedCount ? "<span style=\"color:var(--primary)\">共享 <b>" + sharedCount + "</b></span>" : "")
+    + "</div></div>";
+
+  var cards = devices.map(function(d){
       var tags = d.isOnline
         ? "<span class=\"tag tag-on\">在线</span>"
         : "<span class=\"tag tag-off\">离线</span>";
-      if(d.shareFlag===1) tags += "<span class=\"tag tag-share\">共享</span>";
+      if(d.shared || d.shareFlag===1) tags += "<span class=\"tag tag-share\">共享</span>";
       return "<div class=\"device\">"
         + "<div class=\"dev-preview\" data-did=\""+esc(d.did)+"\">"
         +   "<div class=\"ph\">"+icon("play",32)+"<span>点击预览</span></div>"
@@ -712,7 +722,7 @@ function renderDevices(c){
         +   "</div>"
         + "</div></div>";
     }).join("");
-    c.innerHTML = "<div class=\"grid\">"+cards+"</div>";
+    c.innerHTML = summary + "<div class=\"grid\">"+cards+"</div>";
     bindDeviceActions();
   });
 }
@@ -1388,7 +1398,7 @@ function renderSettings(c){
     + "<div class=\"card-head\"><span class=\"card-title\">关于</span></div>"
     + "<table>"
     + "<tr><td style=\"width:180px;color:var(--text-2)\">应用</td><td>MiCam（小米摄像头）</td></tr>"
-    + "<tr><td style=\"color:var(--text-2)\">版本</td><td>0.3.7</td></tr>"
+    + "<tr><td style=\"color:var(--text-2)\">版本</td><td>" + (APP_VER || "—") + "</td></tr>"
     + "<tr><td style=\"color:var(--text-2)\">连接方式</td><td>小米云 P2P 直连（不依赖 EasyNVR）</td></tr>"
     + "<tr><td style=\"color:var(--text-2)\">后端</td><td><span class=\"tag tag-on\">运行中</span></td></tr>"
     + "</table></div>";
@@ -1562,6 +1572,13 @@ document.addEventListener("click", function(e){
 })();
 
 // ===== 启动 =====
+// 拉取版本号（避免硬编码不一致）
+api("/api/health").then(function(r){
+  APP_VER = r.version || "";
+  var el = document.getElementById("appVer");
+  if(el) el.textContent = "v" + APP_VER;
+}).catch(function(){});
+
 renderMenu();
 // 首次使用（没账号）自动进向导
 api("/api/setup/check").then(function(st){

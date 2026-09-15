@@ -34,7 +34,7 @@ import (
 
 const (
 	appName    = "micam"
-	appVersion = "0.7.0"
+	appVersion = "0.7.1"
 )
 
 func main() {
@@ -140,6 +140,15 @@ func main() {
 		_ = os.Chmod(*socketPath, 0o660)
 		listeners = append(listeners, ln)
 		log.Printf("监听 Unix socket: %s", *socketPath)
+
+		// socket 自愈守护
+		//
+		// 为什么需要：飞牛应用中心安装/升级插件时会替换应用目录，
+		// socket 文件会被删除，但进程仍在运行（日志显示 already running）。
+		// 网关连不上 socket -> Bad Gateway。
+		//
+		// 这里定期检查 socket 文件是否存在，丢失就重建。
+		go watchSocket(*socketPath, httpSrv)
 	}
 
 	if *httpAddr != "" {
@@ -505,6 +514,40 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 
 func writeErr(w http.ResponseWriter, code int, msg string) {
 	writeJSON(w, code, map[string]any{"msg": msg})
+}
+
+// watchSocket 监控 socket 文件，丢失时自动重建。
+//
+// 场景：飞牛应用中心替换应用目录时删掉了 app.sock，
+// 但进程还活着，网关就再也连不上了（Bad Gateway）。
+func watchSocket(path string, srv *http.Server) {
+	t := time.NewTicker(3 * time.Second)
+	defer t.Stop()
+
+	for range t.C {
+		if _, err := os.Stat(path); err == nil {
+			continue
+		}
+
+		// socket 文件没了 —— 重建
+		log.Printf("检测到 socket 丢失，正在重建: %s", path)
+		_ = os.Remove(path)
+
+		ln, err := net.Listen("unix", path)
+		if err != nil {
+			log.Printf("重建 socket 失败: %v", err)
+			continue
+		}
+		_ = os.Chmod(path, 0o660)
+
+		go func(l net.Listener) {
+			if err := srv.Serve(l); err != nil && err != http.ErrServerClosed {
+				log.Printf("socket listener 退出: %v", err)
+			}
+		}(ln)
+
+		log.Printf("socket 已重建: %s", path)
+	}
 }
 
 // stripPrefixMiddleware 剥掉网关前缀。

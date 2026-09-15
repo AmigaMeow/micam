@@ -41,6 +41,7 @@ type Device struct {
 	LocalIP   string `json:"localip"`
 	IsOnline  bool   `json:"isOnline"`
 	ShareFlag int    `json:"shareFlag"`
+	Shared    bool   `json:"shared"`     // 来自共享家庭
 	Permit    int    `json:"permitLevel"`
 	ParentID  string `json:"parent_id"`
 	Token     string `json:"token"`
@@ -372,6 +373,8 @@ func (s *Session) AllCameras() ([]Device, error) {
 			for _, d := range devs {
 				if d.IsCamera() && !seen[d.Did] {
 					seen[d.Did] = true
+					// 标记为共享设备（来自共享家庭）
+					d.Shared = true
 					out = append(out, d)
 				}
 			}
