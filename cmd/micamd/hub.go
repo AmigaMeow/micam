@@ -344,9 +344,22 @@ func (s *Server) useConn(dev *xiaomi.Device) (*camConn, *mpegtsConsumer, func(),
 //   连续失败 2 次 -> 等 30 分钟
 //   连续失败 3 次 -> 等 1 小时
 //   连续失败 4 次 -> 等 2 小时
-//   连续失败 5 次 -> 等 4 小时（上限）
+//   连续失败 5 次 -> 等 4 小时
+//   连续失败 6+ 次 -> 等 24 小时（上限）
 //
 // 给接口大段安静时间，窗口才有机会重置。
+//
+// ===== 为什么要 24 小时（2026-09-15 实测）=====
+//
+// 限流持续了 10 小时+。期间我们只发了 8 次调用
+// （间隔 16分→45分→75分→135分，退避有效），
+// 但仍然不恢复。
+//
+// 说明小米的限流**可能不是简单的滑动窗口**，
+// 而更像「每日配额」或「长时间封禁」。
+// 这种情况下，任何尝试都可能是徒劳，还会延长封禁。
+//
+// 所以把上限提到 24 小时：给足恢复时间，也不再浪费调用。
 var (
 	refreshMu   sync.Mutex
 	refreshLast = map[string]time.Time{}
@@ -355,7 +368,7 @@ var (
 
 const (
 	cooldownBase = 15 * time.Minute
-	cooldownMax  = 4 * time.Hour
+	cooldownMax  = 24 * time.Hour
 )
 
 // cooldownFor 根据连续失败次数算冷却时长。
@@ -371,6 +384,15 @@ func cooldownFor(fails int) time.Duration {
 		}
 	}
 	return d
+}
+
+// cooldownHuman 可读的冷却描述（给界面用）。
+func cooldownHuman(fails int) string {
+	d := cooldownFor(fails)
+	if d >= time.Hour {
+		return fmt.Sprintf("%.0f 小时", d.Hours())
+	}
+	return fmt.Sprintf("%.0f 分钟", d.Minutes())
 }
 
 // requestFreshSource 向小米云申请新凭据（不动缓存）。

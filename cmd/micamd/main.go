@@ -34,7 +34,7 @@ import (
 
 const (
 	appName    = "micam"
-	appVersion = "0.9.4"
+	appVersion = "0.9.5"
 )
 
 func main() {
