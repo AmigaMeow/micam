@@ -103,7 +103,17 @@ func (s *Server) handleHLS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 改写分片路径为 API 路径
+	// 改写分片路径。
+	//
+	// 关键：相对路径必须保留 "hls" 这一段。
+	//
+	// m3u8 的 URL 形如 <prefix>/api/live/hls?did=X
+	// 相对路径解析规则：替换最后一个路径段。
+	//
+	//   "seg?did=X&seg=seg0.ts"   -> <prefix>/api/live/seg?...     ❌ 404
+	//   "hls?did=X&seg=seg0.ts"   -> <prefix>/api/live/hls?...     ✅ 正确
+	//
+	// 这样写不管网关前缀是什么（/app/micam 或空）都能解析正确。
 	content := rewritePlaylist(string(data), did)
 
 	w.Header().Set("Content-Type", "application/vnd.apple.mpegurl")
@@ -310,7 +320,10 @@ func (s *Server) hlsReaper(did string) {
 	}
 }
 
-// rewritePlaylist 把 m3u8 里的分片路径改写成 API 路径。
+// rewritePlaylist 把 m3u8 里的分片路径改写成可正确解析的相对路径。
+//
+// 保留 "hls" 段是关键：相对路径解析会替换最后一个路径段，
+// 写 "hls?..." 才能解析回 /api/live/hls?...。
 func rewritePlaylist(content, did string) string {
 	lines := strings.Split(content, "\n")
 	var out []string
@@ -320,8 +333,7 @@ func rewritePlaylist(content, did string) string {
 			out = append(out, line)
 			continue
 		}
-		// 分片行，改写为 API 路径
-		out = append(out, "seg?did="+did+"&seg="+line)
+		out = append(out, "hls?did="+did+"&seg="+line)
 	}
 	return strings.Join(out, "\n")
 }

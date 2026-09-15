@@ -724,8 +724,38 @@ function startLiveHLS(did){
   var box = $("#player");
   var st = $("#liveState");
   var hint = $("#liveHint");
+  if(!box) return;
 
-  var pct = 0;
+  // ---- 构建 DOM：video 在底层，overlay 在上层 ----
+  //
+  // 关键：不能先设 innerHTML 再清空，否则 overlay 会被删掉，
+  // 表现就是「黑屏但没有转圈」。
+  var video = document.createElement("video");
+  video.id = "liveVideo";
+  video.style.cssText = "width:100%;height:100%;object-fit:contain;display:block;background:#000;position:absolute;inset:0";
+  video.autoplay = true;
+  video.muted = true;
+  video.playsInline = true;
+  video.controls = false;
+
+  var overlay = document.createElement("div");
+  overlay.className = "loading-overlay";
+  overlay.id = "liveOverlay";
+  overlay.innerHTML = "<div class=\"spin\"></div>"
+    + "<div class=\"txt\" id=\"liveStep\">正在连接摄像头…</div>"
+    + "<div style=\"width:200px\"><div class=\"progress\" style=\"margin-top:0\">"
+    +   "<div class=\"progress-bar\" id=\"liveBar\" style=\"width:5%\"></div>"
+    + "</div></div>"
+    + "<div class=\"txt\" id=\"livePct\" style=\"font-size:12px;opacity:.7\">5%</div>";
+
+  box.style.position = "relative";
+  box.innerHTML = "";
+  box.appendChild(video);     // 底层
+  box.appendChild(overlay);   // 上层（后加的在上）
+
+  // ---- 进度推进 ----
+  var pct = 5;
+  var stepIdx = 0;
   var steps = [
     [5,  "正在连接摄像头…"],
     [20, "转码中（首次约 5-10 秒）…"],
@@ -733,90 +763,104 @@ function startLiveHLS(did){
     [70, "即将播放…"]
   ];
 
-  box.innerHTML = "<div class=\"loading-overlay\" id=\"liveOverlay\">"
-    + "<div class=\"spin\"></div>"
-    + "<div class=\"txt\" id=\"liveStep\">正在连接摄像头…</div>"
-    + "<div style=\"width:200px\"><div class=\"progress\" style=\"margin-top:0\">"
-    +   "<div class=\"progress-bar\" id=\"liveBar\" style=\"width:5%\"></div>"
-    + "</div></div>"
-    + "<div class=\"txt\" id=\"livePct\" style=\"font-size:12px;opacity:.7\">5%</div>"
-    + "</div>";
-
-  var stepIdx = 0;
   var progTimer = setInterval(function(){
     stepIdx++;
     if(stepIdx < steps.length){
       pct = steps[stepIdx][0];
-      var bar = document.getElementById("liveBar");
-      var stp = document.getElementById("liveStep");
-      var pctEl = document.getElementById("livePct");
-      if(bar) bar.style.width = pct + "%";
-      if(stp) stp.textContent = steps[stepIdx][1];
-      if(pctEl) pctEl.textContent = pct + "%";
+    } else {
+      pct = Math.min(pct + 1, 92);
     }
+    var bar = document.getElementById("liveBar");
+    var pctEl = document.getElementById("livePct");
+    var stp = document.getElementById("liveStep");
+    if(bar) bar.style.width = pct + "%";
+    if(pctEl) pctEl.textContent = pct + "%";
+    if(stp && stepIdx < steps.length) stp.textContent = steps[stepIdx][1];
   }, 2000);
 
+  var cleared = false;
   function clearProg(){
+    if(cleared) return;
+    cleared = true;
     if(progTimer) clearInterval(progTimer);
     var ov = document.getElementById("liveOverlay");
     if(ov) ov.remove();
+  }
+  function showError(msg){
+    if(cleared) return;
+    var stp = document.getElementById("liveStep");
+    if(stp){ stp.textContent = msg; stp.style.color = "#ff7875"; }
+    var sp = overlay.querySelector(".spin");
+    if(sp) sp.style.display = "none";
+    if(progTimer) clearInterval(progTimer);
   }
 
   if(st) st.textContent = "连接中";
   if(hint) hint.textContent = "HLS 模式（2K 流畅）";
 
-  // 用 video 元素播放 HLS
-  var video = document.createElement("video");
-  video.style.cssText = "width:100%;height:100%;object-fit:contain;display:block;background:#000";
-  video.autoplay = true;
-  video.muted = true;
-  video.playsInline = true;
-  video.controls = false;
-
   var src = apiUrl("/api/live/hls?did="+encodeURIComponent(did)+"&fps=15&w="+liveWidth);
+  var started = false;
+  var hlsObj = null;
+
+  function ok(){
+    if(started) return;
+    started = true;
+    if(st) st.textContent = "播放中";
+    clearProg();
+  }
+
+  function fallback(reason){
+    if(started) return;
+    console.log("[micam] HLS 失败，降级 MJPEG: " + reason);
+    if(hint) hint.textContent = reason + "，已切到兼容模式";
+    if(hlsObj){ try { hlsObj.destroy(); } catch(e){} }
+    cleared = false;              // 允许 MJPEG 重建覆盖层
+    clearProg();
+    liveMode = "mjpeg";
+    var sel = document.getElementById("selMode");
+    if(sel) sel.value = "mjpeg";
+    startLiveMJPEG(did);
+  }
 
   if(video.canPlayType("application/vnd.apple.mpegurl")){
-    // Safari 原生支持 HLS
+    // Safari 原生 HLS
     video.src = src;
+    video.onplaying = ok;
+    video.onerror = function(){ fallback("HLS 播放失败"); };
   } else if(window.Hls && window.Hls.isSupported()){
-    // 其他浏览器用 hls.js
-    var hls = new window.Hls({ lowLatencyMode: false, liveSyncDurationCount: 2 });
-    hls.loadSource(src);
-    hls.attachMedia(video);
-    hls.on(window.Hls.Events.ERROR, function(e, data){
-      if(data.fatal){
-        if(hint) hint.textContent = "HLS 播放失败，可切换到兼容模式";
-        clearProg();
-      }
+    hlsObj = new window.Hls({
+      lowLatencyMode: false,
+      liveSyncDurationCount: 2,
+      manifestLoadingTimeOut: 20000,
+      fragLoadingTimeOut: 20000,
+      manifestLoadingMaxRetry: 2
     });
+    hlsObj.loadSource(src);
+    hlsObj.attachMedia(video);
+    hlsObj.on(window.Hls.Events.ERROR, function(e, data){
+      if(!data || !data.fatal) return;
+      console.log("[micam] hls.js 致命错误: " + data.type + "/" + data.details);
+      showError("播放失败：" + data.details);
+      setTimeout(function(){ fallback("HLS 加载失败"); }, 800);
+    });
+    video.onplaying = ok;
   } else {
-    // 没有 hls.js，降级到 MJPEG
-    if(hint) hint.textContent = "浏览器不支持 HLS，已降级到兼容模式";
-    clearProg();
-    startLiveMJPEG(did);
+    fallback(window.__hlsFailed ? "hls.js 加载失败" : "浏览器不支持 HLS");
     return;
   }
 
-  video.onplaying = function(){
-    if(st) st.textContent = "播放中";
-    clearProg();
-  };
-  video.onerror = function(){
-    if(hint) hint.textContent = "播放失败，可切换到兼容模式";
-    clearProg();
-  };
-
-  box.innerHTML = "";
-  box.appendChild(video);
   video.play().catch(function(){});
 
+  // 兜底：20 秒还没画面就降级
   if(liveTimer) clearTimeout(liveTimer);
   liveTimer = setTimeout(function(){
-    if(st && st.textContent === "连接中"){
-      st.textContent = "播放中";
+    if(started) return;
+    if(video.readyState >= 2){
+      ok();
+      return;
     }
-    clearProg();
-  }, 45000);
+    fallback("HLS 超时（20 秒无画面）");
+  }, 20000);
 }
 
 // MJPEG 播放（兼容模式）
@@ -897,8 +941,37 @@ function startLiveMJPEG(did){
   // 画质参数：w=0 表示不缩放（保持源分辨率 2K = 2560x1440）
   // 需要降低带宽时可以改成 w=1280 或 w=640
   img.src = apiUrl("/api/live/mjpeg?did="+encodeURIComponent(did)+"&fps=12&w="+liveWidth+"&t="+Date.now());
+
+  // 关键：不能清空后再放 img，否则加载层被删掉（黑屏无转圈）。
+  // 顺序：清空 -> img（底层）-> overlay（上层）
+  img.style.position = "absolute";
+  img.style.inset = "0";
+  img.style.width = "100%";
+  img.style.height = "100%";
+  img.style.objectFit = "contain";
+  box.style.position = "relative";
   box.innerHTML = "";
   box.appendChild(img);
+
+  var ov = document.getElementById("liveOverlay");
+  if(!ov){
+    ov = document.createElement("div");
+    ov.className = "loading-overlay";
+    ov.id = "liveOverlay";
+    ov.innerHTML = "<div class=\"spin\"></div>"
+      + "<div class=\"txt\">正在连接摄像头…</div>";
+    box.appendChild(ov);
+  } else {
+    // 重新挂到最上层
+    box.appendChild(ov);
+  }
+
+  // 首帧到达时移除加载层
+  img.onload = function(){
+    if(st) st.textContent = "播放中";
+    if(hint) hint.textContent = "兼容模式（MJPEG）";
+    if(window.__clearProg) window.__clearProg();
+  };
   // MJPEG 是无限流，onload 可能不触发，用定时器兜底
   if(liveTimer) clearTimeout(liveTimer);
   liveTimer = setTimeout(function(){
