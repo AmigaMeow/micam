@@ -683,16 +683,26 @@ function renderLive(c){
       +   "<div class=\"ptz\">"
       +     "<div class=\"ptz-grid\">"
       +       "<div></div>"
-      +       "<button class=\"ptz-btn\" data-ptz=\"5\" title=\"上\">▲</button>"
+      +       "<button class=\"ptz-btn\" data-dir=\"up\" data-ptz=\"3\" title=\"上\">▲</button>"
       +       "<div></div>"
-      +       "<button class=\"ptz-btn\" data-ptz=\"2\" title=\"左\">◀</button>"
+      +       "<button class=\"ptz-btn\" data-dir=\"left\" data-ptz=\"2\" title=\"左\">◀</button>"
       +       "<button class=\"ptz-btn ptz-center\" id=\"ptzHome\" title=\"查询位置\">●</button>"
-      +       "<button class=\"ptz-btn\" data-ptz=\"3\" title=\"右\">▶</button>"
+      +       "<button class=\"ptz-btn\" data-dir=\"right\" data-ptz=\"5\" title=\"右\">▶</button>"
       +       "<div></div>"
-      +       "<button class=\"ptz-btn\" data-ptz=\"4\" title=\"下\">▼</button>"
+      +       "<button class=\"ptz-btn\" data-dir=\"down\" data-ptz=\"4\" title=\"下\">▼</button>"
       +       "<div></div>"
       +     "</div>"
       +     "<div class=\"ptz-info\" id=\"ptzInfo\">云台：点击 ● 查询当前位置</div>"
+      +     "<div style=\"margin-top:10px;font-size:12px\">"
+      +       "<a href=\"javascript:;\" id=\"ptzFlipToggle\" style=\"color:var(--primary)\">方向不对？</a>"
+      +       "<div id=\"ptzFlipPanel\" style=\"display:none;margin-top:8px;padding:10px 12px;background:var(--hover);border-radius:8px\">"
+      +         "<div style=\"color:var(--text-3);margin-bottom:8px\">不同摄像头安装方向不同，可单独调整（按设备记住）</div>"
+      +         "<label style=\"display:flex;align-items:center;gap:8px;margin-bottom:6px\">"
+      +           "<input type=\"checkbox\" id=\"flipPan\"> 左右翻转</label>"
+      +         "<label style=\"display:flex;align-items:center;gap:8px\">"
+      +           "<input type=\"checkbox\" id=\"flipTilt\"> 上下翻转</label>"
+      +       "</div>"
+      +     "</div>"
       +   "</div>"
       + "</div></div>";
     Array.prototype.forEach.call(document.querySelectorAll("[data-tab]"), function(b){
@@ -710,8 +720,35 @@ function renderLive(c){
     $("#btnSnap").onclick = function(){ snap(currentDid); };
     $("#btnRec").onclick = function(){ startRec(currentDid); };
     Array.prototype.forEach.call(document.querySelectorAll("[data-ptz]"), function(b){
-      b.onclick = function(){ ptzMove(parseInt(b.dataset.ptz,10)); };
+      b.onclick = function(){
+        var op = parseInt(b.dataset.ptz, 10);
+        var dir = b.dataset.dir;
+        // 应用每台设备的方向翻转
+        if(dir === "left" || dir === "right"){
+          if(ptzFlip().pan) op = (dir === "left") ? 5 : 2;
+        }
+        if(dir === "up" || dir === "down"){
+          if(ptzFlip().tilt) op = (dir === "up") ? 4 : 3;
+        }
+        ptzMove(op);
+      };
     });
+    // 翻转面板
+    var ft = $("#ptzFlipToggle");
+    if(ft) ft.onclick = function(){
+      var panel = $("#ptzFlipPanel");
+      if(panel) panel.style.display = (panel.style.display === "none") ? "block" : "none";
+    };
+    var fp = $("#flipPan");
+    if(fp){
+      fp.checked = ptzFlip().pan;
+      fp.onchange = function(){ setPtzFlip("pan", this.checked); };
+    }
+    var fti = $("#flipTilt");
+    if(fti){
+      fti.checked = ptzFlip().tilt;
+      fti.onchange = function(){ setPtzFlip("tilt", this.checked); };
+    }
     $("#ptzHome").onclick = ptzStatus;
     startLive(currentDid);
   });
@@ -1576,6 +1613,25 @@ function renderSettings(c){
     + "<tr><td style=\"color:var(--text-2)\">连接方式</td><td>小米云 P2P 直连（不依赖 EasyNVR）</td></tr>"
     + "<tr><td style=\"color:var(--text-2)\">后端</td><td><span class=\"tag tag-on\">运行中</span></td></tr>"
     + "</table></div>";
+}
+
+// ===== 云台方向翻转（按设备记住）=====
+//
+// 为什么需要：不同摄像头安装方向不同（正装/倒装/侧装），
+// 实测 CW300 的云台方向与标称不一致。
+// 让用户在界面上自己校正，比在代码里写死更灵活。
+function ptzFlipKey(axis){
+  return "micam.flip." + axis + "." + (currentDid || "default");
+}
+function ptzFlip(){
+  return {
+    pan:  localStorage.getItem(ptzFlipKey("pan")) === "1",
+    tilt: localStorage.getItem(ptzFlipKey("tilt")) === "1"
+  };
+}
+function setPtzFlip(axis, on){
+  localStorage.setItem(ptzFlipKey(axis), on ? "1" : "0");
+  toast(axis === "pan" ? "左右方向已保存" : "上下方向已保存", "ok");
 }
 
 // ===== 动作 =====
