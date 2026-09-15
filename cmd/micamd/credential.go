@@ -206,3 +206,55 @@ func (s *Server) handleCredStatus(w http.ResponseWriter, r *http.Request) {
 		"validForH":   24,   // 实测值（保守）
 	})
 }
+
+// ---- 账号会话守护 ----
+//
+// 为什么需要：serviceToken 短期有效，过期后接口会返回未登录错误。
+// 虽然 Request 里有自动重试（见 internal/xiaomi/client.go），
+// 但「先失败一次再续期」会让用户看到一次错误。
+//
+// 这里提前续期，用户完全无感。
+
+// sessionRenewAfter serviceToken 用多久后主动续期。
+//
+// 小米的 serviceToken 时长不公开，保守取 8 小时。
+// 即使续期失败，Request 里的自动重试仍能兜住。
+const sessionRenewAfter = 8 * time.Hour
+
+// startAccountKeeper 启动账号会话守护。
+func (s *Server) startAccountKeeper() {
+	go func() {
+		time.Sleep(3 * time.Minute)
+
+		t := time.NewTicker(30 * time.Minute)
+		defer t.Stop()
+
+		for {
+			s.renewAccountSessions()
+			<-t.C
+		}
+	}()
+}
+
+// renewAccountSessions 给快过期的账号会话续期。
+func (s *Server) renewAccountSessions() {
+	for _, sess := range s.store.AllSessions() {
+		last := sess.LastExchange()
+		if last.IsZero() {
+			continue
+		}
+		age := time.Since(last)
+		if age < sessionRenewAfter {
+			continue
+		}
+
+		logf("[acct] %s 会话已 %v，提前续期", sess.UserID, age.Round(time.Minute))
+		if err := sess.Reauth(); err != nil {
+			// 续期失败不影响使用（旧 token 可能还有效），
+			// 下次 Request 遇到未登录会自动重试
+			logf("[acct] %s 续期失败（不影响当前使用）: %v", sess.UserID, err)
+		} else {
+			logf("[acct] %s 会话已续期", sess.UserID)
+		}
+	}
+}

@@ -34,7 +34,7 @@ import (
 
 const (
 	appName    = "micam"
-	appVersion = "0.9.1"
+	appVersion = "0.9.2"
 )
 
 func main() {
@@ -113,6 +113,9 @@ func main() {
 
 	// 凭据守护：提前续期，避免过期后被动刷新撞限流
 	srv.startCredentialKeeper()
+
+	// 账号会话守护：提前续期 serviceToken（用户无感）
+	srv.startAccountKeeper()
 
 	_ = rtspPort // 保留参数，当前用管道方案，不需要 RTSP 中转
 
@@ -361,6 +364,12 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/accounts", s.handleAccounts)          // GET 列表 / POST 添加
 	mux.HandleFunc("/api/accounts/qr", s.handleQRStart)        // POST 发起扫码
 	mux.HandleFunc("/api/accounts/qr/status", s.handleQRStatus) // GET 轮询扫码状态
+
+	// 凭据备份 / 恢复 / 状态
+	mux.HandleFunc("/api/accounts/export", s.handleCredExport)
+	mux.HandleFunc("/api/accounts/import", s.handleCredImport)
+	mux.HandleFunc("/api/accounts/backups", s.handleCredBackup)
+	mux.HandleFunc("/api/accounts/status", s.handleAccountStatus)
 
 	// 设备
 	mux.HandleFunc("/api/devices", s.handleDevices)

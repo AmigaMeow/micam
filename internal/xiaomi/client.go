@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -29,6 +31,18 @@ type Session struct {
 	client    *http.Client
 	deviceID  string
 	userAgent string
+
+	// authMu 保护 serviceToken 的续期（多 goroutine 会并发调 API）
+	authMu       sync.Mutex
+	lastExchange time.Time
+	exchangeErr  error
+
+	// gen 每次成功续期 +1。
+	//
+	// 用途：多个 goroutine 同时遇到 401 时，
+	// 请求前记下 gen，拿锁后发现 gen 变了，说明别人已经换好了，直接复用。
+	// 比「按时间防抖」精确 —— 时间判断会误伤「刚登录就遇到坏 token」的场景。
+	gen uint64
 }
 
 // Device 小米设备。
@@ -107,7 +121,14 @@ func NewSession() *Session {
 func (s *Session) SetTokens(userID, passToken string) error {
 	s.UserID = userID
 	s.PassToken = passToken
-	return s.exchangeServiceToken()
+	if err := s.exchangeServiceToken(); err != nil {
+		return err
+	}
+	s.authMu.Lock()
+	s.lastExchange = time.Now()
+	s.gen++
+	s.authMu.Unlock()
+	return nil
 }
 
 // Login 账号密码登录。
@@ -243,8 +264,36 @@ func (s *Session) finishAuth(location string) error {
 	return nil
 }
 
+// logf_Session 包内日志（避免引入主包依赖）。
+func logf_Session(format string, a ...any) {
+	log.Printf(format, a...)
+}
+
 // Request 调用小米云 API（自动签名 + 解密）。
+//
+// ===== 凭据分两层，别混淆 =====
+//
+//	第一层：passToken（扫码登录时拿到）
+//	  长期有效（实测 >= 24 小时，实际可达数月）
+//	  只在换设备/换密码/主动登出时失效
+//	  -> 用户扫一次码就够了，不需要反复扫
+//
+//	第二层：serviceToken + ssecurity（由 passToken 换取）
+//	  短期有效（小米通常几小时到几天）
+//	  过期后接口返回未登录错误
+//	  -> 必须自动续期，否则监控就会中断
+//
+// 这里实现自动续期：遇到未登录错误时，用 passToken 重新换一次，
+// 然后重试原请求。用户完全无感。
 func (s *Session) Request(path, data string) (json.RawMessage, error) {
+	return s.request(path, data, true)
+}
+
+// request 内部实现，allowReauth 控制是否允许续期重试。
+func (s *Session) request(path, data string, allowReauth bool) (json.RawMessage, error) {
+	// 记下当前代际：如果续期后 gen 变了，说明是别的 goroutine 换的，我们直接用
+	genAt := s.Gen()
+
 	form, sn, err := SignRequest(s.Ssecurity, path, data)
 	if err != nil {
 		return nil, err
@@ -262,6 +311,22 @@ func (s *Session) Request(path, data string) (json.RawMessage, error) {
 	}
 	defer res.Body.Close()
 	raw, _ := io.ReadAll(res.Body)
+
+	// HTTP 401/403 也是「会话过期」的一种表达。
+	//
+	// 实测：把 serviceToken 改成非法值时，小米返回 HTTP 401
+	// （不是 JSON 里的 code 字段）。所以这里也要触发续期。
+	if res.StatusCode == 401 || res.StatusCode == 403 {
+		if allowReauth {
+			logf_Session("收到 HTTP %d，判定会话过期，强制续期", res.StatusCode)
+			if err := s.reauth(true, genAt); err != nil {
+				return nil, fmt.Errorf("xiaomi: 会话过期且续期失败: %w", err)
+			}
+			return s.request(path, data, false)
+		}
+		return nil, fmt.Errorf("xiaomi: http %d（续期后仍失败）", res.StatusCode)
+	}
+
 	if res.StatusCode != 200 {
 		return nil, fmt.Errorf("xiaomi: http %d", res.StatusCode)
 	}
@@ -278,9 +343,118 @@ func (s *Session) Request(path, data string) (json.RawMessage, error) {
 		return nil, err
 	}
 	if out.Code != 0 {
+		// 未登录/会话过期 -> 用 passToken 重新换 serviceToken 后重试一次
+		if allowReauth && isSessionExpired(out.Code, out.Message) {
+			logf_Session("检测到会话过期（code=%d msg=%s），强制续期", out.Code, out.Message)
+			if err := s.reauth(true, genAt); err != nil {
+				return nil, fmt.Errorf("xiaomi: 会话过期且续期失败: %w", err)
+			}
+			return s.request(path, data, false)
+		}
 		return nil, fmt.Errorf("xiaomi: code=%d msg=%s", out.Code, out.Message)
 	}
 	return out.Result, nil
+}
+
+// isSessionExpired 判断是否为「需要重新登录」的错误。
+//
+// 小米云的各种未登录表达：
+//
+//	code 401 / -1 / 1 + message 含 "login" / "auth" / "token"
+func isSessionExpired(code int, msg string) bool {
+	if code == 401 {
+		return true
+	}
+	low := strings.ToLower(msg)
+	for _, kw := range []string{"login", "auth", "token", "expired", "session"} {
+		if strings.Contains(low, kw) {
+			return true
+		}
+	}
+	return false
+}
+
+// Reauth 主动续期（带防抖，用于定时守护）。
+//
+// 30 秒内刚换过就跳过，避免周期性任务重复调用。
+func (s *Session) Reauth() error {
+	return s.reauth(false, 0)
+}
+
+// ReauthForce 强制续期（用于「请求已经失败」的场景）。
+//
+// 与 Reauth 的区别：
+//   - Reauth 是「预防性」的，可以防抖跳过
+//   - ReauthForce 是「补救性」的，说明当前 token 确定坏了，必须真换
+//
+// 实测踩坑：一开始只有 Reauth，防抖窗口内直接返回 nil 不换，
+// 结果 401 之后「续期成功但 token 没变」，重试还是 401。
+//
+// 仍然串行化 + 2 秒窗口：避免大量并发 401 同时去打小米云。
+func (s *Session) ReauthForce() error {
+	return s.reauth(true, 0)
+}
+
+func (s *Session) reauth(force bool, genAt uint64) error {
+	s.authMu.Lock()
+	defer s.authMu.Unlock()
+
+	// 并发保护：拿锁后发现 gen 变了，说明别的 goroutine 已经换好了
+	if force && genAt != 0 && s.gen != genAt {
+		return nil
+	}
+
+	// 预防性续期的防抖（30 秒内不重复）
+	if !force && !s.lastExchange.IsZero() && time.Since(s.lastExchange) < 30*time.Second && s.exchangeErr == nil {
+		return nil
+	}
+
+	// 续期刚失败过（30 秒内）就不重复打，避免把限流撞得更狠
+	if s.exchangeErr != nil && !s.lastExchange.IsZero() && time.Since(s.lastExchange) < 30*time.Second {
+		return s.exchangeErr
+	}
+
+	if err := s.exchangeServiceToken(); err != nil {
+		s.exchangeErr = err
+		s.lastExchange = time.Now()
+		return err
+	}
+	s.gen++
+	s.lastExchange = time.Now()
+	s.exchangeErr = nil
+	return nil
+}
+
+// Gen 当前凭据代际（续期成功会变）。
+func (s *Session) Gen() uint64 {
+	s.authMu.Lock()
+	defer s.authMu.Unlock()
+	return s.gen
+}
+
+// LastExchange 上次续期时间。
+func (s *Session) LastExchange() time.Time {
+	s.authMu.Lock()
+	defer s.authMu.Unlock()
+	return s.lastExchange
+}
+
+// SetServiceToken 直接设置 serviceToken（从磁盘恢复时用，跳过续期）。
+func (s *Session) SetServiceToken(tok string, sec []byte) {
+	s.ServiceToken = tok
+	s.Ssecurity = sec
+	s.lastExchange = time.Now()
+}
+
+// TokenValid 粗略判断 serviceToken 是否还在有效期内。
+func (s *Session) TokenValid() bool {
+	s.authMu.Lock()
+	defer s.authMu.Unlock()
+	if s.ServiceToken == "" || s.lastExchange.IsZero() {
+		return false
+	}
+	// 保守估计 12 小时
+	return time.Since(s.lastExchange) < 12*time.Hour
 }
 
 // ---- 设备与家庭 ----

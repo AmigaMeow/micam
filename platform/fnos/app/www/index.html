@@ -80,6 +80,7 @@ svg{display:block}
 .tag{display:inline-flex;align-items:center;gap:4px;height:22px;padding:0 8px;
   border-radius:4px;font-size:12px;line-height:1;border:1px solid transparent;white-space:nowrap}
 .tag-on{background:#f6ffed;color:#389e0d;border-color:#b7eb8f}
+.tag-warn{background:rgba(250,173,20,.12);color:var(--warning)}
 .tag-off{background:#fff2f0;color:#cf1322;border-color:#ffccc7}
 .tag-share{background:#e6f4ff;color:#0958d9;border-color:#91caff}
 .tag-def{background:#fafafa;color:var(--text-2);border-color:var(--border-2)}
@@ -1477,19 +1478,110 @@ function delRec(info){
 // ===== 页面：账号管理 =====
 function renderAccounts(c){
   c.innerHTML = loading();
-  api("/api/accounts").then(function(r){
-    var list = Array.isArray(r) ? r : [];
+  Promise.all([api("/api/accounts"), api("/api/accounts/status").catch(function(){ return {}; })]).then(function(res){
+    var list = Array.isArray(res[0]) ? res[0] : [];
+    var st = res[1] || {};
+    var stMap = {};
+    (st.accounts || []).forEach(function(x){ stMap[x.userId] = x; });
+
     var rows = list.length ? list.map(function(a){
-      return "<tr><td style=\"font-family:ui-monospace,monospace\">"+esc(a.userId)+"</td>"
+      var s = stMap[a.userId] || {};
+      var sess = s.sessionOk ? "<span class=\"tag tag-on\">会话正常</span>" : "<span class=\"tag tag-warn\">会话待续期</span>";
+      return "<tr>"
+        + "<td style=\"font-family:ui-monospace,monospace\">"+esc(a.userId)+"</td>"
         + "<td style=\"color:var(--text-3);font-size:12px\">"+esc(a.addedAt||"—")+"</td>"
-        + "<td>"+(a.online?"<span class=\"tag tag-on\">已登录</span>":"<span class=\"tag tag-off\">离线</span>")+"</td></tr>";
-    }).join("") : "<tr><td colspan=\"3\">"+empty("user","还没有账号","扫码添加后即可发现设备","")+"</td></tr>";
-    c.innerHTML = "<div class=\"card\">"
-      + "<div class=\"card-head\"><span class=\"card-title\">小米账号</span>"
-      +   "<button class=\"btn btn-primary\" id=\"btnQR2\">"+icon("plus",12)+"扫码添加</button></div>"
-      + "<table><thead><tr><th>用户 ID</th><th>添加时间</th><th style=\"width:110px\">状态</th></tr></thead><tbody>"+rows+"</tbody></table>"
+        + "<td>"+(a.online?"<span class=\"tag tag-on\">已登录</span>":"<span class=\"tag tag-off\">离线</span>")+"</td>"
+        + "<td>"+sess+"</td>"
+        + "</tr>";
+    }).join("") : "<tr><td colspan=\"4\">"+empty("user","还没有账号","扫码添加后即可发现设备","")+"</td></tr>";
+
+    var explain = st.explain || {};
+
+    c.innerHTML = ""
+      + "<div class=\"card\">"
+      +   "<div class=\"card-head\"><span class=\"card-title\">" + icon("user",15) + " 小米账号</span>"
+      +     "<button class=\"btn btn-primary\" id=\"btnQR2\">"+icon("plus",12)+"扫码添加</button></div>"
+      +   "<div class=\"table-wrap\"><table><thead><tr><th>用户 ID</th><th style=\"width:160px\">添加时间</th><th style=\"width:100px\">登录</th><th style=\"width:120px\">会话</th></tr></thead><tbody>"+rows+"</tbody></table></div>"
+      + "</div>"
+
+      // 凭据说明（消除用户疑虑）
+      + "<div class=\"card\">"
+      +   "<div class=\"card-head\"><span class=\"card-title\">" + icon("check",15) + " 凭据说明</span></div>"
+      +   "<div style=\"padding:16px 24px\">"
+      +     "<div style=\"font-size:13px;line-height:1.9\">"
+      +       "<div><b>登录凭据（passToken）</b> —— <span style=\"color:var(--success)\">长期有效</span>"
+      +         "<div style=\"font-size:12px;color:var(--text-3);margin-left:16px\">"+esc(explain.passToken||"扫码一次即可，无需反复扫码")+"</div></div>"
+      +       "<div style=\"margin-top:10px\"><b>会话凭据（serviceToken）</b> —— <span style=\"color:var(--primary)\">自动续期</span>"
+      +         "<div style=\"font-size:12px;color:var(--text-3);margin-left:16px\">"+esc(explain.serviceToken||"过期自动续期，用户无感")+"</div></div>"
+      +       "<div style=\"margin-top:10px\"><b>设备凭据（每台摄像头）</b> —— <span style=\"color:var(--primary)\">自动续期</span>"
+      +         "<div style=\"font-size:12px;color:var(--text-3);margin-left:16px\">"+esc(explain.deviceCred||"有效期 24 小时以上，到期前自动续期")+"</div></div>"
+      +     "</div>"
+      +   "</div>"
+      + "</div>"
+
+      // 备份/恢复
+      + "<div class=\"card\">"
+      +   "<div class=\"card-head\"><span class=\"card-title\">" + icon("inbox",15) + " 凭据备份</span></div>"
+      +   "<div style=\"padding:16px 24px\">"
+      +     "<p style=\"font-size:13px;color:var(--text-3);margin-bottom:14px\">"
+      +       "重装插件或换设备前建议导出备份。导入后无需重新扫码。"
+      +       "<br><b style=\"color:var(--warning)\">导出文件含登录凭据，请妥善保管，不要外传。</b>"
+      +     "</p>"
+      +     "<div class=\"btn-group\">"
+      +       "<button class=\"btn btn-primary\" id=\"btnCredExport\">" + icon("inbox",12) + "导出凭据</button>"
+      +       "<button class=\"btn\" id=\"btnCredImport\">" + icon("plus",12) + "导入凭据</button>"
+      +       "<button class=\"btn\" id=\"btnCredBackups\">" + icon("refresh",12) + "查看备份</button>"
+      +     "</div>"
+      +     "<input type=\"file\" id=\"credFile\" accept=\".json\" style=\"display:none\">"
+      +     "<div id=\"credBackupList\" style=\"margin-top:14px\"></div>"
+      +   "</div>"
       + "</div>";
+
     $("#btnQR2").onclick = showQR;
+
+    $("#btnCredExport").onclick = function(){
+      toast("正在导出…");
+      window.open(apiUrl("/api/accounts/export"), "_blank");
+      setTimeout(function(){ toast("已导出。请妥善保管该文件。", "ok"); }, 1200);
+    };
+
+    $("#btnCredImport").onclick = function(){ $("#credFile").click(); };
+
+    $("#credFile").onchange = function(){
+      var f = this.files && this.files[0];
+      if(!f) return;
+      if(!confirm("导入会用文件里的凭据覆盖当前登录。\n\n现有凭据会自动备份。\n\n确定继续？")) { this.value = ""; return; }
+      var reader = new FileReader();
+      reader.onload = function(){
+        api("/api/accounts/import", {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: reader.result
+        }).then(function(r){
+          toast("已导入 " + (r.count||0) + " 个账号，无需重新扫码", "ok");
+          setTimeout(function(){ page = "accounts"; render(); }, 1500);
+        }).catch(function(e){ toast("导入失败：" + e.message, "err"); });
+      };
+      reader.readAsText(f);
+    };
+
+    $("#btnCredBackups").onclick = function(){
+      var box = $("#credBackupList");
+      box.innerHTML = loading("读取中…");
+      api("/api/accounts/backups").then(function(r){
+        var bs = r.backups || [];
+        if(!bs.length){ box.innerHTML = "<div style=\"font-size:12px;color:var(--text-3)\">暂无备份文件</div>"; return; }
+        box.innerHTML = "<div style=\"font-size:12px\">"
+          + bs.map(function(b){
+              return "<div style=\"display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid var(--split)\">"
+                + "<span style=\"font-family:ui-monospace,monospace\">"+esc(b.name)+"</span>"
+                + "<span style=\"color:var(--text-3)\">"+b.size+" 字节 · "+esc(b.modTime)+"</span>"
+                + "</div>";
+            }).join("")
+          + "</div>";
+      }).catch(function(e){ box.innerHTML = "<div style=\"color:var(--error);font-size:12px\">"+esc(e.message)+"</div>"; });
+    };
+  }).catch(function(e){
+    c.innerHTML = "<div class=\"card\">" + empty("close","加载失败", e.message, "") + "</div>";
   });
 }
 
