@@ -249,41 +249,92 @@ func (s *Server) useConn(dev *xiaomi.Device) (*camConn, *mpegtsConsumer, func(),
 	}
 
 	tSrc := time.Now()
-	src, err := s.resolveSource(dev)
-	if err != nil {
-		return nil, nil, nil, err
-	}
-	logf("⏱ [2] 取凭据 %v", time.Since(tSrc).Round(time.Millisecond))
 
+	// ===== 凭据轮换 =====
+	//
+	// 按「最新优先」逐个尝试历史凭据，只有全部失效才向小米云申请新的。
+	//
+	// 为什么要这样（2026-09-15 的教训）：
+	//
+	//   小米云的 miss_get_vendor 限流可以持续 24 小时+。
+	//   如果只保留最新一份凭据，一旦它失效，就彻底没得用 ——
+	//   只能干等限流解除。
+	//
+	//   保留多份历史凭据后：
+	//     1. 旧的往往还能用 -> 大幅减少云端调用
+	//     2. 限流期间仍有可用凭据 -> 可用性大幅提升
+	//     3. 确认失效的会被剔除，不会反复试
+	var prod core.Producer
+	var err error
+
+	sets := s.store.Sources(dev.Did)
 	tDial := time.Now()
-	prod, err := gxiaomi.Dial(src)
 
-	// 凭据失效时的处理策略：
-	//   1. 先清缓存，重新申请
-	//   2. 刷新失败（如小米云限流）时保留旧凭据
-	//   3. 记录冷却时间，避免频繁刷新触发限流
-	if err != nil && isAuthError(err) {
-		logf("[%s] 凭据失效（%v），尝试刷新", dev.Did, err)
-
-		if !s.canRefresh(dev.Did) {
-			logf("[%s] 刷新冷却中，跳过（上次已尝试）", dev.Did)
-		} else {
-			s.markRefresh(dev.Did)
-			newSrc, e2 := s.requestFreshSource(dev)
-			if e2 != nil {
-				logf("[%s] 刷新失败（保留旧凭据）: %v", dev.Did, e2)
-			} else if prod2, e3 := gxiaomi.Dial(newSrc); e3 != nil {
-				logf("[%s] 新凭据连接失败（保留旧凭据）: %v", dev.Did, e3)
-			} else {
-				prod, err = prod2, nil
-				s.store.SaveSource(dev.Did, newSrc)
-				logf("[%s] 凭据刷新成功", dev.Did)
+	for idx, c := range sets {
+		p, e := gxiaomi.Dial(c.Src)
+		if e == nil {
+			prod = p
+			credFailReset(c.Src)
+			if idx > 0 {
+				logf("[%s] 第 %d 组历史凭据可用，提到最前", dev.Did, idx+1)
+				s.store.PromoteSource(dev.Did, c.Src)
 			}
+			break
+		}
+		err = e
+
+		// 非凭据问题（网络抖动等）直接返回，不要误删凭据
+		if !isAuthError(e) {
+			return nil, nil, nil, e
+		}
+
+		// 容错：连续 2 次失败才剔除，单次失败只移到末尾
+		n := credFailInc(c.Src)
+		if n >= 2 {
+			logf("[%s] 第 %d/%d 组凭据连续 %d 次失效，剔除", dev.Did, idx+1, len(sets), n)
+			credFailReset(c.Src)
+			s.store.DropSourceAt(dev.Did, c.Src)
+		} else {
+			logf("[%s] 第 %d/%d 组凭据失效（第 %d 次，暂保留）", dev.Did, idx+1, len(sets), n)
+			// 移到末尾：下次优先试其他凭据
+			s.store.DemoteSource(dev.Did, c.Src)
 		}
 	}
-	if err != nil {
-		return nil, nil, nil, err
+
+	// 全部失效（或从未申请过）-> 向小米云申请
+	if prod == nil {
+		if len(sets) > 0 {
+			logf("[%s] %d 组凭据全部失效，申请新的", dev.Did, len(sets))
+		}
+
+		if !s.canRefresh(dev.Did) {
+			left := s.RefreshCooldownLeft(dev.Did)
+			fails := s.RefreshFailCount(dev.Did)
+			return nil, nil, nil, fmt.Errorf(
+				"摄像头凭据需要刷新，但小米云正在限流（已连续失败 %d 次，约 %v 后自动重试）",
+				fails, left.Round(time.Minute))
+		}
+
+		s.markRefresh(dev.Did)
+		newSrc, e2 := s.requestFreshSource(dev)
+		if e2 != nil {
+			s.markRefreshResult(dev.Did, false)
+			return nil, nil, nil, fmt.Errorf("向小米云申请凭据失败: %w", e2)
+		}
+
+		p, e3 := gxiaomi.Dial(newSrc)
+		if e3 != nil {
+			s.markRefreshResult(dev.Did, false)
+			return nil, nil, nil, fmt.Errorf("新凭据连接失败: %w", e3)
+		}
+
+		prod = p
+		s.store.SaveSource(dev.Did, newSrc)
+		s.markRefreshResult(dev.Did, true)
+		logf("[%s] 凭据申请成功", dev.Did)
 	}
+
+	logf("⏱ [2] 取凭据 %v", time.Since(tSrc).Round(time.Millisecond))
 	logf("⏱ [3] CS2 握手 %v", time.Since(tDial).Round(time.Millisecond))
 
 	c := &camConn{
@@ -325,6 +376,31 @@ func (s *Server) useConn(dev *xiaomi.Device) (*camConn, *mpegtsConsumer, func(),
 		mc.stop()
 		c.releaseRef()
 	}, nil
+}
+
+// 凭据失败次数（内存，按 src 哈希计）。
+//
+// 为什么不失败一次就剔除：
+//   摄像头可能偶发返回 auth 错误（忙、暂时抖动）。
+//   直接剔除会丢掉本来可用的凭据 —— 而重新申请可能撞限流。
+//
+// 策略：连续 2 次失败才剔除；只失败 1 次的移到列表末尾（留作兜底）。
+var (
+	credFailMu sync.Mutex
+	credFails  = map[string]int{}
+)
+
+func credFailInc(src string) int {
+	credFailMu.Lock()
+	defer credFailMu.Unlock()
+	credFails[src]++
+	return credFails[src]
+}
+
+func credFailReset(src string) {
+	credFailMu.Lock()
+	defer credFailMu.Unlock()
+	delete(credFails, src)
 }
 
 // ===== 凭据刷新冷却：指数退避 =====

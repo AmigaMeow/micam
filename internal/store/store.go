@@ -44,6 +44,23 @@ type QRSession struct {
 	done      chan struct{}
 }
 
+// CredSet 一组设备凭据。
+//
+// 为什么保存历史而不是只留最新：
+//
+//	miss_get_vendor 有严格限流（实测可封 24 小时+）。
+//	如果只留最新一份，一旦刷新失败就彻底没得用。
+//	保留多份历史 -> 可以逐个试，只有全部失效才需要调接口。
+//
+// 这也大幅降低调用频率：旧的往往还能用。
+type CredSet struct {
+	Src  string    `json:"src"`
+	Time time.Time `json:"time"`
+}
+
+// maxCredSets 每台设备保留几组凭据。
+const maxCredSets = 5
+
 // Store 内存 + 文件存储。
 type Store struct {
 	mu       sync.Mutex
@@ -53,8 +70,8 @@ type Store struct {
 	qr       map[string]*QRSession
 	devices  map[string]*xiaomi.Device // did -> device（设备发现缓存）
 	devMu    sync.RWMutex
-	sources  map[string]string    // did -> 完整 xiaomi:// 源（缓存，减少云端调用）
-	srcTime  map[string]time.Time // did -> 源缓存时间（判断过期）
+	sources  map[string][]CredSet // did -> 凭据历史（最新在前）
+
 	srcMu    sync.RWMutex
 }
 
@@ -65,8 +82,7 @@ func New(dataDir string) *Store {
 		sessions: map[string]*xiaomi.Session{},
 		qr:       map[string]*QRSession{},
 		devices:  map[string]*xiaomi.Device{},
-		sources:  map[string]string{},
-		srcTime:  map[string]time.Time{},
+		sources:  map[string][]CredSet{},
 	}
 	s.loadAccounts()
 	s.loadSources()
@@ -82,46 +98,54 @@ func (s *Store) sourcesFile() string {
 	return filepath.Join(s.dataDir, "sources.json")
 }
 
-// loadSources 加载源缓存。
+// loadSources 加载凭据缓存（兼容三种历史格式）。
 func (s *Store) loadSources() {
 	raw, err := os.ReadFile(s.sourcesFile())
 	if err != nil {
 		return
 	}
-	// 新格式：{did: {src, time}}
-	var m map[string]struct {
+
+	// 格式 3（当前）：{did: [{src,time}, ...]}
+	var m3 map[string][]CredSet
+	if json.Unmarshal(raw, &m3) == nil && len(m3) > 0 {
+		for did, list := range m3 {
+			if len(list) > 0 {
+				s.sources[did] = list
+			}
+		}
+		if len(s.sources) > 0 {
+			return
+		}
+	}
+
+	// 格式 2：{did: {src, time}}
+	var m2 map[string]struct {
 		Src  string    `json:"src"`
 		Time time.Time `json:"time"`
 	}
-	if json.Unmarshal(raw, &m) == nil && len(m) > 0 {
-		for did, v := range m {
-			s.sources[did] = v.Src
-			s.srcTime[did] = v.Time
+	if json.Unmarshal(raw, &m2) == nil && len(m2) > 0 {
+		for did, v := range m2 {
+			s.sources[did] = []CredSet{{Src: v.Src, Time: v.Time}}
 		}
-		return
+		if len(s.sources) > 0 {
+			return
+		}
 	}
-	// 兼容旧格式：{did: src}
-	var old map[string]string
-	if json.Unmarshal(raw, &old) == nil {
-		for did, src := range old {
-			s.sources[did] = src
-			// 旧格式没时间，视为很久以前（触发刷新）
-			s.srcTime[did] = time.Time{}
+
+	// 格式 1：{did: src}
+	var m1 map[string]string
+	if json.Unmarshal(raw, &m1) == nil {
+		for did, src := range m1 {
+			s.sources[did] = []CredSet{{Src: src}}
 		}
 	}
 }
 
-// saveSources 保存源缓存（含时间戳）。
+// saveSources 保存凭据缓存。
 func (s *Store) saveSources() error {
-	type entry struct {
-		Src  string    `json:"src"`
-		Time time.Time `json:"time"`
-	}
-	m := map[string]entry{}
-	for did, src := range s.sources {
-		m[did] = entry{Src: src, Time: s.srcTime[did]}
-	}
-	raw, err := json.MarshalIndent(m, "", "  ")
+	s.srcMu.RLock()
+	raw, err := json.MarshalIndent(s.sources, "", "  ")
+	s.srcMu.RUnlock()
 	if err != nil {
 		return err
 	}
@@ -276,41 +300,150 @@ func (s *Store) Device(did string) (*xiaomi.Device, bool) {
 	return d, ok
 }
 
-// SaveSource 缓存设备的完整源地址（带 P2P 凭据），并落盘。
+// SaveSource 缓存一组设备凭据（插到最前），并落盘。
+//
+// 已存在相同 src 时更新时间并提到最前（不重复保存）。
 func (s *Store) SaveSource(did, src string) {
 	s.srcMu.Lock()
-	s.sources[did] = src
-	s.srcTime[did] = time.Now()
-	s.srcMu.Unlock()
-	_ = s.saveSources()
+	defer s.srcMu.Unlock()
+
+	list := s.sources[did]
+	out := make([]CredSet, 0, len(list)+1)
+	out = append(out, CredSet{Src: src, Time: time.Now()})
+	for _, c := range list {
+		if c.Src == src {
+			continue
+		}
+		out = append(out, c)
+		if len(out) >= maxCredSets {
+			break
+		}
+	}
+	s.sources[did] = out
+	go s.saveSources()
 }
 
-// SourceAge 返回源缓存的年龄。
+// Sources 返回该设备的所有凭据（最新在前）。
+func (s *Store) Sources(did string) []CredSet {
+	s.srcMu.RLock()
+	defer s.srcMu.RUnlock()
+	list := s.sources[did]
+	out := make([]CredSet, len(list))
+	copy(out, list)
+	return out
+}
+
+// PromoteSource 把某个凭据提到最前（验证可用后调用）。
+func (s *Store) PromoteSource(did, src string) {
+	s.srcMu.Lock()
+	defer s.srcMu.Unlock()
+
+	list := s.sources[did]
+	if len(list) == 0 || list[0].Src == src {
+		return
+	}
+
+	var hit *CredSet
+	out := make([]CredSet, 0, len(list))
+	for i := range list {
+		if list[i].Src == src {
+			c := list[i]
+			c.Time = time.Now()
+			hit = &c
+			continue
+		}
+		out = append(out, list[i])
+	}
+	if hit == nil {
+		return
+	}
+	ns := make([]CredSet, 0, len(list))
+	ns = append(ns, *hit)
+	ns = append(ns, out...)
+	s.sources[did] = ns
+	go s.saveSources()
+}
+
+// DemoteSource 把某个凭据移到列表末尾（失败但暂不剔除）。
+func (s *Store) DemoteSource(did, src string) {
+	s.srcMu.Lock()
+	defer s.srcMu.Unlock()
+
+	list := s.sources[did]
+	if len(list) <= 1 {
+		return
+	}
+	// 已经在末尾就不动
+	if list[len(list)-1].Src == src {
+		return
+	}
+
+	var hit *CredSet
+	out := make([]CredSet, 0, len(list))
+	for i := range list {
+		if list[i].Src == src {
+			c := list[i]
+			hit = &c
+			continue
+		}
+		out = append(out, list[i])
+	}
+	if hit == nil {
+		return
+	}
+	s.sources[did] = append(out, *hit)
+	go s.saveSources()
+}
+
+// DropSourceAt 删除某个具体凭据（确认失效）。
+func (s *Store) DropSourceAt(did, src string) {
+	s.srcMu.Lock()
+	defer s.srcMu.Unlock()
+
+	list := s.sources[did]
+	out := make([]CredSet, 0, len(list))
+	for _, c := range list {
+		if c.Src == src {
+			continue
+		}
+		out = append(out, c)
+	}
+	if len(out) == 0 {
+		delete(s.sources, did)
+	} else {
+		s.sources[did] = out
+	}
+	go s.saveSources()
+}
+
+// SourceAge 返回最新凭据的年龄。
 func (s *Store) SourceAge(did string) time.Duration {
 	s.srcMu.RLock()
 	defer s.srcMu.RUnlock()
-	t, ok := s.srcTime[did]
-	if !ok || t.IsZero() {
-		return 24 * time.Hour // 未知时间视为过期
+	list := s.sources[did]
+	if len(list) == 0 || list[0].Time.IsZero() {
+		return 24 * time.Hour
 	}
-	return time.Since(t)
+	return time.Since(list[0].Time)
 }
 
-// DropSource 删除缓存的源（凭据失效时调用）。
+// DropSource 删除该设备的全部凭据。
 func (s *Store) DropSource(did string) {
 	s.srcMu.Lock()
 	delete(s.sources, did)
-	delete(s.srcTime, did)
 	s.srcMu.Unlock()
-	_ = s.saveSources()
+	go s.saveSources()
 }
 
-// Source 取缓存的源地址。
+// Source 取最新的一组凭据。
 func (s *Store) Source(did string) (string, bool) {
 	s.srcMu.RLock()
 	defer s.srcMu.RUnlock()
-	v, ok := s.sources[did]
-	return v, ok
+	list := s.sources[did]
+	if len(list) == 0 {
+		return "", false
+	}
+	return list[0].Src, true
 }
 
 // SourceDids 返回所有有缓存源的 did。

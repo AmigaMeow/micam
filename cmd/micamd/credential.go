@@ -76,6 +76,15 @@ func (s *Server) renewStaleCredentials() {
 			continue
 		}
 
+		// 已有多个凭据时不必急着刷（轮换机制会兜住）
+		//
+		// 理由：miss_get_vendor 限流很重，能少调就少调。
+		// 保留 2 组以上时，即使最新的一组失效，还有旧的可用。
+		sets := s.store.Sources(d.Did)
+		if len(sets) >= 3 {
+			continue
+		}
+
 		// 冷却中（上次刷新失败）就跳过
 		//
 		// 注意：冷却结束后会自然重试 —— 相当于「限流恢复探测」，
