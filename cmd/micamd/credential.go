@@ -66,7 +66,7 @@ func (s *Server) startCredentialKeeper() {
 
 // renewStaleCredentials 检查所有设备，给即将过期的凭据续期。
 func (s *Server) renewStaleCredentials() {
-	for _, d := range s.store.Devices() {
+	for _, d := range s.allCameras() {
 		if !d.IsCamera() {
 			continue
 		}
@@ -92,13 +92,17 @@ func (s *Server) renewStaleCredentials() {
 
 		newSrc, err := s.requestFreshSource(d)
 		if err != nil {
+			s.markRefreshResult(d.Did, false)
 			// 不删旧凭据 —— 旧的还能用
-			logf("[cred] %s 续期失败（保留旧凭据）: %v", d.Did, err)
+			fails := s.RefreshFailCount(d.Did)
+			logf("[cred] %s 续期失败（连续 %d 次，下次 %v 后重试）: %v",
+				d.Did, fails, cooldownFor(fails).Round(time.Minute), err)
 			continue
 		}
 
 		// 成功才替换
 		s.store.SaveSource(d.Did, newSrc)
+		s.markRefreshResult(d.Did, true)
 		logf("[cred] %s 凭据已续期", d.Did)
 	}
 }
@@ -124,7 +128,7 @@ func (s *Server) handleCredRenew(w http.ResponseWriter, r *http.Request) {
 	}
 	var out []result
 
-	for _, d := range s.store.Devices() {
+	for _, d := range s.allCameras() {
 		if !d.IsCamera() {
 			continue
 		}
@@ -149,11 +153,13 @@ func (s *Server) handleCredRenew(w http.ResponseWriter, r *http.Request) {
 		s.markRefresh(d.Did)
 		newSrc, err := s.requestFreshSource(d)
 		if err != nil {
+			s.markRefreshResult(d.Did, false)
 			res.Error = err.Error()
 			out = append(out, res)
 			continue
 		}
 		s.store.SaveSource(d.Did, newSrc)
+		s.markRefreshResult(d.Did, true)
 		res.OK = true
 		out = append(out, res)
 	}
@@ -172,11 +178,12 @@ func (s *Server) handleCredStatus(w http.ResponseWriter, r *http.Request) {
 		AgeMinutes   int    `json:"ageMinutes"`
 		ExpiresInMin int    `json:"expiresInMinutes"`
 		CooldownMin  int    `json:"cooldownMinutes"`
+		FailCount    int    `json:"failCount"`
 		RenewHint    string `json:"renewHint,omitempty"`
 	}
 	var out []item
 
-	for _, d := range s.store.Devices() {
+	for _, d := range s.allCameras() {
 		if !d.IsCamera() {
 			continue
 		}
@@ -197,6 +204,7 @@ func (s *Server) handleCredStatus(w http.ResponseWriter, r *http.Request) {
 			it.RenewHint = "无缓存凭据"
 		}
 		it.CooldownMin = int(s.RefreshCooldownLeft(d.Did).Minutes())
+		it.FailCount = s.RefreshFailCount(d.Did)
 		out = append(out, it)
 	}
 

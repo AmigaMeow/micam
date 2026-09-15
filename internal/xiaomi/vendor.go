@@ -34,25 +34,39 @@ func vendorName(i byte) string {
 }
 
 // GetVendorWithKey 调 /v2/device/miss_get_vendor 拿 P2P 凭据。
-// 该接口容易被小米限流，这里内置退避重试。
+//
+// ===== 限流时的策略（重要教训，2026-09-15）=====
+//
+// 早期版本遇到限流会重试 5 次（退避 5/10/20/40 秒，共 75 秒），
+// 以为「多试几次总能成功」。
+//
+// **实测证明这是错的**：小米的限流是滑动窗口，
+// 重试的每一次调用都算数，反而让窗口一直不重置。
+//
+// 结果：冷却结束 -> 重试 75 秒 -> 还是限流 -> 又等冷却
+// 限流永远不过去（实测持续 2 小时+）。
+//
+// 现在：**遇到限流立刻失败，不重试**。
+// 让接口安静下来，窗口才有机会重置。
+// 重试节奏交给上层（credential.go 的指数退避）。
 func (s *Session) GetVendorWithKey(did string) (*Vendor, string, string, error) {
-	var lastErr error
-	for attempt := 0; attempt < 5; attempt++ {
-		if attempt > 0 {
-			backoff := time.Duration(5*(1<<uint(attempt-1))) * time.Second
-			fmt.Printf("  [vendor] 限流重试 %d/5，等待 %v...\n", attempt, backoff)
-			time.Sleep(backoff)
-		}
-		res, err := s.getVendorOnce(did)
-		if err == nil {
-			return res.v, res.pub, res.priv, nil
-		}
-		lastErr = err
-		if !strings.Contains(err.Error(), "throttle") {
-			return nil, "", "", err
-		}
+	res, err := s.getVendorOnce(did)
+	if err == nil {
+		return res.v, res.pub, res.priv, nil
 	}
-	return nil, "", "", lastErr
+
+	// 限流：快速失败，绝不重试
+	if strings.Contains(err.Error(), "throttle") {
+		return nil, "", "", err
+	}
+
+	// 其他错误（网络抖动等）重试一次
+	time.Sleep(2 * time.Second)
+	res, err = s.getVendorOnce(did)
+	if err != nil {
+		return nil, "", "", err
+	}
+	return res.v, res.pub, res.priv, nil
 }
 
 type vendorResult struct {

@@ -68,7 +68,7 @@ func (s *Server) handleStorage(w http.ResponseWriter, r *http.Request) {
 	totalFiles := 0
 	var totalBytes int64
 
-	for _, d := range s.store.Devices() {
+	for _, d := range s.allCameras() {
 		if !d.IsCamera() {
 			continue
 		}

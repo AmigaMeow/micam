@@ -62,6 +62,40 @@ var (
 	dialLocks = map[string]*sync.Mutex{}
 )
 
+// allCameras 取所有摄像头（优先缓存，为空则从云端拉并回填缓存）。
+//
+// 为什么需要：服务刚重启时本地设备缓存是空的，
+// 依赖 s.store.Devices() 的接口会返回空列表。
+func (s *Server) allCameras() []*xiaomi.Device {
+	if devs := s.store.Devices(); len(devs) > 0 {
+		return devs
+	}
+
+	// 缓存为空 -> 从云端拉
+	var vals []xiaomi.Device
+	var out []*xiaomi.Device
+	seen := map[string]bool{}
+	for _, sess := range s.store.AllSessions() {
+		devs, err := sess.AllCameras()
+		if err != nil {
+			continue
+		}
+		for i := range devs {
+			if seen[devs[i].Did] {
+				continue
+			}
+			seen[devs[i].Did] = true
+			d := devs[i]
+			vals = append(vals, d)
+			out = append(out, &d)
+		}
+	}
+	if len(vals) > 0 {
+		s.store.CacheDevices(vals)
+	}
+	return out
+}
+
 // didLock 取该 did 的建连锁。
 func didLock(did string) *sync.Mutex {
 	connMu.Lock()
@@ -293,11 +327,51 @@ func (s *Server) useConn(dev *xiaomi.Device) (*camConn, *mpegtsConsumer, func(),
 	}, nil
 }
 
-// 凭据刷新冷却（避免小米云限流）
+// ===== 凭据刷新冷却：指数退避 =====
+//
+// 为什么不用固定 30 分钟：
+//
+// 小米的 miss_get_vendor 限流是**滑动窗口**。
+// 固定间隔重试 = 每隔 30 分钟又去撞一次，窗口永远不重置。
+//
+// 实测教训（2026-09-15）：限流持续 2 小时+，
+// 就是因为每 30 分钟重试一次，而且每次还重试 5 遍（共 75 秒）。
+// 大量的失败调用让窗口一直无法重置。
+//
+// 改成指数退避：
+//
+//   连续失败 1 次 -> 等 15 分钟
+//   连续失败 2 次 -> 等 30 分钟
+//   连续失败 3 次 -> 等 1 小时
+//   连续失败 4 次 -> 等 2 小时
+//   连续失败 5 次 -> 等 4 小时（上限）
+//
+// 给接口大段安静时间，窗口才有机会重置。
 var (
 	refreshMu   sync.Mutex
 	refreshLast = map[string]time.Time{}
+	refreshFail = map[string]int{}
 )
+
+const (
+	cooldownBase = 15 * time.Minute
+	cooldownMax  = 4 * time.Hour
+)
+
+// cooldownFor 根据连续失败次数算冷却时长。
+func cooldownFor(fails int) time.Duration {
+	if fails <= 1 {
+		return cooldownBase
+	}
+	d := cooldownBase
+	for i := 1; i < fails; i++ {
+		d *= 2
+		if d >= cooldownMax {
+			return cooldownMax
+		}
+	}
+	return d
+}
 
 // requestFreshSource 向小米云申请新凭据（不动缓存）。
 func (s *Server) requestFreshSource(dev *xiaomi.Device) (string, error) {
@@ -312,10 +386,7 @@ func (s *Server) requestFreshSource(dev *xiaomi.Device) (string, error) {
 	return src, nil
 }
 
-// canRefresh 判断是否可以刷新。
-//
-// 冷却 30 分钟：小米云的 miss_get_vendor 限流很严，
-// 实测频繁刷新会导致 code=-12 throttle deny。
+// canRefresh 判断是否可以尝试刷新。
 func (s *Server) canRefresh(did string) bool {
 	refreshMu.Lock()
 	defer refreshMu.Unlock()
@@ -323,14 +394,25 @@ func (s *Server) canRefresh(did string) bool {
 	if !ok {
 		return true
 	}
-	return time.Since(t) > 30*time.Minute
+	return time.Since(t) > cooldownFor(refreshFail[did])
 }
 
-// markRefresh 记录刷新时间。
+// markRefresh 记录一次刷新尝试。
 func (s *Server) markRefresh(did string) {
 	refreshMu.Lock()
 	refreshLast[did] = time.Now()
 	refreshMu.Unlock()
+}
+
+// markRefreshResult 记录刷新结果（成功清零失败计数）。
+func (s *Server) markRefreshResult(did string, ok bool) {
+	refreshMu.Lock()
+	defer refreshMu.Unlock()
+	if ok {
+		refreshFail[did] = 0
+	} else {
+		refreshFail[did]++
+	}
 }
 
 // RefreshCooldownLeft 返回冷却剩余时间。
@@ -341,11 +423,18 @@ func (s *Server) RefreshCooldownLeft(did string) time.Duration {
 	if !ok {
 		return 0
 	}
-	left := 30*time.Minute - time.Since(t)
+	left := cooldownFor(refreshFail[did]) - time.Since(t)
 	if left < 0 {
 		return 0
 	}
 	return left
+}
+
+// RefreshFailCount 连续失败次数。
+func (s *Server) RefreshFailCount(did string) int {
+	refreshMu.Lock()
+	defer refreshMu.Unlock()
+	return refreshFail[did]
 }
 
 // isAuthError 判断是否为凭据失效错误。
