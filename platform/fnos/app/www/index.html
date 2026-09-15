@@ -211,6 +211,24 @@ tbody tr:last-child td{border-bottom:0}
   background:#fff;border-radius:50%;transition:.2s}
 .switch input:checked + span{background:var(--primary)}
 .switch input:checked + span:before{transform:translateX(18px)}
+.rec-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px;padding:8px 24px 18px}
+.rec-item{position:relative;border:1px solid var(--border);border-radius:8px;overflow:hidden;background:var(--card)}
+.rec-thumb{position:relative;aspect-ratio:16/9;background:#111;cursor:pointer;overflow:hidden}
+.rec-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.rec-play{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;
+  color:#fff;font-size:22px;background:rgba(0,0,0,.28);opacity:0;transition:opacity .15s}
+.rec-thumb:hover .rec-play{opacity:1}
+.rec-dur{position:absolute;right:6px;bottom:6px;background:rgba(0,0,0,.72);color:#fff;
+  font-size:11px;padding:1px 5px;border-radius:3px}
+.rec-meta{padding:8px 10px}
+.rec-name{font-size:12px;font-family:ui-monospace,monospace;word-break:break-all}
+.rec-sub{font-size:11px;color:var(--text-3);margin-top:3px}
+.rec-del{position:absolute;right:6px;top:6px;opacity:0;transition:opacity .15s}
+.rec-item:hover .rec-del{opacity:1}
+@media (max-width:640px){
+  .rec-grid{grid-template-columns:repeat(2,1fr);gap:8px;padding:8px 12px 14px}
+  .rec-del{opacity:1}
+}
 .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px}
 .stat-box{padding:14px 16px;background:var(--hover);border-radius:8px}
 .stat-label{font-size:12px;color:var(--text-3);margin-bottom:6px}
@@ -1249,9 +1267,11 @@ function showCleanupPreview(){
 
 // ===== 页面：录像管理 =====
 function renderRecordings(c){
-  c.innerHTML = loading();
-  Promise.all([api("/api/recordings"), loadDevices()]).then(function(res){
+  c.innerHTML = loading("加载录像列表…");
+  Promise.all([api("/api/recordings"), api("/api/recordings/dates"), loadDevices()]).then(function(res){
     var recs = res[0].recordings || [];
+    var dates = res[1].dates || [];
+
     var rows = recs.length ? recs.map(function(x){
       return "<tr><td>"+esc(x.name)+"</td>"
         + "<td>"+(x.running?"<span class=\"tag tag-on\">录制中</span>":"<span class=\"tag tag-def\">已停止</span>")+"</td>"
@@ -1261,41 +1281,174 @@ function renderRecordings(c){
 
     var opts = devices.map(function(d){ return "<option value=\""+esc(d.name)+"\">"+esc(d.name)+"</option>"; }).join("");
 
-    c.innerHTML = "<div class=\"card\">"
-      + "<div class=\"card-head\"><span class=\"card-title\">录像任务</span></div>"
-      + "<table><thead><tr><th>设备</th><th>状态</th><th>开始时间</th><th style=\"width:110px\">操作</th></tr></thead><tbody>"+rows+"</tbody></table>"
+    var dateOpts = dates.map(function(d){
+      return "<option value=\""+esc(d.date)+"\">"+esc(d.date)+"  ("+d.count+" 个, "+fmtSizeMB(d.sizeMB)+")</option>";
+    }).join("");
+
+    c.innerHTML = ""
+      // 回放区
+      + "<div class=\"card\" id=\"playerCard\" style=\"display:none\">"
+      +   "<div class=\"card-head\">"
+      +     "<span class=\"card-title\" id=\"playTitle\">回放</span>"
+      +     "<div class=\"btn-group\">"
+      +       "<button class=\"btn btn-sm\" id=\"btnDownload\">" + icon("snap",12) + "下载</button>"
+      +       "<button class=\"btn btn-sm\" id=\"btnClosePlay\">关闭</button>"
+      +     "</div>"
+      +   "</div>"
+      +   "<div style=\"padding:0 0 16px\">"
+      +     "<video id=\"recVideo\" controls playsinline style=\"width:100%;background:#000;max-height:60vh;display:block\"></video>"
+      +     "<div id=\"playInfo\" style=\"padding:10px 24px;font-size:12px;color:var(--text-3)\"></div>"
+      +   "</div>"
       + "</div>"
+
+      // 任务
       + "<div class=\"card\">"
-      + "<div class=\"card-head\"><span class=\"card-title\">录像文件</span>"
-      +   "<div class=\"btn-group\">"
-      +     "<select class=\"btn\" id=\"fileDev\" style=\"min-width:180px\"><option value=\"\">选择设备…</option>"+opts+"</select>"
-      +     "<button class=\"btn\" id=\"btnClean\">"+icon("trash",12)+"清理过期</button>"
-      +   "</div></div>"
-      + "<div id=\"files\">"+empty("inbox","请选择设备查看录像","","")+"</div>"
+      +   "<div class=\"card-head\"><span class=\"card-title\">" + icon("rec",15) + " 录像任务</span></div>"
+      +   "<div class=\"table-wrap\"><table><thead><tr><th>设备</th><th style=\"width:90px\">状态</th><th style=\"width:160px\">开始时间</th><th style=\"width:110px\">操作</th></tr></thead><tbody>"+rows+"</tbody></table></div>"
+      + "</div>"
+
+      // 回放列表
+      + "<div class=\"card\">"
+      +   "<div class=\"card-head\">"
+      +     "<span class=\"card-title\">" + icon("inbox",15) + " 录像回放</span>"
+      +     "<div class=\"btn-group\">"
+      +       "<select class=\"btn\" id=\"recDev\" style=\"min-width:170px\"><option value=\"\">选择设备…</option>"+opts+"</select>"
+      +       "<select class=\"btn\" id=\"recDate\" style=\"min-width:170px\"><option value=\"\">全部日期</option>"+dateOpts+"</select>"
+      +       "<button class=\"btn\" id=\"btnClean\">"+icon("trash",12)+"清理过期</button>"
+      +     "</div>"
+      +   "</div>"
+      +   "<div id=\"files\">"+empty("inbox","请选择设备查看录像","支持按日期筛选、在线回放","")+"</div>"
       + "</div>";
 
     Array.prototype.forEach.call(document.querySelectorAll("[data-stop]"), function(b){
       b.onclick = function(){ stopRec(b.dataset.stop); };
     });
-    $("#fileDev").onchange = function(){ loadFiles(this.value); };
+    $("#recDev").onchange = function(){ currentRecName = this.value; loadRecFiles(); };
+    $("#recDate").onchange = loadRecFiles;
     $("#btnClean").onclick = cleanup;
+    $("#btnClosePlay").onclick = function(){
+      var v = $("#recVideo");
+      if(v){ v.pause(); v.src = ""; }
+      $("#playerCard").style.display = "none";
+    };
+  }).catch(function(e){
+    c.innerHTML = "<div class=\"card\">" + empty("close","加载失败", e.message, "") + "</div>";
   });
 }
 
-function loadFiles(name){
+// 当前回放设备
+var currentRecName = "";
+var currentRecFile = null;
+
+// 加载录像文件（带缩略图）
+function loadRecFiles(){
   var box = $("#files");
-  if(!name){ box.innerHTML = empty("inbox","请选择设备查看录像","",""); return; }
-  box.innerHTML = loading();
-  api("/api/recordings/files?name="+encodeURIComponent(name)).then(function(r){
+  if(!currentRecName){ box.innerHTML = empty("inbox","请选择设备查看录像","",""); return; }
+  var date = ($("#recDate") || {}).value || "";
+  box.innerHTML = loading("加载中…");
+
+  var q = "name=" + encodeURIComponent(currentRecName) + (date ? "&date=" + encodeURIComponent(date) : "");
+  api("/api/recordings/list?" + q).then(function(r){
     var files = r.files || [];
-    if(!files.length){ box.innerHTML = empty("inbox","暂无录像文件","",""); return; }
-    box.innerHTML = "<table><thead><tr><th>文件名</th><th style=\"width:110px\">大小</th><th style=\"width:180px\">时间</th></tr></thead><tbody>"
-      + files.map(function(f){
-          return "<tr><td style=\"font-family:ui-monospace,monospace;font-size:12px\">"+esc(f.name)+"</td>"
-            + "<td>"+fmtSize(f.size)+"</td>"
-            + "<td style=\"color:var(--text-3);font-size:12px\">"+esc(f.modTime)+"</td></tr>";
-        }).join("") + "</tbody></table>";
+    if(!files.length){ box.innerHTML = empty("inbox","该设备暂无录像","",""); return; }
+
+    // 按日期分组
+    var byDate = {};
+    files.forEach(function(f){
+      var d = f.date || "未知日期";
+      (byDate[d] = byDate[d] || []).push(f);
+    });
+
+    var html = "";
+    Object.keys(byDate).sort().reverse().forEach(function(d){
+      var list = byDate[d];
+      var total = list.reduce(function(a, f){ return a + (f.sizeMB||0); }, 0);
+      html += "<div style=\"padding:12px 24px 6px;font-size:13px;font-weight:500;border-top:1px solid var(--split)\">"
+        + esc(d) + "<span style=\"font-weight:400;color:var(--text-3);margin-left:10px;font-size:12px\">"
+        + list.length + " 个 · " + fmtSizeMB(total) + "</span></div>";
+      html += "<div class=\"rec-grid\">";
+      list.forEach(function(f){
+        html += "<div class=\"rec-item\">"
+          +   "<div class=\"rec-thumb\" data-play='" + JSON.stringify({n:currentRecName, d:f.date, f:f.name}) + "'>"
+          +     "<img loading=\"lazy\" src=\"" + apiUrl(f.thumbUrl) + "\" alt=\"\" onerror=\"this.style.display='none'\">"
+          +     "<div class=\"rec-play\">▶</div>"
+          +     "<div class=\"rec-dur\">" + fmtDur(f.duration) + "</div>"
+          +   "</div>"
+          +   "<div class=\"rec-meta\">"
+          +     "<div class=\"rec-name\">" + esc(f.name) + "</div>"
+          +     "<div class=\"rec-sub\">" + fmtSizeMB(f.sizeMB) + " · " + esc((f.startTime||"").slice(11,19)) + "</div>"
+          +   "</div>"
+          +   "<button class=\"btn btn-sm rec-del\" data-del='" + JSON.stringify({n:currentRecName, d:f.date, f:f.name}) + "'>删除</button>"
+          + "</div>";
+      });
+      html += "</div>";
+    });
+
+    box.innerHTML = html;
+
+    Array.prototype.forEach.call(box.querySelectorAll("[data-play]"), function(el){
+      el.onclick = function(){ playRec(JSON.parse(this.dataset.play)); };
+    });
+    Array.prototype.forEach.call(box.querySelectorAll("[data-del]"), function(el){
+      el.onclick = function(e){
+        e.stopPropagation();
+        delRec(JSON.parse(this.dataset.del));
+      };
+    });
+  }).catch(function(e){
+    box.innerHTML = "<div style=\"padding:20px 24px;color:var(--error);font-size:13px\">" + esc(e.message) + "</div>";
   });
+}
+
+// 时长格式化
+function fmtDur(sec){
+  if(!sec || sec <= 0) return "—";
+  var m = Math.floor(sec / 60), s = Math.round(sec % 60);
+  return m + ":" + (s < 10 ? "0" : "") + s;
+}
+
+// 播放录像
+function playRec(info){
+  currentRecFile = info;
+  var card = $("#playerCard");
+  var video = $("#recVideo");
+  var infoBox = $("#playInfo");
+  if(!card || !video) return;
+
+  card.style.display = "block";
+  $("#playTitle").textContent = "回放 · " + info.f;
+  infoBox.textContent = "正在转码…（首次约 3-6 秒）";
+
+  var url = apiUrl("/api/recordings/play?name=" + encodeURIComponent(info.n)
+    + "&date=" + encodeURIComponent(info.d)
+    + "&file=" + encodeURIComponent(info.f));
+
+  video.src = url;
+  video.load();
+  video.play().catch(function(){});
+
+  video.oncanplay = function(){ infoBox.textContent = "时长 " + fmtDur(video.duration) + " · " + info.f; };
+  video.onerror = function(){ infoBox.textContent = "播放失败（可能转码中，稍候重试）"; };
+
+  card.scrollIntoView({ behavior: "smooth", block: "start" });
+
+  var dbtn = $("#btnDownload");
+  if(dbtn) dbtn.onclick = function(){
+    window.open(apiUrl("/api/recordings/download?name=" + encodeURIComponent(info.n)
+      + "&date=" + encodeURIComponent(info.d) + "&file=" + encodeURIComponent(info.f)), "_blank");
+  };
+}
+
+// 删除录像
+function delRec(info){
+  if(!confirm("删除这个录像文件？\n" + info.f + "\n\n不可恢复。")) return;
+  api("/api/recordings/delete", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name: info.n, date: info.d, file: info.f })
+  }).then(function(r){
+    toast("已删除，释放 " + fmtSizeMB(r.freedMB || 0), "ok");
+    loadRecFiles();
+  }).catch(function(e){ toast("删除失败：" + e.message, "err"); });
 }
 
 // ===== 页面：账号管理 =====

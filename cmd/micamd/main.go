@@ -34,7 +34,7 @@ import (
 
 const (
 	appName    = "micam"
-	appVersion = "0.8.4"
+	appVersion = "0.9.0"
 )
 
 func main() {
@@ -407,6 +407,14 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/recordings/stop", s.handleRecordStop)  // POST 停止
 	mux.HandleFunc("/api/recordings/files", s.handleRecordFiles) // GET 文件列表
 	mux.HandleFunc("/api/recordings/cleanup", s.handleRecordCleanup) // POST 清理
+
+	// 录像回放
+	mux.HandleFunc("/api/recordings/dates", s.handleRecDates)
+	mux.HandleFunc("/api/recordings/list", s.handleRecList)
+	mux.HandleFunc("/api/recordings/play", s.handleRecPlay)
+	mux.HandleFunc("/api/recordings/thumb", s.handleRecThumb)
+	mux.HandleFunc("/api/recordings/download", s.handleRecDownload)
+	mux.HandleFunc("/api/recordings/delete", s.handleRecDelete)
 
 	// 静态前端（同目录下的 web/）
 	mux.Handle("/", s.staticHandler())
