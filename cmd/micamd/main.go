@@ -34,7 +34,7 @@ import (
 
 const (
 	appName    = "micam"
-	appVersion = "0.7.1"
+	appVersion = "0.7.2"
 )
 
 func main() {
@@ -296,11 +296,47 @@ func deployWeb(dataDir string) {
 		log.Printf("读取前端失败: %v", err)
 		return
 	}
+
+	// 安全校验：拒绝部署结构损坏的 HTML
+	//
+	// 曾经因为一次字符串替换把整段 JS 插到了文件开头，
+	// 结果页面把源码当文本显示。这里做基本检查。
+	if !looksLikeHTML(data) {
+		log.Printf("前端页面结构异常，跳过部署: %s", src)
+		return
+	}
+
 	if err := os.WriteFile(dst, data, 0o644); err != nil {
 		log.Printf("写入前端失败: %v", err)
 		return
 	}
 	log.Printf("已部署前端页面: %s", dst)
+}
+
+// looksLikeHTML 基本结构检查。
+func looksLikeHTML(data []byte) bool {
+	if len(data) < 200 {
+		return false
+	}
+	// 开头必须是 DOCTYPE（允许 BOM/空白）
+	head := strings.TrimLeft(string(data[:min(200, len(data))]), " \t\r\n\ufeff")
+	if !strings.HasPrefix(strings.ToUpper(head), "<!DOCTYPE") {
+		return false
+	}
+	s := string(data)
+	// script 标签必须配对
+	if strings.Count(s, "<script") != strings.Count(s, "</script>") {
+		return false
+	}
+	// 必须有 body
+	return strings.Contains(s, "<body")
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // srcOverride 取注入的源地址（调试用）。
