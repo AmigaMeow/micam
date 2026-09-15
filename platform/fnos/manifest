@@ -1,5 +1,5 @@
 appname               = micam
-version               = 0.10.0
+version               = 0.10.1
 display_name          = 小米摄像头
 desc                  = 在飞牛 NAS 上接入小米/米家摄像头：扫码登录、实时预览、录像、云台控制。直连小米云 P2P，不依赖 EasyNVR。
 platform              = x86

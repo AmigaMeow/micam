@@ -1358,13 +1358,15 @@ function renderRecordings(c){
       +   "<div class=\"card-head\">"
       +     "<span class=\"card-title\" id=\"playTitle\">回放</span>"
       +     "<div class=\"btn-group\">"
-      +       "<button class=\"btn btn-sm\" id=\"btnDownload\">" + icon("snap",12) + "下载</button>"
+      +       "<button class=\"btn btn-sm\" id=\"btnExportClip\">" + icon("rec",12) + "导出片段</button>"
+      +       "<button class=\"btn btn-sm\" id=\"btnDownload\">" + icon("snap",12) + "下载原文件</button>"
       +       "<button class=\"btn btn-sm\" id=\"btnClosePlay\">关闭</button>"
       +     "</div>"
       +   "</div>"
       +   "<div style=\"padding:0 0 16px\">"
       +     "<video id=\"recVideo\" controls playsinline style=\"width:100%;background:#000;max-height:60vh;display:block\"></video>"
       +     "<div id=\"playInfo\" style=\"padding:10px 24px;font-size:12px;color:var(--text-3)\"></div>"
+      +     "<div id=\"exportPanel\" style=\"display:none;padding:0 24px 16px\"></div>"
       +   "</div>"
       + "</div>"
 
@@ -1483,6 +1485,89 @@ function loadRecFiles(){
   });
 }
 
+// ===== 导出片段 =====
+//
+// 为什么要两步（先转码再下载）：
+//   转码需要时间（2K 素材约 0.6 倍速）。
+//   如果直接流式返回，用户看到的是「点了没反应」。
+//   所以先创建任务，轮询进度，完成后再给下载链接。
+function showExportPanel(video){
+  var panel = $("#exportPanel");
+  if(!panel || !currentRecFile) return;
+
+  var dur = (video && isFinite(video.duration)) ? video.duration : 0;
+  var cur = (video && isFinite(video.currentTime)) ? video.currentTime : 0;
+  var end = dur > 0 ? Math.min(dur, cur + 30) : (cur + 30);
+
+  panel.style.display = "block";
+  panel.innerHTML = ""
+    + "<div class=\"cfg-row\">"
+    +   "<div class=\"cfg-label\">开始</div>"
+    +   "<input class=\"btn cfg-input\" id=\"expStart\" type=\"number\" step=\"0.1\" min=\"0\" value=\"" + cur.toFixed(1) + "\">"
+    +   "<div class=\"cfg-hint\">秒</div>"
+    + "</div>"
+    + "<div class=\"cfg-row\">"
+    +   "<div class=\"cfg-label\">结束</div>"
+    +   "<input class=\"btn cfg-input\" id=\"expEnd\" type=\"number\" step=\"0.1\" min=\"0\" value=\"" + end.toFixed(1) + "\">"
+    +   "<div class=\"cfg-hint\">秒" + (dur > 0 ? "（总长 " + fmtDur(dur) + "）" : "") + "</div>"
+    + "</div>"
+    + "<div class=\"btn-group\" style=\"margin-top:10px\">"
+    +   "<button class=\"btn btn-primary\" id=\"btnDoExport\">开始导出</button>"
+    +   "<button class=\"btn\" id=\"btnHideExport\">取消</button>"
+    + "</div>"
+    + "<div id=\"exportResult\" style=\"margin-top:10px\"></div>";
+
+  $("#btnHideExport").onclick = function(){ panel.style.display = "none"; };
+  $("#btnDoExport").onclick = function(){
+    var s = parseFloat(($("#expStart")||{}).value) || 0;
+    var e = parseFloat(($("#expEnd")||{}).value) || 0;
+    if(e <= s){ toast("结束时间必须大于开始时间", "err"); return; }
+    doExport(s, e);
+  };
+}
+
+function doExport(start, end){
+  var box = $("#exportResult");
+  if(box) box.innerHTML = "<div style=\"font-size:12px;color:var(--text-3)\">正在创建导出任务…</div>";
+
+  api("/api/recordings/export", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      name: currentRecFile.n, date: currentRecFile.d, file: currentRecFile.f,
+      start: start, end: end
+    })
+  }).then(function(r){
+    if(box) box.innerHTML = "<div style=\"font-size:12px;color:var(--text-3)\">转码中…（0%）</div>";
+    pollExport(r.id, box);
+  }).catch(function(e){
+    if(box) box.innerHTML = "<div style=\"color:var(--error);font-size:12px\">创建失败：" + esc(e.message) + "</div>";
+  });
+}
+
+function pollExport(id, box){
+  var n = 0;
+  var t = setInterval(function(){
+    n++;
+    api("/api/recordings/export/status?id=" + encodeURIComponent(id)).then(function(j){
+      if(j.status === "done"){
+        clearInterval(t);
+        if(box) box.innerHTML = ""
+          + "<div style=\"font-size:12px;color:var(--success);margin-bottom:8px\">"
+          +   "✅ 导出完成（" + fmtSizeMB(j.sizeMB||0) + "）</div>"
+          + "<a class=\"btn btn-primary btn-sm\" href=\"" + apiUrl("/api/recordings/export/download?id=" + id) + "\" download>下载 MP4</a>";
+      } else if(j.status === "failed"){
+        clearInterval(t);
+        if(box) box.innerHTML = "<div style=\"color:var(--error);font-size:12px\">导出失败：" + esc(j.error||"") + "</div>";
+      } else {
+        // 估算进度（2K 约 0.6 倍速，粗略显示）
+        var pct = Math.min(95, Math.round((j.end - j.start) * 0.6 * n * 2));
+        if(box) box.innerHTML = "<div style=\"font-size:12px;color:var(--text-3)\">转码中…（约 " + pct + "%）</div>";
+      }
+    }).catch(function(){});
+    if(n > 300) clearInterval(t);   // 最多轮询 5 分钟
+  }, 1000);
+}
+
 // ===== 批量删除 =====
 function showBatchDelete(){
   if(!currentRecName){ toast("请先选择设备", "err"); return; }
@@ -1550,6 +1635,9 @@ function playRec(info){
   video.onerror = function(){ infoBox.textContent = "播放失败（可能转码中，稍候重试）"; };
 
   card.scrollIntoView({ behavior: "smooth", block: "start" });
+
+  var ebtn = $("#btnExportClip");
+  if(ebtn) ebtn.onclick = function(){ showExportPanel(video); };
 
   var dbtn = $("#btnDownload");
   if(dbtn) dbtn.onclick = function(){
