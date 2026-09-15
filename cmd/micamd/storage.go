@@ -199,7 +199,7 @@ func (s *Server) handleCleanupPreview(w http.ResponseWriter, r *http.Request) {
 //   2. 超过保留天数 -> 清理
 //
 // 设计目标：无人值守时自动腾空间，避免录到磁盘满。
-func startStorageGuard(recMgr *record.Manager) {
+func (s *Server) startStorageGuard() {
 	go func() {
 		// 启动后先等 1 分钟（避开启动高峰）
 		time.Sleep(1 * time.Minute)
@@ -208,14 +208,15 @@ func startStorageGuard(recMgr *record.Manager) {
 		defer t.Stop()
 
 		for {
-			checkStorageOnce(recMgr)
+			s.checkStorageOnce()
 			<-t.C
 		}
 	}()
 }
 
 // checkStorageOnce 执行一次存储检查。
-func checkStorageOnce(recMgr *record.Manager) {
+func (s *Server) checkStorageOnce() {
+	recMgr := s.rec
 	cfg := recMgr.GetConfig()
 	recDir := cfg.Dir
 	if recDir == "" {
@@ -228,6 +229,9 @@ func checkStorageOnce(recMgr *record.Manager) {
 	if cfg.MinFreeGB > 0 && du.FreeGB < float64(cfg.MinFreeGB) {
 		logf("[storage] 磁盘剩余 %.1fGB 低于阈值 %dGB，开始紧急清理",
 			du.FreeGB, cfg.MinFreeGB)
+
+		// 发通知（6 小时内不重复）
+		s.notifyDiskLow(du.FreeGB, float64(cfg.MinFreeGB))
 
 		n, freed, err := emergencyCleanup(recDir, float64(cfg.MinFreeGB))
 		if err != nil {

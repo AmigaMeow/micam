@@ -43,6 +43,10 @@ type Config struct {
 	RecordMinFreeGB int `json:"recordMinFreeGB"`
 	// 转码缓存上限 GB
 	TranscodeCacheGB int `json:"transcodeCacheGB"`
+	// 事件通知
+	NotifyEnabled bool     `json:"notifyEnabled"`
+	NotifyWebhook string   `json:"notifyWebhook"`
+	NotifyEvents  []string `json:"notifyEvents"`
 	// 日志级别
 	LogLevel string `json:"logLevel"`
 	// 开放模式
@@ -140,6 +144,22 @@ func (c *Config) SetRecordPolicy(enabled *bool, segment, keepDays, minFreeGB, ca
 	}
 	if cacheGB != nil && *cacheGB > 0 {
 		c.TranscodeCacheGB = *cacheGB
+	}
+	c.mu.Unlock()
+	return c.SaveSelf()
+}
+
+// SetNotify 更新通知配置并落盘。
+func (c *Config) SetNotify(enabled *bool, webhook *string, events *[]string) error {
+	c.mu.Lock()
+	if enabled != nil {
+		c.NotifyEnabled = *enabled
+	}
+	if webhook != nil {
+		c.NotifyWebhook = *webhook
+	}
+	if events != nil {
+		c.NotifyEvents = *events
 	}
 	c.mu.Unlock()
 	return c.SaveSelf()

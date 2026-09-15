@@ -2271,6 +2271,11 @@ function loadDevCaps(){
 // ===== 页面：系统设置 =====
 function renderSettings(c){
   c.innerHTML = "<div class=\"card\">"
+    + "<div class=\"card-head\"><span class=\"card-title\">" + icon("rec",15) + " 事件通知</span>"
+    +   "<button class=\"btn btn-sm\" id=\"btnNotifyTest\">发送测试</button></div>"
+    + "<div style=\"padding:16px 24px\" id=\"notifyCfg\">" + loading("读取中…") + "</div>"
+    + "</div>"
+    + "<div class=\"card\">"
     + "<div class=\"card-head\"><span class=\"card-title\">诊断与反馈</span></div>"
     + "<div style=\"padding:20px 24px\">"
     +   "<p style=\"font-size:13px;color:var(--text-3);margin-bottom:16px\">"
@@ -2475,6 +2480,82 @@ function initSDK(){
       var el = document.getElementById("sysInfo");
       if(el) el.textContent = "独立模式";
     });
+}
+
+// ===== 事件通知配置 =====
+function loadNotifyCfg(){
+  var box = $("#notifyCfg");
+  if(!box) return;
+  api("/api/notify/config").then(function(c){
+    var types = c.types || [];
+    var sel = {};
+    (c.events || []).forEach(function(e){ sel[e] = true; });
+    var allOn = (c.events || []).length === 0;
+
+    var rows = types.map(function(t){
+      var checked = allOn || sel[t.key];
+      return "<label style='display:flex;align-items:center;gap:8px;padding:4px 0;font-size:13px'>"
+        + "<input type='checkbox' data-ev='" + esc(t.key) + "'" + (checked ? ' checked' : '') + "> "
+        + esc(t.label) + "</label>";
+    }).join("");
+
+    box.innerHTML = ""
+      + "<div class='cfg-row'>"
+      +   "<div class='cfg-label'>启用通知</div>"
+      +   "<label class='switch'><input type='checkbox' id='ntEnabled'" + (c.enabled ? ' checked' : '') + "><span></span></label>"
+      + "</div>"
+      + "<div class='cfg-row' style='align-items:flex-start'>"
+      +   "<div class='cfg-label' style='padding-top:8px'>Webhook 地址</div>"
+      +   "<input class='btn' id='ntWebhook' style='flex:1;min-width:200px;text-align:left;font-size:12px' placeholder='https://...' value='" + esc(c.webhook||'') + "'>"
+      + "</div>"
+      + "<div style='font-size:12px;color:var(--text-3);margin:8px 0 12px'>"
+      +   "POST JSON 到该地址。可对接钉钉/企业微信/Bark/自建服务。"
+      + "</div>"
+      + "<div style='font-size:13px;font-weight:500;margin-bottom:6px'>订阅事件</div>"
+      + rows
+      + "<div class='btn-group' style='margin-top:14px'>"
+      +   "<button class='btn btn-primary' id='btnNotifySave'>保存</button>"
+      + "</div>"
+      + "<div style='font-size:12px;color:var(--text-3);margin-top:8px'>不勾选任何项 = 全部订阅。</div>";
+
+    var sb = $("#btnNotifySave");
+    if(sb) sb.onclick = saveNotifyCfg;
+
+    var tb = $("#btnNotifyTest");
+    if(tb) tb.onclick = function(){
+      var url = ($("#ntWebhook")||{}).value || '';
+      if(!url){ toast('请先填写 Webhook 地址', 'err'); return; }
+      toast('正在发送测试…');
+      api('/api/notify/test', {
+        method: 'POST', headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({webhook: url})
+      }).then(function(r){ toast(r.msg || '已发送', 'ok'); })
+        .catch(function(e){ toast('失败：' + e.message, 'err'); });
+    };
+  }).catch(function(e){
+    box.innerHTML = "<div style='color:var(--error);font-size:13px'>" + esc(e.message) + "</div>";
+  });
+}
+
+function saveNotifyCfg(){
+  var evs = [];
+  Array.prototype.forEach.call(document.querySelectorAll('[data-ev]'), function(inp){
+    if(inp.checked) evs.push(inp.dataset.ev);
+  });
+  // 全选 = 空数组（表示全部）
+  var allBoxes = document.querySelectorAll('[data-ev]').length;
+  if(evs.length === allBoxes) evs = [];
+
+  var body = {
+    enabled: !!($("#ntEnabled")||{}).checked,
+    webhook: ($("#ntWebhook")||{}).value || '',
+    events: evs
+  };
+  api('/api/notify/config', {
+    method: 'POST', headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(body)
+  }).then(function(){ toast('通知配置已保存', 'ok'); })
+    .catch(function(e){ toast('保存失败：' + e.message, 'err'); });
 }
 
 // ===== 诊断功能 =====

@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/micam/micam/internal/config"
+	"github.com/micam/micam/internal/notify"
 	"github.com/micam/micam/internal/record"
 	"github.com/micam/micam/internal/store"
 	"github.com/micam/micam/internal/trimapi"
@@ -34,7 +35,7 @@ import (
 
 const (
 	appName    = "micam"
-	appVersion = "0.12.1"
+	appVersion = "0.13.0"
 )
 
 func main() {
@@ -108,17 +109,27 @@ func main() {
 	})
 	log.Printf("录像目录: %s (启用=%v)", recDir, cfg.RecordEnabled)
 
+	// 事件通知
+	srv.notify = notify.New(notify.Config{
+		Enabled: cfg.NotifyEnabled,
+		Webhook: cfg.NotifyWebhook,
+		Events:  cfg.NotifyEvents,
+	})
+
 	// 清理过期的片段导出文件
 	srv.cleanExportsOnStart()
 
 	// 存储守护：定时检查磁盘，超阈值自动清理旧录像
-	startStorageGuard(srv.rec)
+	srv.startStorageGuard()
 
 	// 凭据守护：提前续期，避免过期后被动刷新撞限流
 	srv.startCredentialKeeper()
 
 	// 账号会话守护：提前续期 serviceToken（用户无感）
 	srv.startAccountKeeper()
+
+	// 设备在线状态守护：离线/上线发通知
+	srv.startDeviceWatcher()
 
 	_ = rtspPort // 保留参数，当前用管道方案，不需要 RTSP 中转
 
@@ -214,6 +225,7 @@ type Server struct {
 	rtspPort int
 	ffm      string
 	rec      *record.Manager
+	notify   *notify.Manager
 }
 
 // ffmpegPath 返回 ffmpeg 路径。
@@ -390,6 +402,11 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/live/inject", s.handleInjectSource) // 单帧 JPEG
 
 	// 云台
+	// 事件通知
+	mux.HandleFunc("/api/notify/config", s.handleNotifyConfig)
+	mux.HandleFunc("/api/notify/events", s.handleNotifyEvents)
+	mux.HandleFunc("/api/notify/test", s.handleNotifyTest)
+
 	// 诊断信息导出（方便提交问题）
 	mux.HandleFunc("/api/diag/report", s.handleDiagReport)
 	mux.HandleFunc("/api/diag/bundle", s.handleDiagBundle)

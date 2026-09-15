@@ -30,6 +30,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/micam/micam/internal/notify"
 )
 
 // exportJob 一个导出任务。
@@ -174,6 +176,38 @@ func (s *Server) runExport(job *exportJob, src string) {
 
 	logf("[export] %s 完成: %.1fMB (%.1fs, %s), 耗时 %v",
 		job.ID, job.SizeMB, job.Duration, enc, time.Since(t0).Round(time.Second))
+
+	// 通知
+	s.notify.Send(notify.Event{
+		Type:  notify.EventExportDone,
+		Level: "info",
+		Title: "片段导出完成",
+		Message: job.Name + " 的 " + fmtDur2(job.Duration) + " 片段已就绪（" + fmtMB(job.SizeMB) + "）",
+		Data: map[string]any{
+			"id":   job.ID,
+			"name": job.Name,
+			"size": job.SizeMB,
+		},
+	}, 0)
+}
+
+func fmtDur2(sec float64) string {
+	if sec <= 0 {
+		return "未知时长"
+	}
+	m := int(sec) / 60
+	s := int(sec) % 60
+	if m > 0 {
+		return strconv.Itoa(m) + " 分 " + strconv.Itoa(s) + " 秒"
+	}
+	return strconv.Itoa(s) + " 秒"
+}
+
+func fmtMB(v float64) string {
+	if v < 1 {
+		return strconv.FormatFloat(v*1024, 'f', 0, 64) + " KB"
+	}
+	return strconv.FormatFloat(v, 'f', 1, 64) + " MB"
 }
 
 func setExportFailed(job *exportJob, msg string) {
