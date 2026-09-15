@@ -1315,6 +1315,7 @@ function renderRecordings(c){
       +       "<select class=\"btn\" id=\"recDev\" style=\"min-width:170px\"><option value=\"\">选择设备…</option>"+opts+"</select>"
       +       "<select class=\"btn\" id=\"recDate\" style=\"min-width:170px\"><option value=\"\">全部日期</option>"+dateOpts+"</select>"
       +       "<button class=\"btn\" id=\"btnClean\">"+icon("trash",12)+"清理过期</button>"
+      +       "<button class=\"btn\" id=\"btnCacheInfo\">"+icon("inbox",12)+"转码缓存</button>"
       +     "</div>"
       +   "</div>"
       +   "<div id=\"files\">"+empty("inbox","请选择设备查看录像","支持按日期筛选、在线回放","")+"</div>"
@@ -1326,6 +1327,19 @@ function renderRecordings(c){
     $("#recDev").onchange = function(){ currentRecName = this.value; loadRecFiles(); };
     $("#recDate").onchange = loadRecFiles;
     $("#btnClean").onclick = cleanup;
+    $("#btnCacheInfo").onclick = function(){
+      api("/api/recordings/cache").then(function(c){
+        var msg = "转码缓存\n\n文件数: " + (c.count||0)
+          + "\n占用: " + fmtSizeMB(c.totalMB||0)
+          + "\n上限: " + fmtSizeMB(c.maxMB||0)
+          + "\n编码器: " + (c.encoder || "未探测")
+          + "\n\n缓存后可秒开并支持拖动。\n确定清空吗？";
+        if(!confirm(msg)) return;
+        api("/api/recordings/cache/clear", { method: "POST" }).then(function(r){
+          toast("已清理 " + (r.count||0) + " 个缓存，释放 " + fmtSizeMB(r.freedMB||0), "ok");
+        }).catch(function(e){ toast("清理失败：" + e.message, "err"); });
+      }).catch(function(e){ toast("查询失败：" + e.message, "err"); });
+    };
     $("#btnClosePlay").onclick = function(){
       var v = $("#recVideo");
       if(v){ v.pause(); v.src = ""; }
@@ -1417,7 +1431,7 @@ function playRec(info){
 
   card.style.display = "block";
   $("#playTitle").textContent = "回放 · " + info.f;
-  infoBox.textContent = "正在转码…（首次约 3-6 秒）";
+  infoBox.textContent = "正在转码…（首次较慢，之后会缓存加速）";
 
   var url = apiUrl("/api/recordings/play?name=" + encodeURIComponent(info.n)
     + "&date=" + encodeURIComponent(info.d)
@@ -1428,6 +1442,15 @@ function playRec(info){
   video.play().catch(function(){});
 
   video.oncanplay = function(){ infoBox.textContent = "时长 " + fmtDur(video.duration) + " · " + info.f; };
+  video.onloadeddata = function(){
+    // 缓存命中时 Content-Length 存在 -> 可拖动
+    infoBox.textContent = "时长 " + fmtDur(video.duration) + " · " + info.f
+      + (cached ? " · 已缓存（可拖动）" : " · 转码中（首次播放）");
+  };
+  var cached = false;
+  fetch(url, { method: "HEAD" }).then(function(r){
+    cached = (r.headers.get("accept-ranges") === "bytes");
+  }).catch(function(){});
   video.onerror = function(){ infoBox.textContent = "播放失败（可能转码中，稍候重试）"; };
 
   card.scrollIntoView({ behavior: "smooth", block: "start" });

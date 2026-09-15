@@ -171,6 +171,7 @@ func (s *Server) handleDevDocs(w http.ResponseWriter, r *http.Request) {
 // GET /api/dev/capabilities
 func (s *Server) handleDevCapabilities(w http.ResponseWriter, r *http.Request) {
 	cap := hardware.Detect(s.ffmpegPath())
+
 	writeJSON(w, 200, map[string]any{
 		"app": map[string]any{
 			"name":    appName,
@@ -178,7 +179,6 @@ func (s *Server) handleDevCapabilities(w http.ResponseWriter, r *http.Request) {
 		},
 		"server": map[string]any{
 			"time":     time.Now().Format(time.RFC3339),
-			"timezone": time.Now().Format("MST"),
 			"platform": "fnos",
 		},
 		"hardware": map[string]any{
@@ -190,24 +190,53 @@ func (s *Server) handleDevCapabilities(w http.ResponseWriter, r *http.Request) {
 			"preferred": cap.Preferred,
 			"encoders":  cap.Encoders,
 		},
+		// 编码器实测结果（社区适配用）
+		//
+		// 只是「ffmpeg 列出支持」不够 —— 服务进程里可能拿不到设备权限。
+		// 这里给出每个编码器的实测可用性。
+		"encoderProbe": s.probeAllEncoders(),
 		"features": map[string]any{
-			"live.mjpeg":      true,
-			"live.hls":        true,
-			"live.snapshot":   true,
-			"ptz":             true,
-			"record":          true,
-			"storageMonitor":  true,
-			"deviceControl":   false, // 已移除
-			"multiAccount":    true,
-			"sharedDevices":   true,
+			"live.mjpeg":     true,
+			"live.hls":       true,
+			"live.snapshot":  true,
+			"ptz":            true,
+			"record":         true,
+			"replay":         true,
+			"replayCache":    true,
+			"storageMonitor": true,
+			"deviceControl":  false,
+			"multiAccount":   true,
+			"sharedDevices":  true,
 		},
 		"limits": map[string]any{
-			"maxFPS":        15,
-			"maxWidth":      2560,
-			"hlsSegmentSec": 2,
+			"maxFPS":          15,
+			"maxWidth":        2560,
+			"hlsSegmentSec":   1,
 			"probeTimeoutSec": 40,
 		},
 	})
+}
+
+// probeAllEncoders 实测所有候选编码器。
+//
+// 给社区适配用：用户导出诊断包时带上这个结果，
+// 我们就能知道他的硬件到底能用哪个编码器。
+func (s *Server) probeAllEncoders() []map[string]any {
+	candidates := []string{
+		"h264_qsv", "h264_nvenc", "h264_vaapi", "h264_amf", "libx264",
+	}
+	var out []map[string]any
+	for _, name := range candidates {
+		item := map[string]any{"name": name}
+		if err := probeEncoder(s.ffmpegPath(), name, ""); err != nil {
+			item["ok"] = false
+			item["error"] = err.Error()
+		} else {
+			item["ok"] = true
+		}
+		out = append(out, item)
+	}
+	return out
 }
 
 func itoa(n int) string {

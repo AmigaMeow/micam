@@ -24,11 +24,23 @@ import (
 	"time"
 )
 
-// credRenewAfter 凭据年龄超过这个值就尝试续期。
+// credRenewAfter 凭据年龄超过这个值就试着续期。
 //
-// 凭据实测 8 小时失效，4 小时留一半余量：
-// 即使连续撞 3 次限流（每次冷却 30 分钟），也还来得及。
-const credRenewAfter = 4 * time.Hour
+// ===== 实测修正（2026-09-15）=====
+//
+// 早期估计「8 小时失效」是错的。
+// 实测：CW300 的凭据已经 24 小时（1440 分钟）仍在正常工作
+// （当天上午还能抓拍、发云台指令）。
+//
+// 所以有效期 >= 24 小时。
+//
+// 阈值从 4 小时改成 12 小时：
+//   - 留一半余量（12 小时重叠）
+//   - 调用次数从 6 次/天降到 2 次/天（减少 3 倍）
+//   - 限流风险大幅下降
+//
+// 如果将来发现某些型号有效期更短，可以用 /api/live/renew 手动刷。
+const credRenewAfter = 12 * time.Hour
 
 // credKeeperInterval 检查间隔。
 //
@@ -191,6 +203,6 @@ func (s *Server) handleCredStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{
 		"devices":     out,
 		"renewAfterH": int(credRenewAfter.Hours()),
-		"validForH":   8,
+		"validForH":   24,   // 实测值（保守）
 	})
 }

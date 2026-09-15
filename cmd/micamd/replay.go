@@ -41,7 +41,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/micam/micam/internal/hardware"
 )
 
 // ffprobePath 找 ffprobe（与 ffmpeg 同目录）。
@@ -320,44 +319,33 @@ func (s *Server) handleRecPlay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cap := hardware.Detect(s.ffmpegPath())
+	// 选编码器（实测可用，进程内缓存结果）
+	enc, encArgs := s.pickFileEncoder(src)
 
-	buildArgs := func(hw bool) []string {
-		args := []string{"-hide_banner", "-loglevel", "error"}
-		if start > 0 {
-			// -ss 放在 -i 前面 -> 快速定位（关键帧）
-			args = append(args, "-ss", fmt.Sprintf("%.2f", start))
-		}
-		args = append(args, "-i", src)
-
-		if hw {
-			args = append(args, "-c:v", "h264_qsv", "-preset", "veryfast", "-global_quality", "26")
-		} else {
-			args = append(args, "-c:v", "libx264", "-preset", "veryfast", "-crf", "26")
-		}
-
-		args = append(args,
-			"-c:a", "aac", "-b:a", "64k",
-			"-movflags", "frag_keyframe+empty_moov+default_base_moof",
-			"-f", "mp4", "pipe:1",
-		)
-		return args
+	// 缓存命中 + 不需要偏移 -> 直接发文件（支持 Range，秒开可拖动）
+	dst := s.cachePath(enc, name, date, file)
+	if start == 0 && cacheValid(dst, src) {
+		logf("[replay] 缓存命中 %s", filepath.Base(dst))
+		w.Header().Set("Content-Type", "video/mp4")
+		w.Header().Set("Cache-Control", "public, max-age=3600")
+		http.ServeFile(w, r, dst)   // ServeFile 自带 Range 支持
+		return
 	}
 
-	// 先探测硬件编码是否可用。
-	//
-	// 原因：服务进程里 h264_qsv 可能拿不到 /dev/dri 权限，
-	// 报 "Failed to create a VAAPI device"。
-	// 必须在写响应头之前探测 —— 否则已发 200 + 空 body，客户端看不到错误。
-	tryHW := strings.HasSuffix(cap.Preferred, "_qsv")
-	if tryHW {
-		if err := s.probeTranscode(src, tryHW); err != nil {
-			logf("[replay] 硬件编码不可用（%v），改用软件编码", err)
-			tryHW = false
-		}
+	// 未命中：转码，同时（start==0 时）在后台写缓存
+	args := []string{"-hide_banner", "-loglevel", "error"}
+	if start > 0 {
+		// -ss 放在 -i 前面 -> 快速定位到关键帧
+		args = append(args, "-ss", fmt.Sprintf("%.2f", start))
 	}
+	args = append(args, "-i", src)
+	args = append(args, encArgs...)
+	args = append(args,
+		"-c:a", "aac", "-b:a", "64k",
+		"-movflags", "frag_keyframe+empty_moov+default_base_moof",
+		"-f", "mp4", "pipe:1",
+	)
 
-	args := buildArgs(tryHW)
 	cmd := exec.Command(s.ffmpegPath(), args...)
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -375,18 +363,19 @@ func (s *Server) handleRecPlay(w http.ResponseWriter, r *http.Request) {
 		_ = cmd.Wait()
 		if errBuf.Len() > 0 {
 			msg := errBuf.String()
-			if len(msg) > 400 {
-				msg = msg[:400]
+			if len(msg) > 300 {
+				msg = msg[:300]
 			}
 			logf("[replay] ffmpeg: %s", strings.TrimSpace(msg))
 		}
 	}()
 
-	enc := "libx264"
-	if tryHW {
-		enc = "h264_qsv"
+	logf("[replay] 转码 %s (t=%.1f, %s)", file, start, enc)
+
+	// 顺便写缓存：起一个后台转码任务（不阻塞播放）
+	if start == 0 && !cacheValid(dst, src) {
+		go s.buildCache(src, dst, encArgs, enc, file)
 	}
-	logf("[replay] 开始转码 %s (t=%.1f, 编码器=%s)", file, start, enc)
 
 	w.Header().Set("Content-Type", "video/mp4")
 	w.Header().Set("Cache-Control", "no-cache")
@@ -397,18 +386,25 @@ func (s *Server) handleRecPlay(w http.ResponseWriter, r *http.Request) {
 	_, _ = io.Copy(w, stdout)
 }
 
-// probeTranscode 试编码 1 秒，确认编码器可用。
+// buildCache 后台把整个文件转码成缓存 MP4。
 //
-// 为什么需要：服务进程里 h264_qsv 可能拿不到 /dev/dri 权限。
-// 提前探测可以避免「已发 200 + 空 body 才发现失败」。
-func (s *Server) probeTranscode(src string, hw bool) error {
-	args := []string{"-hide_banner", "-loglevel", "error", "-t", "1", "-i", src}
-	if hw {
-		args = append(args, "-c:v", "h264_qsv", "-preset", "veryfast")
-	} else {
-		args = append(args, "-c:v", "libx264", "-preset", "ultrafast")
+// 用临时文件 + 原子重命名，避免「转一半被杀」留下坏缓存。
+func (s *Server) buildCache(src, dst string, encArgs []string, enc, label string) {
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return
 	}
-	args = append(args, "-f", "null", "-")
+	tmp := dst + ".part"
+	_ = os.Remove(tmp)
+
+	t0 := time.Now()
+	args := []string{"-hide_banner", "-loglevel", "error", "-y", "-i", src}
+	args = append(args, encArgs...)
+	args = append(args,
+		"-c:a", "aac", "-b:a", "64k",
+		"-movflags", "+faststart",
+		"-f", "mp4",          // 必须显式指定：临时文件名是 .part，ffmpeg 猜不出格式
+		tmp,
+	)
 
 	out, err := exec.Command(s.ffmpegPath(), args...).CombinedOutput()
 	if err != nil {
@@ -416,12 +412,55 @@ func (s *Server) probeTranscode(src string, hw bool) error {
 		if len(msg) > 200 {
 			msg = msg[:200]
 		}
-		if msg == "" {
-			msg = err.Error()
-		}
-		return fmt.Errorf("%s", msg)
+		logf("[cache] 生成失败 %s: %s", label, msg)
+		_ = os.Remove(tmp)
+		return
 	}
-	return nil
+
+	if err := os.Rename(tmp, dst); err != nil {
+		_ = os.Remove(tmp)
+		return
+	}
+	fi, _ := os.Stat(dst)
+	var mb float64
+	if fi != nil {
+		mb = float64(fi.Size()) / (1 << 20)
+	}
+	logf("[cache] 已生成 %s (%.1fMB, %.1fs, %s)", label, mb, time.Since(t0).Seconds(), enc)
+
+	s.evictCache()
+}
+
+// handleCacheStats 转码缓存状态。
+//
+// GET /api/recordings/cache
+func (s *Server) handleCacheStats(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, 200, s.cacheStats())
+}
+
+// handleCacheClear 清空转码缓存。
+//
+// POST /api/recordings/cache/clear
+func (s *Server) handleCacheClear(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeErr(w, 405, "只支持 POST")
+		return
+	}
+	dir := s.transcodeCacheDir()
+	var freed int64
+	var n int
+	_ = filepath.Walk(dir, func(pth string, info os.FileInfo, err error) error {
+		if err != nil || info == nil || info.IsDir() {
+			return nil
+		}
+		if err := os.Remove(pth); err == nil {
+			freed += info.Size()
+			n++
+		}
+		return nil
+	})
+	logf("[cache] 手动清理 %d 个文件，释放 %.1fGB", n, float64(freed)/(1<<30))
+	writeJSON(w, 200, map[string]any{"ok": true, "count": n, "freedMB": float64(freed) / (1 << 20)})
 }
 
 // findRecFile 定位录像文件（支持不传 date）。

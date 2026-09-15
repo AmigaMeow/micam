@@ -93,6 +93,24 @@ func (s *Server) handleDiagBundle(w http.ResponseWriter, r *http.Request) {
 		addFile("hardware.json", []byte(sanitize(string(data))))
 	}
 
+	// 5) 编码器实测（社区适配的关键信息）
+	//
+	// 只列「ffmpeg 支持」不够 —— 服务进程可能拿不到设备权限。
+	// 这里给出每个编码器的真实可用性。
+	probe := map[string]any{
+		"encoders": s.probeAllEncoders(),
+		"note": "ok=false 表示实测不可用（可能是权限或驱动问题）。" +
+			"请把这一节提供给开发者，便于针对性适配。",
+	}
+	if data, err := json.MarshalIndent(probe, "", "  "); err == nil {
+		addFile("encoder-probe.json", data)
+	}
+
+	// 6) 转码缓存状态
+	if data, err := json.MarshalIndent(s.cacheStats(), "", "  "); err == nil {
+		addFile("transcode-cache.json", data)
+	}
+
 	// 5) 说明文件
 	readme := `MiCam 诊断信息包
 =====================
