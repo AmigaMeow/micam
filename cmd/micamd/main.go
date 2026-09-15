@@ -34,7 +34,7 @@ import (
 
 const (
 	appName    = "micam"
-	appVersion = "0.8.3"
+	appVersion = "0.8.4"
 )
 
 func main() {
@@ -110,6 +110,9 @@ func main() {
 
 	// 存储守护：定时检查磁盘，超阈值自动清理旧录像
 	startStorageGuard(srv.rec)
+
+	// 凭据守护：提前续期，避免过期后被动刷新撞限流
+	srv.startCredentialKeeper()
 
 	_ = rtspPort // 保留参数，当前用管道方案，不需要 RTSP 中转
 
@@ -366,6 +369,8 @@ func (s *Server) routes(mux *http.ServeMux) {
 
 	// 播放
 	mux.HandleFunc("/api/live/source-status", s.handleSourceStatus)
+	mux.HandleFunc("/api/live/cred-status", s.handleCredStatus)
+	mux.HandleFunc("/api/live/renew", s.handleCredRenew)
 	mux.HandleFunc("/api/live/hls", s.handleHLS)       // HLS 播放（2K 流畅）
 	mux.HandleFunc("/api/live/hls/info", s.handleHLSInfo) // HLS 能力信息
 	mux.HandleFunc("/api/live/mjpeg", s.handleMJPEG)   // MJPEG 流（<img> 直接显示）

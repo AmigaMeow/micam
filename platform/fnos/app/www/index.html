@@ -693,6 +693,7 @@ function renderLive(c){
       +       "<div></div>"
       +     "</div>"
       +     "<div class=\"ptz-info\" id=\"ptzInfo\">云台：点击 ● 查询当前位置</div>"
+      +     "<div id=\"credBar\" style=\"margin-top:10px;font-size:12px;display:none;padding:8px 12px;border-radius:8px\"></div>"
       +     "<div style=\"margin-top:10px;font-size:12px\">"
       +       "<a href=\"javascript:;\" id=\"ptzFlipToggle\" style=\"color:var(--primary)\">方向不对？</a>"
       +       "<div id=\"ptzFlipPanel\" style=\"display:none;margin-top:8px;padding:10px 12px;background:var(--hover);border-radius:8px\">"
@@ -709,6 +710,7 @@ function renderLive(c){
       b.onclick = function(){ currentDid = b.dataset.tab; stopLive(); render(); };
     });
     $("#btnStop").onclick = stopLive;
+    loadCredBar();
     $("#selQuality").onchange = function(){
       liveWidth = parseInt(this.value, 10) || 0;
       if(currentDid) startLive(currentDid);
@@ -869,6 +871,7 @@ function startLiveHLS(did){
     if(started) return;
     console.log("[micam] HLS 失败，降级 MJPEG: " + reason);
     if(hint) hint.textContent = reason + "，已切到兼容模式";
+    loadCredBar();   // 失败时检查是不是凭据/限流问题
     if(hlsObj){ try { hlsObj.destroy(); } catch(e){} }
     cleared = false;              // 允许 MJPEG 重建覆盖层
     clearProg();
@@ -1613,6 +1616,60 @@ function renderSettings(c){
     + "<tr><td style=\"color:var(--text-2)\">连接方式</td><td>小米云 P2P 直连（不依赖 EasyNVR）</td></tr>"
     + "<tr><td style=\"color:var(--text-2)\">后端</td><td><span class=\"tag tag-on\">运行中</span></td></tr>"
     + "</table></div>";
+}
+
+// ===== 凭据状态提示 =====
+//
+// 为什么要显示：cs2 凭据有有效期（实测 8 小时），
+// 过期后需要向小米云申请，而小米云有限流。
+// 限流期间用户什么都不做就一直是黑屏 —— 必须让他知道原因。
+function loadCredBar(){
+  var bar = $("#credBar");
+  if(!bar) return;
+  api("/api/live/cred-status").then(function(d){
+    var devs = d.devices || [];
+    var dev = null;
+    for(var i=0;i<devs.length;i++){ if(devs[i].did === currentDid){ dev = devs[i]; break; } }
+    if(!dev || !dev.hasCred){ bar.style.display = "none"; return; }
+
+    var msg = "", bg = "", color = "";
+    if(dev.cooldownMinutes > 0){
+      bg = "rgba(255,77,79,.12)"; color = "var(--error)";
+      msg = "⚠️ 摄像头凭据需要刷新，但小米云正在限流。约 " + dev.cooldownMinutes + " 分钟后自动重试。"
+          + "<br>期间可能无法播放。可稍后再试，或重启路由器换个出口 IP。";
+    } else if(dev.expiresInMinutes < 60){
+      bg = "rgba(250,173,20,.12)"; color = "var(--warning)";
+      msg = "⚠️ 摄像头凭据约 " + dev.expiresInMinutes + " 分钟后过期，到期会自动续期。";
+    } else {
+      return;   // 正常状态不打扰
+    }
+
+    bar.style.display = "block";
+    bar.style.background = bg;
+    bar.style.color = color;
+    bar.innerHTML = msg
+      + "<div style=\"margin-top:8px\">"
+      +   "<button class=\"btn btn-sm\" id=\"btnRenew\">立即重试刷新</button>"
+      + "</div>";
+
+    var btn = $("#btnRenew");
+    if(btn) btn.onclick = function(){
+      btn.disabled = true;
+      btn.textContent = "刷新中…";
+      api("/api/live/renew?did=" + encodeURIComponent(currentDid), { method: "POST" })
+        .then(function(r){
+          var res = (r.results || [])[0] || {};
+          if(res.ok){
+            toast("凭据已刷新", "ok");
+            loadCredBar();
+          } else {
+            toast("刷新失败：" + (res.error || "未知错误"), "err");
+          }
+        })
+        .catch(function(e){ toast("刷新失败：" + e.message, "err"); })
+        .then(function(){ btn.disabled = false; btn.textContent = "立即重试刷新"; });
+    };
+  }).catch(function(){});
 }
 
 // ===== 云台方向翻转（按设备记住）=====
