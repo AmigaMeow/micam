@@ -56,6 +56,8 @@ type Device struct {
 	IsOnline  bool   `json:"isOnline"`
 	ShareFlag int    `json:"shareFlag"`
 	Shared    bool   `json:"shared"`     // 来自共享家庭
+	// AccountID 哪个登录账号能访问这台设备（不来自小米 API，由我们填充）
+	AccountID string `json:"accountId,omitempty"`
 	Permit    int    `json:"permitLevel"`
 	ParentID  string `json:"parent_id"`
 	Token     string `json:"token"`

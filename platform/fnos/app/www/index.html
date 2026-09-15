@@ -414,6 +414,7 @@ var liveMode = "hls";   // hls / mjpeg
 var liveTimer = null;
 var APP_VER = "";        // 版本号（从 /api/health 拉取）
 var DEV_UNLOCKED = false; // 开发者模式是否解锁
+var devAccountFilter = 'all';  // 设备列表的账号筛选
 var DEV_TAP = 0;          // 本次点击计数
 
 // ===== 工具 =====
@@ -631,7 +632,25 @@ function renderDevices(c){
       c.innerHTML = "<div class=\"card\">" + empty("inbox","没有发现摄像头","","") + "</div>";
       return;
     }
-    // 统计（含共享设备）
+    // ===== 账号筛选 =====
+  //
+  // 多个小米账号时设备混在一起，按归属账号筛选。
+  var allDevices = devices;
+  var accMap = {};
+  (st.accounts || []).forEach(function(a){ accMap[a.userId] = a; });
+
+  var accIds = [];
+  allDevices.forEach(function(d){
+    if(d.accountId && accIds.indexOf(d.accountId) < 0) accIds.push(d.accountId);
+  });
+
+  if(devAccountFilter !== 'all'){
+    devices = allDevices.filter(function(d){ return d.accountId === devAccountFilter; });
+  } else {
+    devices = allDevices.slice();
+  }
+
+  // 统计（含共享设备）
   var onlineCount = devices.filter(function(d){ return d.isOnline; }).length;
   var sharedCount = devices.filter(function(d){ return d.shared || d.shareFlag===1; }).length;
   var summary = "<div class=\"card\" style=\"margin-bottom:12px\">"
@@ -639,6 +658,7 @@ function renderDevices(c){
     +   "<span>共 <b>" + devices.length + "</b> 台</span>"
     +   "<span style=\"color:var(--success)\">在线 <b>" + onlineCount + "</b></span>"
     +   (sharedCount ? "<span style=\"color:var(--primary)\">共享 <b>" + sharedCount + "</b></span>" : "")
+    +   (accIds.length > 1 ? accountSelectHTML(accIds, accMap) : "")
     + "</div></div>";
 
   var cards = devices.map(function(d){
@@ -666,6 +686,12 @@ function renderDevices(c){
         + "</div></div>";
     }).join("");
     c.innerHTML = summary + "<div class=\"grid\">"+cards+"</div>";
+
+  var selAcc = $("#selAccount");
+  if(selAcc) selAcc.onchange = function(){
+    devAccountFilter = this.value;
+    renderDevices(c);
+  };
     bindDeviceActions();
   });
 }
@@ -1176,6 +1202,18 @@ function ptzMove(op){
   });
 }
 
+// 账号筛选下拉
+function accountSelectHTML(accIds, accMap){
+  var opts = "<option value='all'>全部账号</option>";
+  accIds.forEach(function(id){
+    var a = accMap[id] || {};
+    var sel = (devAccountFilter === id) ? ' selected' : '';
+    var suffix = a.online ? '' : '（离线）';
+    opts += "<option value='" + esc(id) + "'" + sel + ">" + esc(id) + suffix + "</option>";
+  });
+  return "<select class='btn btn-sm' id='selAccount' style='margin-left:auto;min-width:160px'>" + opts + "</select>";
+}
+
 // ===== 页面：存储监控 =====
 function renderStorage(c){
   c.innerHTML = loading("正在统计存储…");
@@ -1449,7 +1487,11 @@ function renderRecordings(c){
     };
     $("#btnClosePlay").onclick = function(){
       var v = $("#recVideo");
-      if(v){ v.pause(); v.src = ""; }
+      if(v){
+        if(currentRecFile) savePos(currentRecFile, v.currentTime);
+        if(v.__posTimer) clearInterval(v.__posTimer);
+        v.pause(); v.src = "";
+      }
       $("#playerCard").style.display = "none";
     };
   }).catch(function(e){
@@ -1519,6 +1561,27 @@ function loadRecFiles(){
   }).catch(function(e){
     box.innerHTML = "<div style=\"padding:20px 24px;color:var(--error);font-size:13px\">" + esc(e.message) + "</div>";
   });
+}
+
+// ===== 播放位置记忆 =====
+//
+// 长录像看到一半切走，下次接着看。
+// 存 localStorage：键 = micam.pos.<设备>.<文件>
+function posKey(info){ return 'micam.pos.' + info.n + '.' + info.f; }
+function getSavedPos(info){
+  try {
+    var v = parseFloat(localStorage.getItem(posKey(info)));
+    return (isFinite(v) && v > 3) ? v : 0;
+  } catch(e){ return 0; }
+}
+function savePos(info, sec){
+  try {
+    if(!isFinite(sec) || sec < 3) return;
+    localStorage.setItem(posKey(info), String(Math.floor(sec)));
+  } catch(e){}
+}
+function clearPos(info){
+  try { localStorage.removeItem(posKey(info)); } catch(e){}
 }
 
 // ===== 时间轴缩略图 =====
@@ -1778,6 +1841,33 @@ function playRec(info){
 
   card.scrollIntoView({ behavior: "smooth", block: "start" });
   loadTimeline(info);
+
+  // ---- 播放位置记忆 ----
+  var saved = getSavedPos(info);
+  if(saved > 3){
+    video.onloadedmetadata = function(){
+      if(!isFinite(video.duration)) return;
+      video.currentTime = Math.min(saved, video.duration - 1);
+      if(infoBox){
+        infoBox.innerHTML = "已跳到上次位置 " + fmtDur(saved)
+          + " &nbsp;<a href=\"javascript:;\" id=\"btnRestart\" style=\"color:var(--primary)\">从头播放</a>";
+        var rb = document.getElementById("btnRestart");
+        if(rb) rb.onclick = function(){
+          video.currentTime = 0;
+          clearPos(info);
+          infoBox.textContent = "时长 " + fmtDur(video.duration) + " · " + info.f;
+        };
+      }
+    };
+  }
+
+  // 每 5 秒记一次
+  if(video.__posTimer) clearInterval(video.__posTimer);
+  video.__posTimer = setInterval(function(){
+    if(video && !video.paused && isFinite(video.currentTime)) savePos(info, video.currentTime);
+  }, 5000);
+  video.addEventListener("pause", function(){ savePos(info, video.currentTime); });
+  video.addEventListener("ended", function(){ clearPos(info); });
 
   var ebtn = $("#btnExportClip");
   if(ebtn) ebtn.onclick = function(){ showExportPanel(video); };

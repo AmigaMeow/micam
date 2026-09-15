@@ -34,7 +34,7 @@ import (
 
 const (
 	appName    = "micam"
-	appVersion = "0.12.0"
+	appVersion = "0.12.1"
 )
 
 func main() {
@@ -571,6 +571,8 @@ func (s *Server) handleDevices(w http.ResponseWriter, r *http.Request) {
 				continue
 			}
 			seen[d.Did] = true
+			// 标记归属账号（前端可按账号筛选）
+			d.AccountID = sess.UserID
 			all = append(all, d)
 		}
 	}
@@ -580,7 +582,15 @@ func (s *Server) handleDevices(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, "获取设备失败: "+lastErr.Error())
 		return
 	}
-	writeJSON(w, 200, map[string]any{"devices": all, "needLogin": false})
+
+	// 附带账号列表（供前端做筛选下拉）
+	accounts := s.store.Accounts()
+
+	writeJSON(w, 200, map[string]any{
+		"devices":   all,
+		"accounts":  accounts,
+		"needLogin": false,
+	})
 }
 
 func (s *Server) staticHandler() http.Handler {

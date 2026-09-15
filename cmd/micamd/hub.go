@@ -86,6 +86,7 @@ func (s *Server) allCameras() []*xiaomi.Device {
 			}
 			seen[devs[i].Did] = true
 			d := devs[i]
+			d.AccountID = sess.UserID
 			vals = append(vals, d)
 			out = append(out, &d)
 		}
