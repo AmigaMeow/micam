@@ -378,6 +378,62 @@ func (s *Server) openAPISpec(r *http.Request) map[string]any {
 				"responses": okResp("备份列表"),
 			},
 		},
+		"/recordings/config": map[string]any{
+			"get": map[string]any{
+				"summary":     "读取录像策略",
+				"description": "分片时长、保留天数、磁盘阈值、缓存上限。",
+				"tags":        []string{"录像"},
+				"responses":   okResp("当前策略"),
+			},
+			"post": map[string]any{
+				"summary":     "修改录像策略",
+				"description": "所有字段可选。带范围校验（分片 10-3600 秒，保留 1-365 天）。",
+				"tags":        []string{"录像"},
+				"responses":   okResp("ok"),
+			},
+		},
+		"/recordings/batch-delete": map[string]any{
+			"post": map[string]any{
+				"summary": "批量删除录像",
+				"description": "三种模式：按日期、按日期之前、指定文件列表。" +
+					"删除失败会返回 failed 列表（常见：文件属主不是服务用户）。",
+				"tags":      []string{"录像"},
+				"responses": okResp("deleted + total + freedMB"),
+			},
+		},
+		"/recordings/export": map[string]any{
+			"post": map[string]any{
+				"summary": "创建片段导出任务",
+				"description": "把指定时间段转码成 MP4（对方可直接播放）。" +
+					"异步执行 —— 返回 id，用 status 轮询进度。",
+				"tags":      []string{"录像"},
+				"responses": okResp("ok + id"),
+			},
+		},
+		"/recordings/export/status": map[string]any{
+			"get": map[string]any{
+				"summary":     "导出任务状态",
+				"description": "status: running / done / failed。",
+				"tags":        []string{"录像"},
+				"parameters":  []any{strParam("id", "任务 ID（可空 = 全部）", false)},
+				"responses":   okResp("任务详情"),
+			},
+		},
+		"/recordings/export/download": map[string]any{
+			"get": map[string]any{
+				"summary":   "下载导出结果",
+				"tags":      []string{"录像"},
+				"parameters": []any{strParam("id", "任务 ID", true)},
+				"responses": map[string]any{"200": map[string]any{"description": "MP4 文件"}},
+			},
+		},
+		"/recordings/export/delete": map[string]any{
+			"post": map[string]any{
+				"summary":   "删除导出任务",
+				"tags":      []string{"录像"},
+				"responses": okResp("ok"),
+			},
+		},
 		"/recordings/cleanup": map[string]any{
 			"post": map[string]any{
 				"summary":   "清理过期录像",
