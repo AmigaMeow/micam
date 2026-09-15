@@ -211,8 +211,14 @@ func cacheValid(dst, src string) bool {
 
 // ---- 缓存清理 ----
 
-// cacheMaxBytes 缓存上限（默认 5GB）。
-const cacheMaxBytes = 5 << 30
+// cacheMaxBytes 缓存上限（从配置读，默认 5GB）。
+func (s *Server) cacheMaxBytes() int64 {
+	gb := s.cfg.TranscodeCacheGB
+	if gb <= 0 {
+		gb = 5
+	}
+	return int64(gb) << 30
+}
 
 // evictCache 超限时删最旧的缓存。
 func (s *Server) evictCache() {
@@ -235,7 +241,7 @@ func (s *Server) evictCache() {
 		return nil
 	});
 
-	if total <= cacheMaxBytes {
+	if total <= s.cacheMaxBytes() {
 		return
 	}
 
@@ -250,7 +256,7 @@ func (s *Server) evictCache() {
 
 	var freed int64
 	for _, e := range all {
-		if total-freed <= cacheMaxBytes*8/10 {
+		if total-freed <= s.cacheMaxBytes()*8/10 {
 			break
 		}
 		if err := os.Remove(e.path); err == nil {
@@ -282,7 +288,7 @@ func (s *Server) cacheStats() map[string]any {
 		"dir":       dir,
 		"count":     count,
 		"totalMB":   float64(total) / (1 << 20),
-		"maxMB":     float64(cacheMaxBytes) / (1 << 20),
+		"maxMB":     float64(s.cacheMaxBytes()) / (1 << 20),
 		"encoder":   enc,
 	}
 }

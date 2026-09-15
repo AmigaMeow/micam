@@ -611,3 +611,195 @@ func (s *Server) handleRecDelete(w http.ResponseWriter, r *http.Request) {
 }
 
 var _ = time.Now
+
+// ---- 录像策略配置 ----
+
+// handleRecConfig 读写录像策略。
+//
+// GET  /api/recordings/config   读取
+// POST /api/recordings/config   修改
+//
+// POST body（都可选）：
+//   {"enabled":true,"segmentSec":300,"keepDays":7,"minFreeGB":10,"cacheGB":5}
+func (s *Server) handleRecConfig(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		cfg := s.rec.GetConfig()
+		writeJSON(w, 200, map[string]any{
+			"enabled":    cfg.Enabled,
+			"dir":        cfg.Dir,
+			"segmentSec": int(cfg.Segment.Seconds()),
+			"keepDays":   cfg.KeepDays,
+			"minFreeGB":  cfg.MinFreeGB,
+			"cacheGB":    s.cfg.TranscodeCacheGB,
+		})
+		return
+
+	case http.MethodPost:
+		var req struct {
+			Enabled    *bool `json:"enabled"`
+			SegmentSec *int  `json:"segmentSec"`
+			KeepDays   *int  `json:"keepDays"`
+			MinFreeGB  *int  `json:"minFreeGB"`
+			CacheGB    *int  `json:"cacheGB"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeErr(w, 400, "参数错误")
+			return
+		}
+
+		// 校验范围
+		if req.SegmentSec != nil && (*req.SegmentSec < 10 || *req.SegmentSec > 3600) {
+			writeErr(w, 400, "分片时长需在 10-3600 秒之间")
+			return
+		}
+		if req.KeepDays != nil && (*req.KeepDays < 1 || *req.KeepDays > 365) {
+			writeErr(w, 400, "保留天数需在 1-365 之间")
+			return
+		}
+		if req.MinFreeGB != nil && (*req.MinFreeGB < 0 || *req.MinFreeGB > 10000) {
+			writeErr(w, 400, "磁盘阈值需在 0-10000 GB 之间")
+			return
+		}
+		if req.CacheGB != nil && (*req.CacheGB < 1 || *req.CacheGB > 500) {
+			writeErr(w, 400, "缓存上限需在 1-500 GB 之间")
+			return
+		}
+
+		// 写配置
+		if err := s.cfg.SetRecordPolicy(req.Enabled, req.SegmentSec, req.KeepDays, req.MinFreeGB, req.CacheGB); err != nil {
+			writeErr(w, 500, "保存失败: "+err.Error())
+			return
+		}
+
+		// 立刻生效（更新录像管理器）
+		cur := s.rec.GetConfig()
+		if req.Enabled != nil {
+			cur.Enabled = *req.Enabled
+		}
+		if req.SegmentSec != nil {
+			cur.Segment = time.Duration(*req.SegmentSec) * time.Second
+		}
+		if req.KeepDays != nil {
+			cur.KeepDays = *req.KeepDays
+		}
+		if req.MinFreeGB != nil {
+			cur.MinFreeGB = *req.MinFreeGB
+		}
+		s.rec.SetConfig(cur)
+
+		logf("[rec] 策略已更新: enabled=%v segment=%ds keepDays=%d minFreeGB=%d cacheGB=%d",
+			cur.Enabled, int(cur.Segment.Seconds()), cur.KeepDays, cur.MinFreeGB, s.cfg.TranscodeCacheGB)
+
+		writeJSON(w, 200, map[string]any{"ok": true})
+		return
+
+	default:
+		writeErr(w, 405, "方法不允许")
+	}
+}
+
+// handleRecBatchDelete 批量删除录像。
+//
+// POST /api/recordings/batch-delete
+//
+// body:
+//   {"name":"设备名","before":"2026-09-14"}   删除该日期之前的
+//   {"name":"设备名","date":"2026-09-14"}     删除该日期全部
+//   {"files":[{"name":..,"date":..,"file":..}]}  指定文件列表
+func (s *Server) handleRecBatchDelete(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeErr(w, 405, "只支持 POST")
+		return
+	}
+	var req struct {
+		Name   string `json:"name"`
+		Date   string `json:"date"`
+		Before string `json:"before"`
+		Files  []struct {
+			Name string `json:"name"`
+			Date string `json:"date"`
+			File string `json:"file"`
+		} `json:"files"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, 400, "参数错误")
+		return
+	}
+
+	var targets []string
+
+	if len(req.Files) > 0 {
+		for _, f := range req.Files {
+			pth, err := s.findRecFile(safeName(f.Name), safeName(f.Date), safeName(f.File))
+			if err == nil {
+				targets = append(targets, pth)
+			}
+		}
+	} else if req.Name != "" {
+		name := safeName(req.Name)
+		base := filepath.Join(s.recRoot(), name)
+
+		_ = filepath.Walk(base, func(pth string, info os.FileInfo, err error) error {
+			if err != nil || info == nil || info.IsDir() {
+				return nil
+			}
+			if filepath.Ext(pth) != ".mkv" {
+				return nil
+			}
+			rel, _ := filepath.Rel(base, pth)
+			parts := strings.Split(rel, string(filepath.Separator))
+			dirDate := ""
+			if len(parts) >= 2 {
+				dirDate = parts[0]
+			}
+
+			// 按日期筛选
+			if req.Date != "" && dirDate != req.Date {
+				return nil
+			}
+			// 按「之前」筛选
+			if req.Before != "" && dirDate >= req.Before {
+				return nil
+			}
+			targets = append(targets, pth)
+			return nil
+		})
+	}
+
+	var freed int64
+	var n int
+	var failed []string
+
+	for _, pth := range targets {
+		fi, err := os.Stat(pth)
+		if err != nil {
+			continue
+		}
+		if err := os.Remove(pth); err == nil {
+			freed += fi.Size()
+			n++
+		} else {
+			// 记录失败原因（常见：文件属主不是服务用户）
+			failed = append(failed, filepath.Base(pth)+": "+err.Error())
+			logf("[replay] 删除失败 %s: %v", pth, err)
+		}
+	}
+
+	logf("[replay] 批量删除 %d/%d 个文件，释放 %.1fMB", n, len(targets), float64(freed)/(1<<20))
+
+	resp := map[string]any{
+		"ok":      len(failed) == 0,
+		"deleted": n,
+		"total":   len(targets),
+		"freedMB": float64(freed) / (1 << 20),
+	}
+	if len(failed) > 0 {
+		if len(failed) > 3 {
+			failed = failed[:3]
+		}
+		resp["failed"] = failed
+		resp["msg"] = "部分文件删除失败（可能是权限问题）"
+	}
+	writeJSON(w, 200, resp)
+}

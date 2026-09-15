@@ -37,6 +37,12 @@ type Config struct {
 	RecordEnabled bool `json:"recordEnabled"`
 	// 录像分片时长（秒）
 	RecordSegment int `json:"recordSegment"`
+	// 录像保留天数（超期自动清理）
+	RecordKeepDays int `json:"recordKeepDays"`
+	// 磁盘最低剩余空间 GB（低于则紧急清理 + 停止录像）
+	RecordMinFreeGB int `json:"recordMinFreeGB"`
+	// 转码缓存上限 GB
+	TranscodeCacheGB int `json:"transcodeCacheGB"`
 	// 日志级别
 	LogLevel string `json:"logLevel"`
 	// 开放模式
@@ -49,10 +55,13 @@ type Config struct {
 // Default 返回默认配置。
 func Default() *Config {
 	return &Config{
-		Subtype:       "3",
-		RecordEnabled: false,
-		RecordSegment: 300,
-		LogLevel:      "info",
+		Subtype:          "3",
+		RecordEnabled:    false,
+		RecordSegment:    300,
+		RecordKeepDays:   7,
+		RecordMinFreeGB:  10,
+		TranscodeCacheGB: 5,
+		LogLevel:         "info",
 		Dev: DevConfig{
 			AllowLAN:   true,
 			ExposeSpec: true,
@@ -78,6 +87,15 @@ func Load(path string) *Config {
 	if cfg.RecordSegment == 0 {
 		cfg.RecordSegment = 300
 	}
+	if cfg.RecordKeepDays == 0 {
+		cfg.RecordKeepDays = 7
+	}
+	if cfg.RecordMinFreeGB == 0 {
+		cfg.RecordMinFreeGB = 10
+	}
+	if cfg.TranscodeCacheGB == 0 {
+		cfg.TranscodeCacheGB = 5
+	}
 	return cfg
 }
 
@@ -101,4 +119,28 @@ func (c *Config) Save(path string) error {
 // SaveSelf 用记录过的路径保存。
 func (c *Config) SaveSelf() error {
 	return c.Save(c.path)
+}
+
+// ---- 录像策略设置 ----
+
+// SetRecordPolicy 更新录像策略并落盘。
+func (c *Config) SetRecordPolicy(enabled *bool, segment, keepDays, minFreeGB, cacheGB *int) error {
+	c.mu.Lock()
+	if enabled != nil {
+		c.RecordEnabled = *enabled
+	}
+	if segment != nil && *segment > 0 {
+		c.RecordSegment = *segment
+	}
+	if keepDays != nil && *keepDays > 0 {
+		c.RecordKeepDays = *keepDays
+	}
+	if minFreeGB != nil && *minFreeGB >= 0 {
+		c.RecordMinFreeGB = *minFreeGB
+	}
+	if cacheGB != nil && *cacheGB > 0 {
+		c.TranscodeCacheGB = *cacheGB
+	}
+	c.mu.Unlock()
+	return c.SaveSelf()
 }

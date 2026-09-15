@@ -34,7 +34,7 @@ import (
 
 const (
 	appName    = "micam"
-	appVersion = "0.9.5"
+	appVersion = "0.10.0"
 )
 
 func main() {
@@ -102,8 +102,8 @@ func main() {
 		Enabled:    cfg.RecordEnabled,
 		Dir:        recDir,
 		Segment:    time.Duration(cfg.RecordSegment) * time.Second,
-		KeepDays:   7,
-		MinFreeGB:  10,
+		KeepDays:   cfg.RecordKeepDays,
+		MinFreeGB:  cfg.RecordMinFreeGB,
 		FFmpegPath: *ffmpegPath,
 	})
 	log.Printf("录像目录: %s (启用=%v)", recDir, cfg.RecordEnabled)
@@ -426,6 +426,8 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/recordings/delete", s.handleRecDelete)
 	mux.HandleFunc("/api/recordings/cache", s.handleCacheStats)
 	mux.HandleFunc("/api/recordings/cache/clear", s.handleCacheClear)
+	mux.HandleFunc("/api/recordings/config", s.handleRecConfig)
+	mux.HandleFunc("/api/recordings/batch-delete", s.handleRecBatchDelete)
 
 	// 静态前端（同目录下的 web/）
 	mux.Handle("/", s.staticHandler())

@@ -1194,6 +1194,13 @@ function renderStorage(c){
       +   "</div>"
       + "</div>"
 
+      // 存储策略
+      + "<div class=\"card\">"
+      +   "<div class=\"card-head\"><span class=\"card-title\">" + icon("set",15) + " 存储策略</span>"
+      +     "<button class=\"btn btn-sm\" id=\"btnRecCfgSave\">保存</button></div>"
+      +   "<div style=\"padding:16px 24px\" id=\"recCfg\">" + loading("读取中…") + "</div>"
+      + "</div>"
+
       // 各摄像头
       + "<div class=\"card\">"
       +   "<div class=\"card-head\"><span class=\"card-title\">" + icon("cam",15) + " 摄像头存储</span></div>"
@@ -1219,9 +1226,68 @@ function renderStorage(c){
 
     var btn = $("#btnCleanupPreview");
     if(btn) btn.onclick = showCleanupPreview;
+    loadRecConfig();
   }).catch(function(e){
     c.innerHTML = "<div class=\"card\">" + empty("close","读取失败", e.message, "") + "</div>";
   });
+}
+
+// ===== 存储策略配置 =====
+function loadRecConfig(){
+  var box = $("#recCfg");
+  if(!box) return;
+  api("/api/recordings/config").then(function(c){
+    box.innerHTML = ""
+      + "<div class=\"cfg-row\">"
+      +   "<div class=\"cfg-label\">自动录像</div>"
+      +   "<label class=\"switch\"><input type=\"checkbox\" id=\"cfgEnabled\"" + (c.enabled ? " checked" : "") + "><span></span></label>"
+      +   "<div class=\"cfg-hint\">开启后按分片时长连续录制</div>"
+      + "</div>"
+      + "<div class=\"cfg-row\">"
+      +   "<div class=\"cfg-label\">分片时长</div>"
+      +   "<input class=\"btn cfg-input\" id=\"cfgSegment\" type=\"number\" min=\"10\" max=\"3600\" value=\"" + (c.segmentSec||300) + "\">"
+      +   "<div class=\"cfg-hint\">秒（10-3600，越小文件越多）</div>"
+      + "</div>"
+      + "<div class=\"cfg-row\">"
+      +   "<div class=\"cfg-label\">保留天数</div>"
+      +   "<input class=\"btn cfg-input\" id=\"cfgKeep\" type=\"number\" min=\"1\" max=\"365\" value=\"" + (c.keepDays||7) + "\">"
+      +   "<div class=\"cfg-hint\">天（超期自动清理）</div>"
+      + "</div>"
+      + "<div class=\"cfg-row\">"
+      +   "<div class=\"cfg-label\">磁盘阈值</div>"
+      +   "<input class=\"btn cfg-input\" id=\"cfgMinFree\" type=\"number\" min=\"0\" max=\"10000\" value=\"" + (c.minFreeGB||10) + "\">"
+      +   "<div class=\"cfg-hint\">GB（剩余低于此值就紧急清理）</div>"
+      + "</div>"
+      + "<div class=\"cfg-row\">"
+      +   "<div class=\"cfg-label\">转码缓存上限</div>"
+      +   "<input class=\"btn cfg-input\" id=\"cfgCache\" type=\"number\" min=\"1\" max=\"500\" value=\"" + (c.cacheGB||5) + "\">"
+      +   "<div class=\"cfg-hint\">GB（回放缓存，超了删最旧的）</div>"
+      + "</div>"
+      + "<div style=\"font-size:12px;color:var(--text-3);margin-top:10px\">"
+      +   "录像目录：" + esc(c.dir||"") + "</div>";
+
+    var sb = $("#btnRecCfgSave");
+    if(sb) sb.onclick = saveRecConfig;
+  }).catch(function(e){
+    box.innerHTML = "<div style=\"color:var(--error);font-size:13px\">" + esc(e.message) + "</div>";
+  });
+}
+
+function saveRecConfig(){
+  var body = {
+    enabled:    ($("#cfgEnabled")||{}).checked || false,
+    segmentSec: parseInt(($("#cfgSegment")||{}).value, 10) || 300,
+    keepDays:   parseInt(($("#cfgKeep")||{}).value, 10) || 7,
+    minFreeGB:  parseInt(($("#cfgMinFree")||{}).value, 10),
+    cacheGB:    parseInt(($("#cfgCache")||{}).value, 10) || 5
+  };
+  if(isNaN(body.minFreeGB)) body.minFreeGB = 10;
+  api("/api/recordings/config", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  }).then(function(){
+    toast("存储策略已保存", "ok");
+  }).catch(function(e){ toast("保存失败：" + e.message, "err"); });
 }
 
 // 统计格子
@@ -1317,6 +1383,7 @@ function renderRecordings(c){
       +       "<select class=\"btn\" id=\"recDate\" style=\"min-width:170px\"><option value=\"\">全部日期</option>"+dateOpts+"</select>"
       +       "<button class=\"btn\" id=\"btnClean\">"+icon("trash",12)+"清理过期</button>"
       +       "<button class=\"btn\" id=\"btnCacheInfo\">"+icon("inbox",12)+"转码缓存</button>"
+      +       "<button class=\"btn\" id=\"btnBatchDel\">"+icon("trash",12)+"批量删除</button>"
       +     "</div>"
       +   "</div>"
       +   "<div id=\"files\">"+empty("inbox","请选择设备查看录像","支持按日期筛选、在线回放","")+"</div>"
@@ -1328,6 +1395,7 @@ function renderRecordings(c){
     $("#recDev").onchange = function(){ currentRecName = this.value; loadRecFiles(); };
     $("#recDate").onchange = loadRecFiles;
     $("#btnClean").onclick = cleanup;
+    $("#btnBatchDel").onclick = function(){ showBatchDelete(); };
     $("#btnCacheInfo").onclick = function(){
       api("/api/recordings/cache").then(function(c){
         var msg = "转码缓存\n\n文件数: " + (c.count||0)
@@ -1413,6 +1481,33 @@ function loadRecFiles(){
   }).catch(function(e){
     box.innerHTML = "<div style=\"padding:20px 24px;color:var(--error);font-size:13px\">" + esc(e.message) + "</div>";
   });
+}
+
+// ===== 批量删除 =====
+function showBatchDelete(){
+  if(!currentRecName){ toast("请先选择设备", "err"); return; }
+  var date = ($("#recDate") || {}).value || "";
+  var hasDate = !!date;
+
+  var msg = "批量删除「" + currentRecName + "」的录像\n\n"
+    + (hasDate
+        ? "范围：日期 " + date + "（该日期全部）\n"
+        : "范围：全部日期\n")
+    + "\n⚠️ 不可恢复，确定继续？";
+
+  if(!confirm(msg)) return;
+
+  var body = { name: currentRecName };
+  if(hasDate) body.date = date;
+
+  toast("正在删除…");
+  api("/api/recordings/batch-delete", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body)
+  }).then(function(r){
+    toast("已删除 " + (r.deleted||0) + " 个文件，释放 " + fmtSizeMB(r.freedMB||0), "ok");
+    loadRecFiles();
+  }).catch(function(e){ toast("删除失败：" + e.message, "err"); });
 }
 
 // 时长格式化
