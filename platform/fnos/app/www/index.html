@@ -419,6 +419,39 @@ var DEV_TAP = 0;          // 本次点击计数
 // ===== 工具 =====
 function $(s){ return document.querySelector(s); }
 
+// ===== 通用弹窗 =====
+//
+// 用现有的 .mask / .modal 样式（和扫码弹窗一致）。
+var _modalEl = null;
+
+function openModal(title, bodyHTML, onReady){
+  closeModal();
+  var mask = document.createElement("div");
+  mask.className = "mask";
+  mask.innerHTML = "<div class=\"modal\" style=\"max-width:720px;width:calc(100vw - 32px)\">"
+    + "<div class=\"modal-head\">" + esc(title) + "</div>"
+    + "<div class=\"modal-body\">" + bodyHTML + "</div>"
+    + "</div>";
+  document.body.appendChild(mask);
+  _modalEl = mask;
+
+  // 点遮罩关闭
+  mask.onclick = function(e){ if(e.target === mask) closeModal(); };
+  // ESC 关闭
+  var onKey = function(e){ if(e.key === "Escape"){ closeModal(); document.removeEventListener("keydown", onKey); } };
+  document.addEventListener("keydown", onKey);
+
+  if(onReady) onReady(mask);
+  return mask;
+}
+
+function closeModal(){
+  if(_modalEl){
+    _modalEl.remove();
+    _modalEl = null;
+  }
+}
+
 // 计算 API 基础路径。
 //
 // 关键：通过飞牛网关访问时，页面 URL 是 /app/micam/，
@@ -1366,6 +1399,7 @@ function renderRecordings(c){
       +   "<div style=\"padding:0 0 16px\">"
       +     "<video id=\"recVideo\" controls playsinline style=\"width:100%;background:#000;max-height:60vh;display:block\"></video>"
       +     "<div id=\"playInfo\" style=\"padding:10px 24px;font-size:12px;color:var(--text-3)\"></div>"
+      +     "<div id=\"timeline\" style=\"display:none;padding:0 24px 12px\"></div>"
       +     "<div id=\"exportPanel\" style=\"display:none;padding:0 24px 16px\"></div>"
       +   "</div>"
       + "</div>"
@@ -1386,6 +1420,7 @@ function renderRecordings(c){
       +       "<button class=\"btn\" id=\"btnClean\">"+icon("trash",12)+"清理过期</button>"
       +       "<button class=\"btn\" id=\"btnCacheInfo\">"+icon("inbox",12)+"转码缓存</button>"
       +       "<button class=\"btn\" id=\"btnBatchDel\">"+icon("trash",12)+"批量删除</button>"
+      +       "<button class=\"btn\" id=\"btnExportMgr\">"+icon("inbox",12)+"导出管理</button>"
       +     "</div>"
       +   "</div>"
       +   "<div id=\"files\">"+empty("inbox","请选择设备查看录像","支持按日期筛选、在线回放","")+"</div>"
@@ -1398,6 +1433,7 @@ function renderRecordings(c){
     $("#recDate").onchange = loadRecFiles;
     $("#btnClean").onclick = cleanup;
     $("#btnBatchDel").onclick = function(){ showBatchDelete(); };
+    $("#btnExportMgr").onclick = showExportManager;
     $("#btnCacheInfo").onclick = function(){
       api("/api/recordings/cache").then(function(c){
         var msg = "转码缓存\n\n文件数: " + (c.count||0)
@@ -1485,6 +1521,53 @@ function loadRecFiles(){
   });
 }
 
+// ===== 时间轴缩略图 =====
+//
+// 为什么要缩略图带（一次请求拿多帧）：
+//   如果每帧一个请求，拖一次要发几十个请求。
+//   服务端用 ffmpeg 的 tile 滤镜一次拼成横向长图，前端切片显示。
+function loadTimeline(info){
+  var box = $("#timeline");
+  if(!box) return;
+
+  box.style.display = "block";
+  box.innerHTML = "<div style=\"font-size:12px;color:var(--text-3)\">生成时间轴预览…</div>";
+
+  var n = 12;
+  var url = apiUrl("/api/recordings/frame-strip?name=" + encodeURIComponent(info.n)
+    + "&date=" + encodeURIComponent(info.d)
+    + "&file=" + encodeURIComponent(info.f)
+    + "&n=" + n);
+
+  var img = new Image();
+  img.onload = function(){
+    box.innerHTML = "";
+    var strip = document.createElement("div");
+    strip.className = "tl-strip";
+    strip.style.backgroundImage = "url(" + url + ")";
+
+    // 覆盖一层热区，点击跳转
+    var overlay = document.createElement("div");
+    overlay.className = "tl-overlay";
+
+    strip.appendChild(overlay);
+    box.appendChild(strip);
+
+    var video = $("#recVideo");
+    overlay.onclick = function(e){
+      if(!video || !isFinite(video.duration)) return;
+      var rect = overlay.getBoundingClientRect();
+      var ratio = (e.clientX - rect.left) / rect.width;
+      ratio = Math.max(0, Math.min(1, ratio));
+      video.currentTime = ratio * video.duration;
+    };
+  };
+  img.onerror = function(){
+    box.innerHTML = "<div style=\"font-size:12px;color:var(--text-3)\">时间轴预览不可用</div>";
+  };
+  img.src = url;
+}
+
 // ===== 导出片段 =====
 //
 // 为什么要两步（先转码再下载）：
@@ -1568,6 +1651,65 @@ function pollExport(id, box){
   }, 1000);
 }
 
+// ===== 导出管理 =====
+function showExportManager(){
+  api("/api/recordings/export/list").then(function(d){
+    var list = d.exports || [];
+    var html = "<div style=\"max-height:60vh;overflow:auto\">";
+
+    if(!list.length){
+      html += "<div style=\"padding:20px;text-align:center;color:var(--text-3);font-size:13px\">暂无导出文件</div>";
+    } else {
+      html += "<div style=\"font-size:12px;color:var(--text-3);margin-bottom:10px\">"
+        + "共 " + list.length + " 个 · " + fmtSizeMB(d.totalMB||0) + " · 目录 " + esc(d.dir||"") + "</div>";
+      html += "<table style=\"font-size:12px\"><thead><tr>"
+        + "<th>文件</th><th style=\"width:80px\">大小</th><th style=\"width:140px\">时间</th><th style=\"width:110px\"></th>"
+        + "</tr></thead><tbody>";
+      list.forEach(function(x){
+        html += "<tr>"
+          + "<td style=\"font-family:ui-monospace,monospace;font-size:11px\">" + esc(x.id) + "</td>"
+          + "<td>" + fmtSizeMB(x.sizeMB||0) + "</td>"
+          + "<td style=\"color:var(--text-3)\">" + esc(x.createdAt||"") + "</td>"
+          + "<td><a class=\"btn btn-sm\" href=\"" + apiUrl("/api/recordings/export/download?id=" + encodeURIComponent(x.id)) + "\" download>下载</a>"
+          + " <button class=\"btn btn-sm\" data-exdel=\"" + esc(x.id) + "\">删除</button></td>"
+          + "</tr>";
+      });
+      html += "</tbody></table>";
+    }
+
+    html += "</div>"
+      + "<div class=\"btn-group\" style=\"margin-top:14px\">"
+      +   "<button class=\"btn btn-danger\" id=\"btnExpClear\">清空全部</button>"
+      +   "<button class=\"btn\" id=\"btnExpClose\">关闭</button>"
+      + "</div>";
+
+    openModal("导出文件管理", html, function(root){
+      var cl = root.querySelector("#btnExpClear");
+      if(cl) cl.onclick = function(){
+        if(!confirm("清空所有导出文件？\n\n已下载的不受影响，未下载的会丢失。")) return;
+        api("/api/recordings/export/clear", { method: "POST" }).then(function(r){
+          toast("已清空 " + (r.count||0) + " 个，释放 " + fmtSizeMB(r.freedMB||0), "ok");
+          closeModal();
+        }).catch(function(e){ toast("失败：" + e.message, "err"); });
+      };
+      var cc = root.querySelector("#btnExpClose");
+      if(cc) cc.onclick = closeModal;
+
+      Array.prototype.forEach.call(root.querySelectorAll("[data-exdel]"), function(b){
+        b.onclick = function(){
+          var id = this.dataset.exdel;
+          if(!confirm("删除导出 " + id + "？")) return;
+          api("/api/recordings/export/delete?id=" + encodeURIComponent(id), { method: "POST" }).then(function(){
+            toast("已删除", "ok");
+            closeModal();
+            showExportManager();
+          }).catch(function(e){ toast("失败：" + e.message, "err"); });
+        };
+      });
+    });
+  }).catch(function(e){ toast("加载失败：" + e.message, "err"); });
+}
+
 // ===== 批量删除 =====
 function showBatchDelete(){
   if(!currentRecName){ toast("请先选择设备", "err"); return; }
@@ -1635,6 +1777,7 @@ function playRec(info){
   video.onerror = function(){ infoBox.textContent = "播放失败（可能转码中，稍候重试）"; };
 
   card.scrollIntoView({ behavior: "smooth", block: "start" });
+  loadTimeline(info);
 
   var ebtn = $("#btnExportClip");
   if(ebtn) ebtn.onclick = function(){ showExportPanel(video); };

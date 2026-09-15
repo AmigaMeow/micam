@@ -803,3 +803,135 @@ func (s *Server) handleRecBatchDelete(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, 200, resp)
 }
+
+// handleRecFrame 取指定时间点的帧（用于时间轴预览）。
+//
+// GET /api/recordings/frame?name=&date=&file=&t=30
+//
+// 与 thumb 的区别：
+//   thumb  固定取第 1 秒，用于列表缩略图
+//   frame  取任意时间，用于拖动预览
+func (s *Server) handleRecFrame(w http.ResponseWriter, r *http.Request) {
+	name := safeName(r.URL.Query().Get("name"))
+	date := safeName(r.URL.Query().Get("date"))
+	file := safeName(r.URL.Query().Get("file"))
+	t, _ := strconv.ParseFloat(r.URL.Query().Get("t"), 64)
+	if t < 0 {
+		t = 0
+	}
+	w0, _ := strconv.Atoi(r.URL.Query().Get("w"))
+	if w0 <= 0 || w0 > 640 {
+		w0 = 240
+	}
+
+	src, err := s.findRecFile(name, date, file)
+	if err != nil {
+		writeErr(w, 404, err.Error())
+		return
+	}
+
+	// 缓存：文件名带时间点（取整到秒，避免缓存爆炸）
+	key := filepath.Base(file) + fmt.Sprintf(".t%d.w%d.jpg", int(t), w0)
+	cacheDir := filepath.Join(s.recRoot(), ".frames", name)
+	dst := filepath.Join(cacheDir, key)
+
+	if fi, err := os.Stat(dst); err == nil && fi.Size() > 0 {
+		serveJPEG(w, dst)
+		return
+	}
+
+	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
+		writeErr(w, 500, "创建缓存目录失败")
+		return
+	}
+
+	// -ss 放在 -i 前面 = 快速定位到关键帧
+	cmd := exec.Command(s.ffmpegPath(),
+		"-hide_banner", "-loglevel", "error",
+		"-ss", fmt.Sprintf("%.2f", t),
+		"-i", src,
+		"-frames:v", "1",
+		"-vf", fmt.Sprintf("scale=%d:-2", w0),
+		"-f", "image2", "-c:v", "mjpeg",
+		"-y", dst,
+	)
+	if err := cmd.Run(); err != nil {
+		writeErr(w, 500, "取帧失败")
+		return
+	}
+	serveJPEG(w, dst)
+}
+
+// handleRecFrameStrip 生成时间轴缩略图带（多帧拼成一张图）。
+//
+// GET /api/recordings/frame-strip?name=&date=&file=&n=10
+//
+// 返回一张横向拼接的 JPEG，前端按等分切片显示。
+// 这样一次请求就能拿到整条时间轴的预览。
+func (s *Server) handleRecFrameStrip(w http.ResponseWriter, r *http.Request) {
+	name := safeName(r.URL.Query().Get("name"))
+	date := safeName(r.URL.Query().Get("date"))
+	file := safeName(r.URL.Query().Get("file"))
+	n, _ := strconv.Atoi(r.URL.Query().Get("n"))
+	if n <= 0 || n > 30 {
+		n = 10
+	}
+
+	src, err := s.findRecFile(name, date, file)
+	if err != nil {
+		writeErr(w, 404, err.Error())
+		return
+	}
+
+	cacheDir := filepath.Join(s.recRoot(), ".frames")
+	_ = os.MkdirAll(cacheDir, 0o755)
+	dst := filepath.Join(cacheDir, filepath.Base(file)+fmt.Sprintf(".strip%d.jpg", n))
+
+	if fi, err := os.Stat(dst); err == nil && fi.Size() > 0 {
+		if si, err2 := os.Stat(src); err2 == nil && fi.ModTime().After(si.ModTime()) {
+			serveJPEG(w, dst)
+			return
+		}
+	}
+
+	dur := s.probeDuration(src)
+	if dur <= 0 {
+		writeErr(w, 500, "无法读取时长")
+		return
+	}
+
+	// 均匀取 n 帧，横向拼接
+	//
+	// fps = n / dur 会取到 t=0, dur/n, 2*dur/n, ... (n-1)*dur/n
+	// 最后一帧贴近末尾，视频结尾常有空洞 -> 出现黑边。
+	// 所以留 8% 余量：fps = n / (dur * 0.92)
+	fps := float64(n) / (dur * 0.92)
+
+	// 太短的视频减少帧数（避免重复帧）
+	if dur < float64(n)*1.5 {
+		n = int(dur / 1.5)
+		if n < 3 {
+			n = 3
+		}
+		fps = float64(n) / (dur * 0.92)
+	}
+	cmd := exec.Command(s.ffmpegPath(),
+		"-hide_banner", "-loglevel", "error",
+		"-i", src,
+		"-vf", fmt.Sprintf("fps=%.6f,scale=160:-2,tile=%dx1", fps, n),
+		"-frames:v", "1",
+		"-f", "image2", "-c:v", "mjpeg",
+		"-y", dst,
+	)
+	var errBuf strings.Builder
+	cmd.Stderr = &errBuf
+	if err := cmd.Run(); err != nil {
+		msg := strings.TrimSpace(errBuf.String())
+		if len(msg) > 150 {
+			msg = msg[:150]
+		}
+		writeErr(w, 500, "生成缩略图带失败: "+msg)
+		return
+	}
+	serveJPEG(w, dst)
+}

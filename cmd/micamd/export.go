@@ -268,3 +268,157 @@ func newID() string {
 }
 
 var _ = strconv.Itoa
+
+// ---- 导出文件管理 ----
+
+// handleRecExportList 列出所有导出文件（含磁盘上的孤儿文件）。
+//
+// GET /api/recordings/export/list
+func (s *Server) handleRecExportList(w http.ResponseWriter, r *http.Request) {
+	dir := s.exportDir()
+
+	type item struct {
+		ID        string  `json:"id"`
+		File      string  `json:"file"`
+		Name      string  `json:"name"`
+		Date      string  `json:"date"`
+		Start     float64 `json:"start"`
+		End       float64 `json:"end"`
+		SizeMB    float64 `json:"sizeMB"`
+		Status    string  `json:"status"`
+		CreatedAt string  `json:"createdAt"`
+	}
+
+	var out []item
+	var totalMB float64
+
+	exportMu.Lock()
+	for _, j := range exportJobs {
+		it := item{
+			ID:        j.ID,
+			Name:      j.Name,
+			Date:      j.Date,
+			Start:     j.Start,
+			End:       j.End,
+			SizeMB:    j.SizeMB,
+			Status:    j.Status,
+			CreatedAt: j.CreatedAt.Format("2006-01-02 15:04:05"),
+		}
+		totalMB += j.SizeMB
+		out = append(out, it)
+	}
+	exportMu.Unlock()
+
+	// 补充：磁盘上有但内存里没记录的（服务重启后）
+	entries, _ := os.ReadDir(dir)
+	for _, ent := range entries {
+		if ent.IsDir() || !strings.HasSuffix(ent.Name(), ".mp4") {
+			continue
+		}
+		id := strings.TrimSuffix(ent.Name(), ".mp4")
+		found := false
+		for _, it := range out {
+			if it.ID == id {
+				found = true
+				break
+			}
+		}
+		if found {
+			continue
+		}
+		info, err := ent.Info()
+		if err != nil {
+			continue
+		}
+		mb := float64(info.Size()) / (1 << 20)
+		out = append(out, item{
+			ID:        id,
+			Status:    "done",
+			SizeMB:    mb,
+			CreatedAt: info.ModTime().Format("2006-01-02 15:04:05"),
+		})
+		totalMB += mb
+	}
+
+	writeJSON(w, 200, map[string]any{
+		"exports": out,
+		"count":   len(out),
+		"totalMB": totalMB,
+		"dir":     dir,
+	})
+}
+
+// handleRecExportClear 清空所有导出文件。
+//
+// POST /api/recordings/export/clear
+func (s *Server) handleRecExportClear(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeErr(w, 405, "只支持 POST")
+		return
+	}
+
+	dir := s.exportDir()
+	var freed int64
+	var n int
+
+	entries, _ := os.ReadDir(dir)
+	for _, ent := range entries {
+		if ent.IsDir() {
+			continue
+		}
+		pth := filepath.Join(dir, ent.Name())
+		if info, err := ent.Info(); err == nil {
+			if err := os.Remove(pth); err == nil {
+				freed += info.Size()
+				n++
+			}
+		}
+	}
+
+	exportMu.Lock()
+	exportJobs = map[string]*exportJob{}
+	exportMu.Unlock()
+
+	logf("[export] 清空 %d 个导出文件，释放 %.1fMB", n, float64(freed)/(1<<20))
+	writeJSON(w, 200, map[string]any{"ok": true, "count": n, "freedMB": float64(freed) / (1 << 20)})
+}
+
+// cleanExportsOnStart 启动时清理过期导出文件。
+//
+// 导出文件是临时产物（用户下载后就该删），
+// 但用户常常忘记。所以启动时清理超过 N 小时的。
+func (s *Server) cleanExportsOnStart() {
+	dir := s.exportDir()
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+
+	// 保留 24 小时内的（给用户时间下载）
+	const keepHours = 24
+	deadline := time.Now().Add(-keepHours * time.Hour)
+
+	var n int
+	var freed int64
+	for _, ent := range entries {
+		if ent.IsDir() {
+			continue
+		}
+		info, err := ent.Info()
+		if err != nil {
+			continue
+		}
+		if info.ModTime().Before(deadline) {
+			pth := filepath.Join(dir, ent.Name())
+			if err := os.Remove(pth); err == nil {
+				freed += info.Size()
+				n++
+			}
+		}
+	}
+
+	if n > 0 {
+		logf("[export] 启动清理 %d 个过期导出文件（>%d 小时），释放 %.1fMB",
+			n, keepHours, float64(freed)/(1<<20))
+	}
+}

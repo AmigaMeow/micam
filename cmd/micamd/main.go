@@ -34,7 +34,7 @@ import (
 
 const (
 	appName    = "micam"
-	appVersion = "0.10.2"
+	appVersion = "0.11.0"
 )
 
 func main() {
@@ -107,6 +107,9 @@ func main() {
 		FFmpegPath: *ffmpegPath,
 	})
 	log.Printf("录像目录: %s (启用=%v)", recDir, cfg.RecordEnabled)
+
+	// 清理过期的片段导出文件
+	srv.cleanExportsOnStart()
 
 	// 存储守护：定时检查磁盘，超阈值自动清理旧录像
 	startStorageGuard(srv.rec)
@@ -422,6 +425,8 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/recordings/list", s.handleRecList)
 	mux.HandleFunc("/api/recordings/play", s.handleRecPlay)
 	mux.HandleFunc("/api/recordings/thumb", s.handleRecThumb)
+	mux.HandleFunc("/api/recordings/frame", s.handleRecFrame)
+	mux.HandleFunc("/api/recordings/frame-strip", s.handleRecFrameStrip)
 	mux.HandleFunc("/api/recordings/download", s.handleRecDownload)
 	mux.HandleFunc("/api/recordings/delete", s.handleRecDelete)
 	mux.HandleFunc("/api/recordings/cache", s.handleCacheStats)
@@ -434,6 +439,8 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/recordings/export/status", s.handleRecExportStatus)
 	mux.HandleFunc("/api/recordings/export/download", s.handleRecExportDownload)
 	mux.HandleFunc("/api/recordings/export/delete", s.handleRecExportDelete)
+	mux.HandleFunc("/api/recordings/export/list", s.handleRecExportList)
+	mux.HandleFunc("/api/recordings/export/clear", s.handleRecExportClear)
 
 	// 静态前端（同目录下的 web/）
 	mux.Handle("/", s.staticHandler())
