@@ -1,6 +1,6 @@
 # MiCam API 接入文档
 
-版本: 0.8.2
+版本: 0.9.3
 
 ---
 
@@ -160,6 +160,46 @@ operation：
     POST /api/recordings/stop               停止录像
     GET  /api/recordings/files?name=XXX     文件列表
     POST /api/recordings/cleanup            清理过期
+    GET  /api/recordings/dates?name=XXX     可用日期
+    GET  /api/recordings/list?name=&date=   文件列表（含时长/缩略图）
+    GET  /api/recordings/play?name=&file=&t= 转码回放（t=起始秒）
+    GET  /api/recordings/thumb?name=&file=   缩略图
+    GET  /api/recordings/download?name=&file= 下载原文件
+    POST /api/recordings/delete              删除单个文件
+    GET  /api/recordings/cache               转码缓存状态
+
+### 5.1 录像回放需要转码（重要）
+
+录像文件是 **MKV 容器 + HEVC 编码**（摄像头原生格式）。
+
+    浏览器兼容性：
+      Chrome  -> MKV 可以，HEVC 不行
+      Safari  -> MKV 不行，HEVC 可以
+      Firefox -> 都不行
+
+**所以回放必须转成 H.264 + MP4。**
+
+转码缓存让二次播放快 940 倍：
+
+    首次播放   21.6s（同时后台生成缓存）
+    二次播放   0.023s（直接发文件，支持 Range 可拖动）
+
+### 5.2 凭据管理（三层，别混淆）
+
+    第 1 层  passToken        扫码登录拿到    长期（数月）
+    第 2 层  serviceToken     由 passToken 换  短期，自动续期
+    第 3 层  设备 P2P 凭据     每台摄像头一份  >= 24 小时，自动续期
+
+**客户端不需要自己刷凭据，服务端全包了。**
+
+    GET  /api/accounts/status    三层凭据说明 + 会话状态
+    GET  /api/accounts/export    导出凭据（含 passToken，敏感）
+    POST /api/accounts/import    导入凭据
+    GET  /api/live/cred-status   设备凭据状态（年龄/剩余/冷却）
+    POST /api/live/renew         手动续期设备凭据
+
+**限流提示**：设备凭据接口有严格限流（code=-12 throttle deny），
+客户端遇到时不要反复重试，看 cooldownMinutes。
 
 存储总览返回：
 

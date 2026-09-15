@@ -208,6 +208,176 @@ func (s *Server) openAPISpec(r *http.Request) map[string]any {
 				"responses":  okResp("文件列表"),
 			},
 		},
+		"/recordings/dates": map[string]any{
+			"get": map[string]any{
+				"summary":     "录像可用日期",
+				"description": "按日期聚合，返回每天的录像数量和占用大小。",
+				"tags":        []string{"录像"},
+				"parameters":  []any{strParam("name", "设备名（目录名）", false)},
+				"responses":   okResp("日期列表"),
+			},
+		},
+		"/recordings/list": map[string]any{
+			"get": map[string]any{
+				"summary":     "录像文件列表",
+				"description": "返回文件列表，含时长、大小、缩略图 URL、播放 URL。",
+				"tags":        []string{"录像"},
+				"parameters": []any{
+					strParam("name", "设备名", true),
+					strParam("date", "日期（可空 = 全部）", false),
+				},
+				"responses": okResp("文件列表"),
+			},
+		},
+		"/recordings/play": map[string]any{
+			"get": map[string]any{
+				"summary": "录像回放（转码）",
+				"description": "把录像转码成 H.264 MP4 流式输出。" +
+					"首次播放会同时后台生成缓存；二次播放直接发缓存文件，" +
+					"支持 Range，可随意拖动。" +
+					"注意：源文件是 MKV+HEVC，浏览器都不支持，必须转码。",
+				"tags": []string{"录像"},
+				"parameters": []any{
+					strParam("name", "设备名", true),
+					strParam("date", "日期", false),
+					strParam("file", "文件名（.mkv）", true),
+					strParam("t", "起始秒数（拖动用）", false),
+				},
+				"responses": map[string]any{
+					"200": map[string]any{
+						"description": "MP4 流（缓存命中时支持 Range）",
+						"content": map[string]any{
+							"video/mp4": map[string]any{"schema": map[string]any{"type": "string", "format": "binary"}},
+						},
+					},
+				},
+			},
+		},
+		"/recordings/thumb": map[string]any{
+			"get": map[string]any{
+				"summary":     "录像缩略图",
+				"description": "取第 1 秒的帧，320 宽，磁盘缓存。",
+				"tags":        []string{"录像"},
+				"parameters": []any{
+					strParam("name", "设备名", true),
+					strParam("date", "日期", false),
+					strParam("file", "文件名", true),
+				},
+				"responses": map[string]any{
+					"200": map[string]any{
+						"description": "JPEG 缩略图",
+						"content": map[string]any{
+							"image/jpeg": map[string]any{"schema": map[string]any{"type": "string", "format": "binary"}},
+						},
+					},
+				},
+			},
+		},
+		"/recordings/download": map[string]any{
+			"get": map[string]any{
+				"summary":   "下载录像原文件",
+				"tags":      []string{"录像"},
+				"parameters": []any{
+					strParam("name", "设备名", true),
+					strParam("date", "日期", false),
+					strParam("file", "文件名", true),
+				},
+				"responses": map[string]any{"200": map[string]any{"description": "MKV 文件"}},
+			},
+		},
+		"/recordings/delete": map[string]any{
+			"post": map[string]any{
+				"summary":   "删除单个录像文件",
+				"tags":      []string{"录像"},
+				"requestBody": map[string]any{
+					"required": true,
+					"content": map[string]any{
+						"application/json": map[string]any{
+							"schema": map[string]any{
+								"type": "object",
+								"properties": map[string]any{
+									"name": map[string]any{"type": "string"},
+									"date": map[string]any{"type": "string"},
+									"file": map[string]any{"type": "string"},
+								},
+								"required": []string{"name", "file"},
+							},
+						},
+					},
+				},
+				"responses": okResp("ok + freedMB"),
+			},
+		},
+		"/recordings/cache": map[string]any{
+			"get": map[string]any{
+				"summary":     "转码缓存状态",
+				"description": "返回缓存文件数、占用、上限、当前编码器。",
+				"tags":        []string{"录像"},
+				"responses":   okResp("缓存统计"),
+			},
+		},
+		"/recordings/cache/clear": map[string]any{
+			"post": map[string]any{
+				"summary":   "清空转码缓存",
+				"tags":      []string{"录像"},
+				"responses": okResp("ok + count + freedMB"),
+			},
+		},
+		"/live/cred-status": map[string]any{
+			"get": map[string]any{
+				"summary":     "设备凭据状态",
+				"description": "每台摄像头的 P2P 凭据年龄、估算剩余有效期、刷新冷却时间。",
+				"tags":        []string{"播放"},
+				"responses":   okResp("凭据状态列表"),
+			},
+		},
+		"/live/renew": map[string]any{
+			"post": map[string]any{
+				"summary":     "手动续期设备凭据",
+				"description": "不传 did 则续期全部。冷却期内会返回错误。",
+				"tags":        []string{"播放"},
+				"parameters":  []any{strParam("did", "设备 DID（可空）", false)},
+				"responses":   okResp("每个设备的续期结果"),
+			},
+		},
+		"/accounts/status": map[string]any{
+			"get": map[string]any{
+				"summary":     "账号凭据状态",
+				"description": "三层凭据说明 + 每个账号的会话状态。",
+				"tags":        []string{"账号"},
+				"responses":   okResp("账号状态 + explain"),
+			},
+		},
+		"/accounts/export": map[string]any{
+			"get": map[string]any{
+				"summary":     "导出账号凭据",
+				"description": "含 passToken，敏感。用于重装后恢复，无需重新扫码。",
+				"tags":        []string{"账号"},
+				"responses": map[string]any{
+					"200": map[string]any{
+						"description": "JSON 文件",
+						"content": map[string]any{
+							"application/json": map[string]any{"schema": map[string]any{"type": "object"}},
+						},
+					},
+				},
+			},
+		},
+		"/accounts/import": map[string]any{
+			"post": map[string]any{
+				"summary":     "导入账号凭据",
+				"description": "导入前自动把现有文件备份成 accounts.json.bak。",
+				"tags":        []string{"账号"},
+				"responses":   okResp("ok + count"),
+			},
+		},
+		"/accounts/backups": map[string]any{
+			"get": map[string]any{
+				"summary":   "凭据备份文件列表",
+				"tags":      []string{"账号"},
+				"responses": okResp("备份列表"),
+			},
+		},
 		"/recordings/cleanup": map[string]any{
 			"post": map[string]any{
 				"summary":   "清理过期录像",
