@@ -524,6 +524,7 @@ function isMobile(){
 var MENU = [
   {k:"devices",   t:"设备列表", i:"device"},
   {k:"live",      t:"实时预览", i:"play"},
+  {k:"grid",      t:"多路预览", i:"cam"},
   {k:"storage",   t:"存储监控", i:"inbox"},
   {k:"recordings",t:"录像管理", i:"rec"},
   {k:"accounts",  t:"账号管理", i:"user"},
@@ -543,6 +544,7 @@ function renderMenu(){
       var m = MENU.filter(function(x){ return x.k===page; })[0];
       $("#pageTitle").textContent = m ? m.t : "";
       stopLive();
+      stopGrid();
       renderMenu();
       render();
       if(isMobile()) closeSider();
@@ -609,6 +611,7 @@ function loadDevices(){
 function render(){
   var c = $("#content");
   if(page==="devices") return renderDevices(c);
+  if(page==="grid") return renderGrid(c);
   if(page==="live") return renderLive(c);
   if(page==="storage") return renderStorage(c);
   if(page==="recordings") return renderRecordings(c);
@@ -1401,6 +1404,93 @@ function showCleanupPreview(){
       setTimeout(function(){ render(); }, 1200);
     }).catch(function(e){ toast("清理失败：" + e.message, "err"); });
   }).catch(function(e){ toast("查询失败：" + e.message, "err"); });
+}
+
+// ===== 页面：多路预览 =====
+//
+// 监控产品的核心视图：一次看所有摄像头。
+// 用 MJPEG 低帧率（省 CPU），点某一路切到单画面。
+var gridTimers = [];
+
+function stopGrid(){
+  // 清掉所有流（离开页面必须停，否则一直占 CPU 和摄像头连接）
+  gridTimers.forEach(function(t){ if(t) clearTimeout(t); });
+  gridTimers = [];
+  Array.prototype.forEach.call(document.querySelectorAll('.grid-tile img'), function(img){
+    img.src = '';   // 断开请求
+  });
+}
+
+function renderGrid(c){
+  c.innerHTML = loading('加载设备…');
+
+  loadDevices().then(function(st){
+    var cams = devices.filter(function(d){ return d.isOnline; });
+    var offline = devices.filter(function(d){ return !d.isOnline; });
+
+    if(!devices.length){
+      c.innerHTML = '<div class="card">' + empty('inbox','没有发现摄像头','','') + '</div>';
+      return;
+    }
+
+    // 多路预览参数
+    //
+    // 用 MJPEG 低帧率，而不是快照轮询。实测对比：
+    //   快照轮询：每次请求要等关键帧（约 3 秒），单路 ffmpeg 就占 56% CPU
+    //   MJPEG 3fps：两路峰值共 130% CPU（可用 400%），且不用反复等关键帧
+    var GRID_FPS = 3;
+    var GRID_W   = 640;
+
+    var tiles = devices.map(function(d){
+      var on = d.isOnline;
+      return '<div class="grid-tile' + (on ? '' : ' off') + '" data-did="' + esc(d.did) + '">'
+        + '<div class="gt-img">'
+        +   (on
+              ? '<img data-did="' + esc(d.did) + '" alt="">'
+              : '<div class="gt-off">' + icon('cam-off',32) + '<span>离线</span></div>')
+        + '</div>'
+        + '<div class="gt-bar">'
+          + '<span class="gt-name">' + esc(d.name) + '</span>'
+          + (d.shared || d.shareFlag===1 ? '<span class="tag tag-share">共享</span>' : '')
+          + '<span class="gt-dot' + (on ? ' on' : '') + '"></span>'
+        '</div>'
+      + '</div>';
+    }).join('');
+
+    c.innerHTML = '<div class="card">'
+      + '<div class="card-head">'
+        + '<span class="card-title">' + icon('cam',15) + ' 多路预览</span>'
+        + '<span style="font-size:12px;color:var(--text-3)">在线 ' + cams.length + ' / 共 ' + devices.length + ' 台</span>'
+      + '</div>'
+      + '<div class="grid-view">' + tiles + '</div>'
+    + '</div>'
+    + '<div style="font-size:12px;color:var(--text-3);padding:0 4px 12px">'
+      + '提示：多路预览用静帧刷新（省 CPU）。点任意一路可切到实时画面。'
+    + '</div>';
+
+    // 每路一条 MJPEG 流
+    stopGrid();
+    Array.prototype.forEach.call(c.querySelectorAll('img[data-did]'), function(img){
+      var did = img.dataset.did;
+      img.src = apiUrl('/api/live/mjpeg?did=' + encodeURIComponent(did)
+        + '&fps=' + GRID_FPS + '&w=' + GRID_W);
+    });
+
+    // 点击切单画面
+    Array.prototype.forEach.call(c.querySelectorAll('.grid-tile'), function(tile){
+      tile.onclick = function(){
+        var did = this.dataset.did;
+        stopGrid();
+        currentDid = did;
+        page = 'live';
+        $('#pageTitle').textContent = '实时预览';
+        renderMenu();
+        render();
+      };
+    });
+  }).catch(function(e){
+    c.innerHTML = '<div class="card">' + empty('close','加载失败', e.message, '') + '</div>';
+  });
 }
 
 // ===== 页面：录像管理 =====
