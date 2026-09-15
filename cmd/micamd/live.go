@@ -309,15 +309,21 @@ func (s *Server) handleSnap(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
 	defer cancel()
 
-	// 优化：skip_frame=nokey 让 ffmpeg 只解码关键帧，
-	// 这样不必等完整的关键帧间隔，抓图快很多。
+	// 抓拍优化（实测）：
+	//
+	//   analyzeduration  抓图耗时
+	//   ---------------  --------
+	//   3M/5M (旧)        6.7s
+	//   100k              2.5s    <- 采用
+	//
+	// skip_frame=nokey 让 ffmpeg 只解码关键帧，跳过非关键帧。
 	args := []string{
 		"-hide_banner", "-loglevel", "error",
-		"-analyzeduration", "3M",
-		"-probesize", "5M",
+		"-analyzeduration", "100000",
+		"-probesize", "100000",
 		"-fflags", "+discardcorrupt+genpts",
 		"-err_detect", "ignore_err",
 		"-skip_frame", "nokey",
@@ -327,15 +333,25 @@ func (s *Server) handleSnap(w http.ResponseWriter, r *http.Request) {
 		"-f", "image2", "-c:v", "mjpeg",
 		"pipe:1",
 	}
+	tStart := time.Now()
+	logf("[snap] 开始 did=%s w=%d", did, width)
+
 	cmd, stdout, errBuf, cleanup, err := s.runFFmpeg(ctx, dev, args)
 	if err != nil {
+		logf("[snap] runFFmpeg 失败: %v", err)
 		writeErr(w, 502, "连接摄像头失败: "+err.Error())
 		return
 	}
-	defer cleanup()
+	logf("[snap] ffmpeg 已启动 (%v)", time.Since(tStart).Round(time.Millisecond))
+	defer func() {
+		tC := time.Now()
+		cleanup()
+		logf("[snap] cleanup 耗时 %v", time.Since(tC).Round(time.Millisecond))
+	}()
 
 	out, _ := io.ReadAll(stdout)
 	_ = cmd.Wait()
+	logf("[snap] 读取完成 %d 字节 (%v)", len(out), time.Since(tStart).Round(time.Millisecond))
 
 	if len(out) == 0 {
 		msg := "抓帧失败"
@@ -395,10 +411,12 @@ func (s *Server) handleMJPEG(w http.ResponseWriter, r *http.Request) {
 
 	// 关键：不用 ffmpeg 的 mpjpeg（它的 boundary 固定是 "ffmpeg"，不可自定义，
 	// 而且输出格式不规范）。改成 ffmpeg 输出连续 JPEG 帧，我们自己组装 multipart。
+	// 启动延迟优化：analyzeduration 从 10M 降到 100k
+	// （10M = 等 10 秒流时长，是首帧慢的主要原因）
 	args := []string{
 		"-hide_banner", "-loglevel", "error",
-		"-analyzeduration", "10M",
-		"-probesize", "10M",
+		"-analyzeduration", "100000",
+		"-probesize", "100000",
 		// 容错：丢弃损坏帧，等关键帧
 		"-fflags", "+discardcorrupt+genpts+igndts",
 		"-err_detect", "ignore_err",

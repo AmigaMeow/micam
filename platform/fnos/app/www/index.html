@@ -771,10 +771,9 @@ function startLiveHLS(did){
   var pct = 5;
   var stepIdx = 0;
   var steps = [
-    [5,  "正在连接摄像头…"],
-    [20, "转码中（首次约 5-10 秒）…"],
-    [45, "生成播放分片…"],
-    [70, "即将播放…"]
+    [20, "正在连接摄像头…"],
+    [55, "启动视频流（约 5 秒）…"],
+    [85, "即将播放…"]
   ];
 
   var progTimer = setInterval(function(){
@@ -790,7 +789,7 @@ function startLiveHLS(did){
     if(bar) bar.style.width = pct + "%";
     if(pctEl) pctEl.textContent = pct + "%";
     if(stp && stepIdx < steps.length) stp.textContent = steps[stepIdx][1];
-  }, 2000);
+  }, 1200);
 
   var cleared = false;
   function clearProg(){
@@ -811,6 +810,12 @@ function startLiveHLS(did){
 
   if(st) st.textContent = "连接中";
   if(hint) hint.textContent = "HLS 模式（2K 流畅）";
+
+  // 说明：不再用抓拍图占位。
+  //
+  // 服务端已改成「连接共享」架构——同一摄像头的多个请求复用一条 cs2 连接。
+  // 实测热连接下 HLS 只要 0.01s，冷连接 5s。
+  // 抓拍占位反而会多一次请求，可能和 HLS 抢连接（旧架构下会等 60 秒）。
 
   var src = apiUrl("/api/live/hls?did="+encodeURIComponent(did)+"&fps=15&w="+liveWidth);
   var started = false;
@@ -843,11 +848,17 @@ function startLiveHLS(did){
     video.onerror = function(){ fallback("HLS 播放失败"); };
   } else if(window.Hls && window.Hls.isSupported()){
     hlsObj = new window.Hls({
-      lowLatencyMode: false,
-      liveSyncDurationCount: 2,
-      manifestLoadingTimeOut: 20000,
-      fragLoadingTimeOut: 20000,
-      manifestLoadingMaxRetry: 2
+      // 延迟优化：只缓冲 1 个分片（原来是 2）
+      lowLatencyMode: true,
+      liveSyncDurationCount: 1,
+      liveMaxLatencyDurationCount: 3,
+      maxBufferLength: 4,
+      manifestLoadingTimeOut: 15000,
+      fragLoadingTimeOut: 15000,
+      manifestLoadingMaxRetry: 3,
+      manifestLoadingRetryDelay: 500,
+      levelLoadingMaxRetry: 3,
+      fragLoadingMaxRetry: 3
     });
     hlsObj.loadSource(src);
     hlsObj.attachMedia(video);
@@ -873,8 +884,8 @@ function startLiveHLS(did){
       ok();
       return;
     }
-    fallback("HLS 超时（20 秒无画面）");
-  }, 20000);
+    fallback("HLS 超时（12 秒无画面）");
+  }, 12000);
 }
 
 // MJPEG 播放（兼容模式）

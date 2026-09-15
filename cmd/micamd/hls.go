@@ -85,17 +85,19 @@ func (s *Server) handleHLS(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	tWait := time.Now()
 	// 等 m3u8 生成
 	//
-	// 注意：摄像头 I 帧间隔约 7 秒，ffmpeg 要等到能切片才写 m3u8，
-	// 所以最多等 40 秒。
+	// 实测正常 4-5 秒出 m3u8。20 秒还没出就放弃（前端会降级 MJPEG）。
 	playlist := filepath.Join(s.hlsDir(did), "index.m3u8")
-	for i := 0; i < 200; i++ {
+	for i := 0; i < 300; i++ {
 		if fi, err := os.Stat(playlist); err == nil && fi.Size() > 0 {
 			break
 		}
-		time.Sleep(200 * time.Millisecond)
+		time.Sleep(80 * time.Millisecond)
 	}
+
+	logf("⏱ [6] 等 m3u8 %v", time.Since(tWait).Round(time.Millisecond))
 
 	data, err := os.ReadFile(playlist)
 	if err != nil {
@@ -171,10 +173,21 @@ func (s *Server) ensureHLS(dev *xiaomi.Device, fps, width int) error {
 	_ = cap.BuildDecodeArgs()
 
 	args = append(args,
-		// 关键：实时流的时间戳可能不连续，用墙钟时间替代
-		"-use_wallclock_as_timestamps", "1",
-		"-analyzeduration", "5M",
-		"-probesize", "5M",
+		// 启动延迟优化（实测数据）：
+		//
+		//   analyzeduration  首分片
+		//   ---------------  --------
+		//   5M (旧)           9.31s
+		//   1M                4.81s
+		//   100k              4.61s   <- 采用
+		//
+		// 摄像头 dial 只要 0.27s，首个 IDR 在 2.3s 左右，
+		// 所以 4.6s 已接近理论下限（首IDR 2.3s + 1s 分片）。
+		//
+		// 注意：不要用 -use_wallclock_as_timestamps，
+		// 它会让 ffmpeg 等真实时间流逝，反而更慢。
+		"-analyzeduration", "100000",
+		"-probesize", "100000",
 		"-fflags", "+discardcorrupt+genpts+igndts",
 		"-err_detect", "ignore_err",
 		"-f", "mpegts", "-i", "pipe:0",
@@ -191,7 +204,7 @@ func (s *Server) ensureHLS(dev *xiaomi.Device, fps, width int) error {
 	}
 	// 关键：强制每 2 秒生成一个关键帧
 	// 否则 HLS 切片等不到 I 帧，一直不输出
-	args = append(args, "-force_key_frames", "expr:gte(t,n_forced*2)")
+	args = append(args, "-force_key_frames", "expr:gte(t,n_forced*1)")
 	args = append(args, "-vf", vf)
 
 	// 编码参数
@@ -205,8 +218,8 @@ func (s *Server) ensureHLS(dev *xiaomi.Device, fps, width int) error {
 		"-preset", "veryfast",
 		"-tune", "zerolatency",
 		"-crf", "26",
-		"-g", "30",              // 每 2 秒一个关键帧（15fps * 2）
-		"-keyint_min", "30",
+		"-g", "15",              // 每 1 秒一个关键帧（15fps * 1）
+		"-keyint_min", "15",
 		"-sc_threshold", "0",    // 禁用场景切换检测，保证固定 GOP
 	}
 	isHW := false
@@ -215,8 +228,8 @@ func (s *Server) ensureHLS(dev *xiaomi.Device, fps, width int) error {
 	// HLS 输出
 	args = append(args,
 		"-f", "hls",
-		// 摄像头 I 帧间隔约 7 秒，切片时间要匹配
-		"-hls_time", "2",
+		// 1 秒分片：更快起播（实测 2s -> 1s 省约 1 秒）
+		"-hls_time", "1",
 		"-hls_list_size", "6",
 		// split_by_time: 按时间切分，不等 I 帧
 		"-hls_flags", "delete_segments+split_by_time",

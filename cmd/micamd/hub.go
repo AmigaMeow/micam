@@ -1,21 +1,34 @@
 package main
 
-// 摄像头连接管理。
+// 摄像头连接管理（共享模式）。
 //
-// ===== 核心约束（踩了很多坑才确立）=====
+// ===== 核心约束 =====
 //
 // 1. cs2 协议同一设备只允许【一路】连接，重复 Dial 会 "pop buffer is full"
 // 2. Producer 是推模式：consumer 必须持续读，读慢了会撑爆内部缓冲
-// 3. **客户端断开后必须主动释放**，否则 consumer.WriteTo 永不返回，
-//    连接就永远占着，下次请求必然失败
-// 4. 同一设备的请求必须串行（前一个完全释放后才能建下一个）
+// 3. 客户端断开后必须主动释放 consumer，否则 WriteTo 永不返回
 //
-// ===== 设计 =====
+// ===== 设计：一个连接，多个消费者 =====
 //
-//   每台设备一把锁（serialize 请求）
-//   Dial -> 建 consumer -> 读 -> Stop consumer -> Stop producer -> 解锁
+// 之前是「独占」模式：每个请求 Dial 一次，用完拆除。
+// 问题：
+//   - HLS 占住连接时，抓拍/MJPEG 要等最多 60 秒（实测 1m0s）
+//   - 网页和 Mac App 不能同时看同一台摄像头
+//   - 重复观看每次都重新握手（多花 0.5s）
 //
-//   不用全局锁：全局锁在并发场景下容易双重解锁（panic: unlock of unlocked mutex）
+// 改成共享模式：
+//
+//   每台设备一个 producer（共享）
+//     +-- consumer A (HLS)
+//     +-- consumer B (MJPEG)
+//     +-- consumer C (抓拍)
+//
+//   最后一个消费者离开后再过 idle 时间才停 producer。
+//
+// 好处：
+//   - 多个客户端同时观看（不互斥）
+//   - 二次观看立即出画（连接已热）
+//   - 抓拍可以从热连接上直接取
 
 import (
 	"fmt"
@@ -29,66 +42,191 @@ import (
 	"github.com/micam/micam/internal/xiaomi"
 )
 
-// camConn 一台摄像头的连接。
+// camConn 一台摄像头的共享连接。
 type camConn struct {
 	did  string
 	prod core.Producer
+
+	mu        sync.Mutex
+	refs      int       // 活跃消费者数
+	lastUsed  time.Time // 最后使用时间
+	createdAt time.Time
+	prodDone  chan struct{}
+	stopped   bool
 }
 
 var (
-	connMu    sync.Mutex
-	conns     = map[string]*camConn{}
-	connLocks = map[string]*sync.Mutex{}
+	connMu = sync.Mutex{}
+	conns  = map[string]*camConn{}
+	// dialLocks 保证同一设备同时只有一次 Dial
+	dialLocks = map[string]*sync.Mutex{}
 )
 
-// didLock 取该 did 的串行锁。
+// didLock 取该 did 的建连锁。
 func didLock(did string) *sync.Mutex {
 	connMu.Lock()
 	defer connMu.Unlock()
-	l, ok := connLocks[did]
+	l, ok := dialLocks[did]
 	if !ok {
 		l = &sync.Mutex{}
-		connLocks[did] = l
+		dialLocks[did] = l
 	}
 	return l
 }
 
-// connTimeout 连接超时：超过这个时间没数据就视为坏连接。
+// connTimeout 建连超时。
 const connTimeout = 12 * time.Second
 
-// useConn 独占使用某设备的连接。
+// connIdle 最后一个消费者离开后，连接保持多久再释放。
 //
-// 返回的 release 必须在用完时调用（建议 defer）。
-// release 会停止 consumer 和 producer，并让出串行锁。
-func (s *Server) useConn(dev *xiaomi.Device) (*camConn, *mpegtsConsumer, func(), error) {
-	lock := didLock(dev.Did)
-	lock.Lock()
+// 保持一段时间的好处：用户切换页面/重连时无需重新握手（立即出画）。
+const connIdle = 25 * time.Second
 
-	// 关掉可能残留的旧连接
-	//
-	// 关键：卡死的连接必须强制清理，否则新连接拿不到数据
+// addRef 增加引用。
+func (c *camConn) addRef() {
+	c.mu.Lock()
+	c.refs++
+	c.lastUsed = time.Now()
+	c.mu.Unlock()
+}
+
+// releaseRef 减少引用，并在归零时安排回收。
+func (c *camConn) releaseRef() {
+	c.mu.Lock()
+	c.refs--
+	c.lastUsed = time.Now()
+	refs := c.refs
+	c.mu.Unlock()
+
+	if refs <= 0 {
+		go c.reapWhenIdle()
+	}
+}
+
+// reapWhenIdle 空闲一段时间后停止连接。
+func (c *camConn) reapWhenIdle() {
+	t := time.NewTicker(time.Second)
+	defer t.Stop()
+	for range t.C {
+		c.mu.Lock()
+		if c.refs > 0 || c.stopped {
+			c.mu.Unlock()
+			return
+		}
+		idle := time.Since(c.lastUsed)
+		c.mu.Unlock()
+
+		if idle >= connIdle {
+			logf("[%s] 空闲 %v，释放连接", c.did, idle.Round(time.Second))
+			c.stop()
+			return
+		}
+	}
+}
+
+// stop 停止 producer 并注销。
+func (c *camConn) stop() {
+	c.mu.Lock()
+	if c.stopped {
+		c.mu.Unlock()
+		return
+	}
+	c.stopped = true
+	c.mu.Unlock()
+
 	connMu.Lock()
-	if old, ok := conns[dev.Did]; ok {
-		logf("[%s] 发现残留连接，强制清理", dev.Did)
-		_ = old.prod.Stop()
-		delete(conns, dev.Did)
-		// 等摄像头端释放会话
-		connMu.Unlock()
-		time.Sleep(1500 * time.Millisecond)
-		connMu.Lock()
+	if conns[c.did] == c {
+		delete(conns, c.did)
 	}
 	connMu.Unlock()
 
+	_ = c.prod.Stop()
+	select {
+	case <-c.prodDone:
+	case <-time.After(2 * time.Second):
+	}
+	logf("[%s] 连接已释放", c.did)
+}
+
+// getConn 取现有的可用连接（不建连）。
+func getConn(did string) *camConn {
+	connMu.Lock()
+	defer connMu.Unlock()
+	c, ok := conns[did]
+	if !ok {
+		return nil
+	}
+	c.mu.Lock()
+	stopped := c.stopped
+	c.mu.Unlock()
+	if stopped {
+		return nil
+	}
+	return c
+}
+
+// useConn 使用某设备的连接（共享）。
+//
+// 返回的 release 必须在用完时调用（建议 defer）。
+// release 只释放本次的 consumer，连接本身会在空闲后回收。
+func (s *Server) useConn(dev *xiaomi.Device) (*camConn, *mpegtsConsumer, func(), error) {
+	tAll := time.Now()
+
+	// 快路径：复用已有连接（无需加锁，瞬间完成）
+	if c := getConn(dev.Did); c != nil {
+		mc, err := newConsumerFor(c.prod)
+		if err == nil {
+			c.addRef()
+			logf("⏱ [0] 复用热连接 %v", time.Since(tAll).Round(time.Millisecond))
+			return c, mc, func() {
+				mc.stop()
+				c.releaseRef()
+			}, nil
+		}
+		// 建 consumer 失败，说明连接坏了，重建
+		logf("[%s] 复用失败（%v），重建连接", dev.Did, err)
+		c.stop()
+	}
+
+	// 慢路径：建新连接
+	lock := didLock(dev.Did)
+	tLock := time.Now()
+	lock.Lock()
+	defer lock.Unlock()
+	logf("⏱ [1] 等建连锁 %v", time.Since(tLock).Round(time.Millisecond))
+
+	// 双重检查：等锁期间可能已有人建好
+	if c := getConn(dev.Did); c != nil {
+		mc, err := newConsumerFor(c.prod)
+		if err == nil {
+			c.addRef()
+			logf("⏱ [1.5] 等锁后复用 %v", time.Since(tAll).Round(time.Millisecond))
+			return c, mc, func() {
+				mc.stop()
+				c.releaseRef()
+			}, nil
+		}
+	}
+
+	// 清理残留
+	if c := getConn(dev.Did); c != nil {
+		logf("[%s] 清理残留连接", dev.Did)
+		c.stop()
+	}
+
+	tSrc := time.Now()
 	src, err := s.resolveSource(dev)
 	if err != nil {
-		lock.Unlock()
 		return nil, nil, nil, err
 	}
+	logf("⏱ [2] 取凭据 %v", time.Since(tSrc).Round(time.Millisecond))
+
+	tDial := time.Now()
 	prod, err := gxiaomi.Dial(src)
 
 	// 凭据失效时的处理策略：
 	//   1. 先清缓存，重新申请
-	//   2. 刷新失败（如小米云限流）时，如果还有旧凭据就继续用
+	//   2. 刷新失败（如小米云限流）时保留旧凭据
 	//   3. 记录冷却时间，避免频繁刷新触发限流
 	if err != nil && isAuthError(err) {
 		logf("[%s] 凭据失效（%v），尝试刷新", dev.Did, err)
@@ -97,9 +235,6 @@ func (s *Server) useConn(dev *xiaomi.Device) (*camConn, *mpegtsConsumer, func(),
 			logf("[%s] 刷新冷却中，跳过（上次已尝试）", dev.Did)
 		} else {
 			s.markRefresh(dev.Did)
-
-			// 关键：先申请新凭据，成功才替换。
-			// 不要先删缓存 —— 否则申请失败（如限流）会导致彻底不可用。
 			newSrc, e2 := s.requestFreshSource(dev)
 			if e2 != nil {
 				logf("[%s] 刷新失败（保留旧凭据）: %v", dev.Did, e2)
@@ -113,67 +248,49 @@ func (s *Server) useConn(dev *xiaomi.Device) (*camConn, *mpegtsConsumer, func(),
 		}
 	}
 	if err != nil {
-		lock.Unlock()
 		return nil, nil, nil, err
 	}
+	logf("⏱ [3] CS2 握手 %v", time.Since(tDial).Round(time.Millisecond))
 
-	c := &camConn{did: dev.Did, prod: prod}
+	c := &camConn{
+		did:       dev.Did,
+		prod:      prod,
+		createdAt: time.Now(),
+		lastUsed:  time.Now(),
+		prodDone:  make(chan struct{}),
+	}
+
 	connMu.Lock()
 	conns[dev.Did] = c
 	connMu.Unlock()
 
-	// 建 consumer
+	// 每个消费者一份，互不影响
 	mc, err := newConsumerFor(prod)
 	if err != nil {
 		_ = prod.Stop()
 		connMu.Lock()
 		delete(conns, dev.Did)
 		connMu.Unlock()
-		lock.Unlock()
 		return nil, nil, nil, err
 	}
+	logf("⏱ [4] 建 consumer %v", time.Since(tAll).Round(time.Millisecond))
 
 	logf("已连接摄像头: %s (%s)", dev.Name, dev.Did)
 
-	// 启动 producer 读循环（加 recover，避免 panic 杀进程）
-	prodDone := make(chan struct{})
+	// 启动 producer 读循环
 	go func() {
-		defer close(prodDone)
+		defer close(c.prodDone)
 		defer recoverPanic("producer " + dev.Did)
 		_ = prod.Start()
 	}()
 
-	var once sync.Once
-	release := func() {
-		once.Do(func() {
-			// 1) 停 consumer -> WriteTo 返回
-			mc.stop()
+	c.addRef()
+	logf("⏱ [5] useConn 总计 %v", time.Since(tAll).Round(time.Millisecond))
 
-			// 2) 停 producer -> 释放摄像头会话
-			_ = prod.Stop()
-
-			// 3) 等读循环真正退出
-			select {
-			case <-prodDone:
-			case <-time.After(2 * time.Second):
-			}
-
-			// 4) 清理注册表
-			connMu.Lock()
-			if conns[dev.Did] == c {
-				delete(conns, dev.Did)
-			}
-			connMu.Unlock()
-
-			// 5) 让摄像头端有时间清理会话
-			time.Sleep(500 * time.Millisecond)
-
-			logf("[%s] 连接已释放", dev.Did)
-			lock.Unlock()
-		})
-	}
-
-	return c, mc, release, nil
+	return c, mc, func() {
+		mc.stop()
+		c.releaseRef()
+	}, nil
 }
 
 // 凭据刷新冷却（避免小米云限流）
@@ -198,8 +315,7 @@ func (s *Server) requestFreshSource(dev *xiaomi.Device) (string, error) {
 // canRefresh 判断是否可以刷新。
 //
 // 冷却 30 分钟：小米云的 miss_get_vendor 限流很严，
-// 实测频繁刷新会导致 code=-12 throttle deny，
-// 而且限流恢复需要较长时间。
+// 实测频繁刷新会导致 code=-12 throttle deny。
 func (s *Server) canRefresh(did string) bool {
 	refreshMu.Lock()
 	defer refreshMu.Unlock()
@@ -210,7 +326,14 @@ func (s *Server) canRefresh(did string) bool {
 	return time.Since(t) > 30*time.Minute
 }
 
-// RefreshCooldownLeft 返回冷却剩余时间（供 API 提示用户）。
+// markRefresh 记录刷新时间。
+func (s *Server) markRefresh(did string) {
+	refreshMu.Lock()
+	refreshLast[did] = time.Now()
+	refreshMu.Unlock()
+}
+
+// RefreshCooldownLeft 返回冷却剩余时间。
 func (s *Server) RefreshCooldownLeft(did string) time.Duration {
 	refreshMu.Lock()
 	defer refreshMu.Unlock()
@@ -225,13 +348,6 @@ func (s *Server) RefreshCooldownLeft(did string) time.Duration {
 	return left
 }
 
-// markRefresh 记录刷新时间。
-func (s *Server) markRefresh(did string) {
-	refreshMu.Lock()
-	refreshLast[did] = time.Now()
-	refreshMu.Unlock()
-}
-
 // isAuthError 判断是否为凭据失效错误。
 func isAuthError(err error) bool {
 	if err == nil {
@@ -240,7 +356,7 @@ func isAuthError(err error) bool {
 	msg := err.Error()
 	return strings.Contains(msg, "auth") ||
 		strings.Contains(msg, "failed") ||
-		strings.Contains(msg, "code") && strings.Contains(msg, "3")
+		(strings.Contains(msg, "code") && strings.Contains(msg, "3"))
 }
 
 // newConsumerFor 给 producer 建一个 mpegts consumer。
@@ -271,4 +387,17 @@ func newConsumerFor(prod core.Producer) (*mpegtsConsumer, error) {
 		return nil, errNoTrack
 	}
 	return &mpegtsConsumer{cons: cons}, nil
+}
+
+// stopAllConns 停止所有连接（服务退出时用）。
+func stopAllConns() {
+	connMu.Lock()
+	list := make([]*camConn, 0, len(conns))
+	for _, c := range conns {
+		list = append(list, c)
+	}
+	connMu.Unlock()
+	for _, c := range list {
+		c.stop()
+	}
 }
