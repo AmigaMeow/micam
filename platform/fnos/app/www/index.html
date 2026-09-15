@@ -203,6 +203,14 @@ tbody tr:last-child td{border-bottom:0}
 .spin{width:20px;height:20px;border:2px solid var(--border-2);border-top-color:var(--primary);
   border-radius:50%;animation:spin .7s linear infinite}
 @keyframes spin{to{transform:rotate(360deg)}}
+.switch{position:relative;display:inline-block;width:40px;height:22px;flex-shrink:0}
+.switch input{opacity:0;width:0;height:0}
+.switch span{position:absolute;cursor:pointer;inset:0;background:var(--border-2);
+  border-radius:11px;transition:.2s}
+.switch span:before{content:"";position:absolute;height:16px;width:16px;left:3px;top:3px;
+  background:#fff;border-radius:50%;transition:.2s}
+.switch input:checked + span{background:var(--primary)}
+.switch input:checked + span:before{transform:translateX(18px)}
 .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px}
 .stat-box{padding:14px 16px;background:var(--hover);border-radius:8px}
 .stat-label{font-size:12px;color:var(--text-3);margin-bottom:6px}
@@ -334,7 +342,7 @@ tbody tr:last-child td{border-bottom:0}
       <span>小米摄像头</span>
     </div>
     <nav class="menu" id="menu"></nav>
-    <div class="sider-foot">MiCam <span id="appVer">v—</span></div>
+    <div class="sider-foot">MiCam <span id="appVer" style="cursor:pointer;-webkit-user-select:none;user-select:none">v—</span></div>
   </aside>
   <div class="main">
     <header class="header">
@@ -371,6 +379,7 @@ tbody tr:last-child td{border-bottom:0}
 <symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></symbol>
 <symbol id="i-close" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></symbol>
 <symbol id="i-inbox" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></symbol>
+<symbol id="i-code" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></symbol>
 <symbol id="i-qr" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><line x1="14" y1="14" x2="14" y2="21"/><line x1="21" y1="14" x2="21" y2="21"/><line x1="17" y1="18" x2="18" y2="18"/></symbol>
 </svg>
 <script>
@@ -384,6 +393,9 @@ var currentDid = null;
 var liveWidth = 0;      // 0 = 2K 原画
 var liveMode = "hls";   // hls / mjpeg
 var liveTimer = null;
+var APP_VER = "";        // 版本号（从 /api/health 拉取）
+var DEV_UNLOCKED = false; // 开发者模式是否解锁
+var DEV_TAP = 0;          // 本次点击计数
 
 // ===== 工具 =====
 function $(s){ return document.querySelector(s); }
@@ -463,7 +475,8 @@ var MENU = [
   {k:"recordings",t:"录像管理", i:"rec"},
   {k:"accounts",  t:"账号管理", i:"user"},
   {k:"setup",     t:"安装向导", i:"check"},
-  {k:"settings",  t:"系统设置", i:"set"}
+  {k:"settings",  t:"系统设置", i:"set"},
+  {k:"dev",       t:"开发者",   i:"code", dev:true}
 ];
 
 function renderMenu(){
@@ -548,6 +561,7 @@ function render(){
   if(page==="recordings") return renderRecordings(c);
   if(page==="accounts") return renderAccounts(c);
   if(page==="setup") return renderWizard(c);
+  if(page==="dev") return renderDev(c);
   if(page==="settings") return renderSettings(c);
 }
 
@@ -1320,6 +1334,205 @@ function renderWizard(c){
   });
 }
 
+
+// ===== 页面：开发者 =====
+function renderDev(c){
+  if(!DEV_UNLOCKED){
+    c.innerHTML = "<div class=\"card\">" + empty("close","开发者模式未开启","连续点击左下角版本号 7 次解锁","") + "</div>";
+    return;
+  }
+
+  c.innerHTML = ""
+    + "<div class=\"card\">"
+    +   "<div class=\"card-head\">"
+    +     "<span class=\"card-title\">" + icon("code",15) + " 开放模式</span>"
+    +     "<span style=\"font-size:12px;color:var(--text-3)\">供第三方客户端接入调试</span>"
+    +   "</div>"
+    +   "<div style=\"padding:8px 0\" id=\"devFlags\">" + loading("读取中…") + "</div>"
+    + "</div>"
+    + "<div class=\"card\">"
+    +   "<div class=\"card-head\">"
+    +     "<span class=\"card-title\">" + icon("device",15) + " 接口文档</span>"
+    +     "<div style=\"display:flex;gap:8px\">"
+    +       "<button class=\"btn btn-sm\" id=\"btnSpec\">OpenAPI JSON</button>"
+    +       "<button class=\"btn btn-sm\" id=\"btnDocs\">Markdown</button>"
+    +     "</div>"
+    +   "</div>"
+    +   "<div style=\"padding:0\" id=\"devEndpoints\">" + loading("加载中…") + "</div>"
+    + "</div>"
+    + "<div class=\"card\">"
+    +   "<div class=\"card-head\">"
+    +     "<span class=\"card-title\">" + icon("play",15) + " 接口自测</span>"
+    +     "<span style=\"font-size:12px;color:var(--text-3)\">点「调用」直接请求</span>"
+    +   "</div>"
+    +   "<div style=\"padding:0\" id=\"devTry\"></div>"
+    + "</div>"
+    + "<div class=\"card\">"
+    +   "<div class=\"card-head\"><span class=\"card-title\">" + icon("set",15) + " 能力探测</span>"
+    +     "<button class=\"btn btn-sm\" id=\"btnCaps\">刷新</button></div>"
+    +   "<div style=\"padding:16px 24px\" id=\"devCaps\">" + loading("读取中…") + "</div>"
+    + "</div>"
+    + "<div class=\"card\">"
+    +   "<div class=\"card-head\"><span class=\"card-title\">" + icon("close",15) + " 危险操作</span></div>"
+    +   "<div style=\"padding:16px 24px\">"
+    +     "<button class=\"btn\" id=\"btnDevReset\" style=\"color:var(--error);border-color:var(--error)\">关闭开发者模式</button>"
+    +   "</div>"
+    + "</div>";
+
+  loadDevFlags();
+  loadDevEndpoints();
+  loadDevCaps();
+
+  var s1 = $("#btnSpec");
+  if(s1) s1.onclick = function(){ window.open(apiUrl("/api/dev/openapi"), "_blank"); };
+  var s2 = $("#btnDocs");
+  if(s2) s2.onclick = function(){ window.open(apiUrl("/api/dev/docs"), "_blank"); };
+  var s3 = $("#btnCaps");
+  if(s3) s3.onclick = loadDevCaps;
+  var s4 = $("#btnDevReset");
+  if(s4) s4.onclick = function(){
+    if(!confirm("关闭开发者模式？开放模式的开关会全部复位。")) return;
+    api("/api/dev/reset", { method: "POST" }).then(function(){
+      DEV_UNLOCKED = false;
+      toast("已关闭开发者模式", "ok");
+      page = "devices";
+      $("#pageTitle").textContent = "设备列表";
+      renderMenu();
+      render();
+    });
+  };
+}
+
+// 开放模式开关
+var DEV_FLAG_DEFS = [
+  {k:"allowLan",   t:"允许局域网直连", d:"开启 :8900 端口，第三方客户端可直连（Mac App 用）"},
+  {k:"cors",       t:"允许跨域 (CORS)", d:"网页端 / Electron 调试时需要"},
+  {k:"exposeSpec", t:"暴露接口规格", d:"开放 /api/dev/openapi 和 /api/dev/docs"},
+  {k:"verboseLog", t:"详细日志", d:"记录凭据申请、连接生命周期等细节"},
+  {k:"mockMode",   t:"模拟数据模式", d:"不连真实设备，方便 UI 开发（未实现）"}
+];
+
+function loadDevFlags(){
+  var box = $("#devFlags");
+  if(!box) return;
+  api("/api/dev/status").then(function(r){
+    var f = r.flags || {};
+    box.innerHTML = DEV_FLAG_DEFS.map(function(x){
+      var on = !!f[x.k];
+      return "<div class=\"check-item\">"
+        + "<div class=\"check-body\">"
+        +   "<div class=\"check-name\">" + esc(x.t) + "</div>"
+        +   "<div class=\"check-detail\">" + esc(x.d) + "</div>"
+        + "</div>"
+        + "<label class=\"switch\"><input type=\"checkbox\" data-flag=\"" + x.k + "\"" + (on ? " checked" : "") + "><span></span></label>"
+        + "</div>";
+    }).join("");
+    Array.prototype.forEach.call(box.querySelectorAll("input[data-flag]"), function(inp){
+      inp.onchange = function(){
+        var body = {};
+        body[this.dataset.flag] = this.checked;
+        api("/api/dev/config", {
+          method:"POST", headers:{"Content-Type":"application/json"},
+          body: JSON.stringify(body)
+        }).then(function(){
+          toast("已保存", "ok");
+        }).catch(function(e){
+          toast("保存失败：" + e.message, "err");
+        });
+      };
+    });
+  }).catch(function(e){
+    box.innerHTML = "<div style=\"padding:16px 24px;color:var(--error)\">" + esc(e.message) + "</div>";
+  });
+}
+
+// 接口清单
+var DEV_ENDPOINTS = [
+  {m:"GET",  p:"/api/health",              t:"健康检查"},
+  {m:"GET",  p:"/api/dev/capabilities",    t:"能力探测"},
+  {m:"GET",  p:"/api/devices",             t:"摄像头列表"},
+  {m:"GET",  p:"/api/devices/all",         t:"全部设备"},
+  {m:"GET",  p:"/api/homes",               t:"家庭列表"},
+  {m:"GET",  p:"/api/accounts",            t:"账号列表"},
+  {m:"GET",  p:"/api/live/hls/info",       t:"HLS 能力"},
+  {m:"GET",  p:"/api/live/source-status",  t:"凭据状态"},
+  {m:"GET",  p:"/api/storage",             t:"存储总览"},
+  {m:"GET",  p:"/api/storage/cleanup-preview", t:"清理预览"},
+  {m:"GET",  p:"/api/recordings",          t:"录像任务"},
+  {m:"GET",  p:"/api/recordings/files",    t:"录像文件"},
+  {m:"GET",  p:"/api/setup/check",         t:"环境自检"},
+  {m:"GET",  p:"/api/diag/report",         t:"诊断报告"},
+  {m:"GET",  p:"/api/platform",            t:"平台信息"}
+];
+
+function loadDevEndpoints(){
+  var box = $("#devEndpoints");
+  if(!box) return;
+  box.innerHTML = "<div class=\"table-wrap\"><table>"
+    + "<thead><tr><th style=\"width:60px\">方法</th><th>路径</th><th>说明</th><th style=\"width:80px\"></th></tr></thead>"
+    + "<tbody>"
+    + DEV_ENDPOINTS.map(function(e, i){
+        return "<tr>"
+          + "<td><span class=\"tag tag-on\" style=\"font-size:10px\">" + e.m + "</span></td>"
+          + "<td style=\"font-family:monospace;font-size:12px\">" + esc(e.p) + "</td>"
+          + "<td style=\"font-size:12px;color:var(--text-3)\">" + esc(e.t) + "</td>"
+          + "<td><button class=\"btn btn-sm\" data-call=\"" + i + "\">调用</button></td>"
+          + "</tr>";
+      }).join("")
+    + "</tbody></table></div>"
+    + "<div id=\"devResult\" style=\"padding:0 24px 16px\"></div>";
+
+  Array.prototype.forEach.call(box.querySelectorAll("button[data-call]"), function(b){
+    b.onclick = function(){
+      var e = DEV_ENDPOINTS[parseInt(this.dataset.call, 10)];
+      callEndpoint(e);
+    };
+  });
+}
+
+function callEndpoint(e){
+  var out = document.getElementById("devResult");
+  if(out) out.innerHTML = "<div style=\"font-size:12px;color:var(--text-3)\">请求 " + esc(e.p) + " …</div>";
+  var t0 = Date.now();
+  api(e.p).then(function(r){
+    var ms = Date.now() - t0;
+    var txt = JSON.stringify(r, null, 2);
+    if(txt.length > 3000) txt = txt.slice(0, 3000) + "\n… （已截断）";
+    if(out) out.innerHTML = "<div style=\"font-size:12px;margin-bottom:6px\">"
+      + "<span class=\"tag tag-on\">" + ms + " ms</span></div>"
+      + "<pre style=\"background:var(--hover);padding:12px;border-radius:6px;font-size:11px;overflow:auto;max-height:300px\">" + esc(txt) + "</pre>";
+  }).catch(function(err){
+    if(out) out.innerHTML = "<div style=\"color:var(--error);font-size:12px\">失败：" + esc(err.message) + "</div>";
+  });
+}
+
+// 能力探测
+function loadDevCaps(){
+  var box = $("#devCaps");
+  if(!box) return;
+  box.innerHTML = loading("读取中…");
+  api("/api/dev/capabilities").then(function(r){
+    var hw = r.hardware || {}, ft = r.features || {}, lm = r.limits || {}, sv = r.server || {};
+    var enc = (hw.encoders || []).map(function(x){ return x.name + (x.hardware ? "(硬)" : "(软)"); }).join("、");
+    var feats = Object.keys(ft).map(function(k){
+      var on = ft[k];
+      return "<span class=\"tag " + (on ? "tag-on" : "tag-off") + "\" style=\"margin:2px\">" + k + "</span>";
+    }).join(" ");
+    box.innerHTML = "<table style=\"font-size:12px\">"
+      + "<tr><td style=\"width:120px;color:var(--text-3)\">版本</td><td>" + esc((r.app||{}).version) + "</td></tr>"
+      + "<tr><td style=\"color:var(--text-3)\">CPU</td><td>" + esc(hw.cpuModel || "-") + " · " + (hw.cpuCores||"-") + " 核</td></tr>"
+      + "<tr><td style=\"color:var(--text-3)\">核显</td><td>" + (hw.hasDRI ? esc(hw.gpuInfo || "有") : "无") + "</td></tr>"
+      + "<tr><td style=\"color:var(--text-3)\">首选编码器</td><td>" + esc(hw.preferred || "-") + "</td></tr>"
+      + "<tr><td style=\"color:var(--text-3)\">可用编码器</td><td style=\"word-break:break-all\">" + esc(enc) + "</td></tr>"
+      + "<tr><td style=\"color:var(--text-3)\">服务器时间</td><td>" + esc(sv.time || "-") + "</td></tr>"
+      + "<tr><td style=\"color:var(--text-3)\">功能</td><td>" + feats + "</td></tr>"
+      + "<tr><td style=\"color:var(--text-3)\">限制</td><td>fps≤" + (lm.maxFPS||"-") + " · 宽≤" + (lm.maxWidth||"-") + " · 分片 " + (lm.hlsSegmentSec||"-") + "s</td></tr>"
+      + "</table>";
+  }).catch(function(e){
+    box.innerHTML = "<div style=\"color:var(--error);font-size:12px\">" + esc(e.message) + "</div>";
+  });
+}
+
 // ===== 页面：系统设置 =====
 function renderSettings(c){
   c.innerHTML = "<div class=\"card\">"
@@ -1521,6 +1734,34 @@ document.addEventListener("click", function(e){
   document.head.appendChild(s);
 })();
 
+// ===== 开放模式（开发者选项）解锁 =====
+//
+// 参照 Android：连续点击版本号 7 次解锁。
+function bindDevUnlock(){
+  var el = document.getElementById("appVer");
+  if(!el) return;
+  el.onclick = function(){
+    if(DEV_UNLOCKED){
+      toast("开发者模式已开启", "ok");
+      return;
+    }
+    DEV_TAP++;
+    api("/api/dev/tap", { method: "POST" }).then(function(r){
+      if(r.unlocked){
+        DEV_UNLOCKED = true;
+        toast("🔓 开发者模式已开启", "ok");
+        renderMenu();
+      } else {
+        var left = r.remaining || (7 - DEV_TAP);
+        toast("再点击 " + left + " 次开启开发者模式");
+      }
+    }).catch(function(){
+      var left = 7 - DEV_TAP;
+      if(left > 0) toast("再点击 " + left + " 次开启开发者模式");
+    });
+  };
+}
+
 // ===== 启动 =====
 // 拉取版本号（避免硬编码不一致）
 api("/api/health").then(function(r){
@@ -1528,6 +1769,14 @@ api("/api/health").then(function(r){
   var el = document.getElementById("appVer");
   if(el) el.textContent = "v" + APP_VER;
 }).catch(function(){});
+
+// 开发者模式状态
+api("/api/dev/status").then(function(r){
+  DEV_UNLOCKED = !!r.unlocked;
+  if(DEV_UNLOCKED) renderMenu();
+}).catch(function(){});
+
+bindDevUnlock();
 
 renderMenu();
 // 首次使用（没账号）自动进向导

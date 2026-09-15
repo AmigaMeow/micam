@@ -34,7 +34,7 @@ import (
 
 const (
 	appName    = "micam"
-	appVersion = "0.7.3"
+	appVersion = "0.8.0"
 )
 
 func main() {
@@ -118,6 +118,9 @@ func main() {
 
 	// 网关会带 /app/micam 前缀转发过来，需要剥掉
 	handler := stripPrefixMiddleware(mux, "/app/micam")
+
+	// CORS（开放模式开关控制）
+	handler = srv.corsMiddleware(handler)
 
 	httpSrv := &http.Server{
 		Handler:           logMiddleware(handler),
@@ -374,6 +377,15 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/diag/report", s.handleDiagReport)
 	mux.HandleFunc("/api/diag/bundle", s.handleDiagBundle)
 
+	// 开放模式（开发者选项）
+	mux.HandleFunc("/api/dev/status", s.handleDevStatus)
+	mux.HandleFunc("/api/dev/tap", s.handleDevTap)
+	mux.HandleFunc("/api/dev/config", s.handleDevConfig)
+	mux.HandleFunc("/api/dev/reset", s.handleDevReset)
+	mux.HandleFunc("/api/dev/openapi", s.handleDevOpenAPI)
+	mux.HandleFunc("/api/dev/docs", s.handleDevDocs)
+	mux.HandleFunc("/api/dev/capabilities", s.handleDevCapabilities)
+
 	// 安装向导 / 自检
 	mux.HandleFunc("/api/setup/check", s.handleSetupCheck)
 	mux.HandleFunc("/api/setup/repair", s.handleSetupRepair)
@@ -550,6 +562,29 @@ func writeJSON(w http.ResponseWriter, code int, v any) {
 
 func writeErr(w http.ResponseWriter, code int, msg string) {
 	writeJSON(w, code, map[string]any{"msg": msg})
+}
+
+// corsMiddleware 按开放模式配置决定是否允许跨域。
+//
+// 默认关闭；开发者模式下可打开，方便网页端 / Electron 调试。
+func (s *Server) corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.cfg.Dev.CORS {
+			origin := r.Header.Get("Origin")
+			if origin == "" {
+				origin = "*"
+			}
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+			w.Header().Set("Access-Control-Max-Age", "86400")
+			if r.Method == http.MethodOptions {
+				w.WriteHeader(http.StatusNoContent)
+				return
+			}
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 // watchSocket 监控 socket 文件，丢失时自动重建。
