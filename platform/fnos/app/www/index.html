@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <title>小米摄像头</title>
-<meta name="micam-build" content="2026-09-16 18:40:59">
+<meta name="micam-build" content="2026-09-16 18:48:31">
 <!-- 样式内联：飞牛网关会剥前缀，相对路径不可靠（详见 build/assemble-web.js）-->
 <style>
 
@@ -2295,18 +2295,27 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; line-h
    GRID — 多路预览（对齐效果图）
    ========================================================================== */
 
-.ggrid {
-  display: grid; gap: var(--space-4);
-  margin-bottom: var(--space-4);
-  /* 填满可用高度：监控视图里「用满屏幕」比严格 16:9 更有用
-     （2 台设备时如果只按 16:9，下面会空一大片） */
-  min-height: calc(100vh - 344px);
-  grid-auto-rows: minmax(0, 1fr);
+/* 布局：左宫格 + 右设备面板 */
+.grid-wrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: var(--space-4);
+  align-items: start;
 }
+@media (max-width: 1100px) { .grid-wrap { grid-template-columns: 1fr; } }
+
+.ggrid {
+  display: grid; gap: var(--space-3);
+  grid-auto-rows: 1fr;
+  min-height: calc(100vh - 372px);
+}
+.ggrid--1 { grid-template-columns: 1fr; }
 .ggrid--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .ggrid--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-@media (max-width: 1000px) { .ggrid--3 { grid-template-columns: repeat(2, minmax(0,1fr)); } }
-@media (max-width: 700px)  { .ggrid--2, .ggrid--3 { grid-template-columns: 1fr; } }
+.ggrid--4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 1400px) { .ggrid--4 { grid-template-columns: repeat(3, minmax(0,1fr)); } }
+@media (max-width: 1000px) { .ggrid--3, .ggrid--4 { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+@media (max-width: 700px)  { .ggrid { grid-template-columns: 1fr !important; } }
 
 .gtile {
   position: relative;
@@ -2367,19 +2376,114 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; line-h
   background: var(--accent);
 }
 
-/* 底部提示条 */
-.ghint {
-  display: flex; align-items: center; gap: var(--space-5);
-  padding: var(--space-3) var(--space-4);
+/* 工具栏 */
+.gbar {
+  display: flex; align-items: center; gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  padding: var(--space-2) var(--space-3);
   background: var(--surface-1);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
-  font-size: var(--text-base); color: var(--text-muted);
   flex-wrap: wrap;
 }
-.ghint__item { display: inline-flex; align-items: center; gap: 6px; }
-.ghint__right { margin-left: auto; color: var(--text-secondary); }
-@media (max-width: 700px) { .ghint__right { margin-left: 0; } }
+.gbar__btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 32px; padding: 0 var(--space-3);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary); font-size: var(--text-base);
+  transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+}
+.gbar__btn:hover { background: var(--surface-2); color: var(--text); }
+.gbar__btn.is-active { background: color-mix(in oklab, var(--accent) 18%, transparent); color: var(--accent); }
+
+.gbar__sel {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 32px; padding: 0 var(--space-3);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  transition: background var(--duration-fast) var(--ease-out);
+}
+.gbar__sel:hover { background: var(--surface-2); }
+.gbar__sel select {
+  background: transparent; border: 0; outline: none;
+  color: inherit; font-size: var(--text-base); font-family: inherit;
+  cursor: pointer; -webkit-appearance: none; appearance: none;
+}
+.gbar__sel select option { background: var(--surface-2); color: var(--text); }
+.gbar__right { margin-left: auto; font-size: var(--text-base); color: var(--text-muted); }
+
+/* 右侧「可选设备」面板 */
+.gd-panel {
+  display: flex; flex-direction: column;
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  max-height: calc(100vh - 300px);
+}
+@media (max-width: 1100px) { .gd-panel { max-height: none; } }
+
+.gd-panel__head {
+  display: flex; align-items: baseline; gap: var(--space-2);
+  padding: var(--space-4) var(--space-4) var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.gd-panel__title { font-size: var(--text-base); font-weight: var(--weight-medium); }
+.gd-panel__title em { font-style: normal; color: var(--text-muted); font-weight: var(--weight-normal); }
+.gd-panel__count { margin-left: auto; font-size: var(--text-sm); color: var(--text-muted); }
+
+.gd-panel__search { margin: var(--space-3) var(--space-3) 0; }
+
+.gd-panel__list { flex: 1; overflow-y: auto; padding: var(--space-2); }
+
+.gd-item {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-2);
+  border-radius: var(--radius-md);
+  transition: background var(--duration-fast) var(--ease-out);
+}
+.gd-item:hover { background: var(--surface-2); }
+.gd-item.is-added { background: color-mix(in oklab, var(--accent) 8%, transparent); }
+
+.gd-item__thumb {
+  flex: 0 0 56px; width: 56px; aspect-ratio: 16/9;
+  border-radius: var(--radius-sm); overflow: hidden;
+  background: #0a0d12; display: block;
+}
+.gd-item__thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.gd-item__body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.gd-item__name {
+  font-size: var(--text-base); color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.gd-item__en { font-size: var(--text-xs); color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gd-item__status { display: inline-flex; align-items: center; gap: 4px; font-size: var(--text-xs); color: var(--text-muted); }
+
+.gd-item__btn {
+  flex: 0 0 auto;
+  height: 26px; padding: 0 10px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  background: var(--accent); color: #fff;
+  transition: opacity var(--duration-fast) var(--ease-out);
+}
+.gd-item__btn:hover { opacity: .88; }
+.gd-item__btn.is-del { background: var(--surface-3); color: var(--text-secondary); }
+.gd-item__btn.is-del:hover { background: var(--surface-hover); color: var(--text); }
+
+.gd-panel__hint {
+  display: flex; align-items: center; gap: 6px;
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+  font-size: var(--text-xs); color: var(--text-muted);
+}
+
+/* 宫格里的离线占位 */
+.gtile__off {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: var(--space-2); color: var(--text-muted);
+}
 
 /* 分段按钮里带文字时不换行 */
 .segmented__btn { white-space: nowrap; }
@@ -5543,70 +5647,132 @@ function showCleanupPreview(){
 
 // ===== 页面：多路预览 =====
 //
-// 对齐效果图：布局切换（4/9）+ 宫格 + 每格叠层（时间/名称/聚焦态）
-// + 底部操作提示条。
+// 对齐效果图：
+//   左侧宫格 + 右侧「可选设备」面板
+//   支持 1/4/9/16 布局、轮巡、显示信息、帧率
+//
+// 宫格里的设备是**用户自己添加的**（存 localStorage），
+// 不是自动显示所有在线设备 —— 让用户控制看哪几路、什么顺序。
 
 var gridTimers = [];
-var gridLayout = 4;      // 4 或 9
-var gridFocus = '';      // 当前聚焦的 did
-var gridOrder = [];      // 用户拖拽后的顺序
+var gridLayout = 4;                    // 1 / 4 / 9 / 16
+var gridFocus = '';
+var gridSelected = null;               // null = 还没初始化
+var gridPatrol = false;
+var gridPatrolTimer = null;
+var gridInfoMode = 'full';             // full=名称+时间 / name=仅名称 / none=隐藏
+var gridFps = 3;
+var gridQuery = '';
+
+function gridKey(){ return 'micam.grid.selected'; }
+
+function gridLoad(){
+  if(gridSelected !== null) return gridSelected;
+  var out = [];
+  try { out = JSON.parse(localStorage.getItem(gridKey()) || 'null') || []; } catch(e){}
+  gridSelected = out;
+  return out;
+}
+function gridSave(){
+  try { localStorage.setItem(gridKey(), JSON.stringify(gridSelected || [])); } catch(e){}
+}
 
 function stopGrid(){
-  gridTimers.forEach(function(t){ if(t) clearTimeout(t); });
+  gridTimers.forEach(function(t){ if(t) clearInterval(t); });
   gridTimers = [];
-  Array.prototype.forEach.call(document.querySelectorAll('.gtile img'), function(img){
-    img.src = '';
-  });
+  if(gridPatrolTimer){ clearInterval(gridPatrolTimer); gridPatrolTimer = null; }
+  Array.prototype.forEach.call(document.querySelectorAll('.gtile img'), function(img){ img.src = ''; });
 }
 
 function renderGrid(c){
   c.innerHTML = '<div class="page__inner">' + loading('加载设备…') + '</div>';
 
   loadDevices().then(function(){
-    var online = (devices || []).filter(function(d){ return d.isOnline; });
+    var all = devices || [];
+    var sel = gridLoad().slice();
 
-    if(!devices.length){
-      c.innerHTML = '<div class="page__inner"><div class="card">'
-        + empty('camera','没有发现摄像头','先在「摄像头」添加账号','') + '</div></div>';
-      return;
+    // 清理已不存在的设备
+    var before = sel.length;
+    sel = sel.filter(function(n){ return all.some(function(d){ return d.name === n; }); });
+    if(sel.length !== before){ gridSelected = sel; gridSave(); }
+
+    // 首次进入：自动加前几个在线设备，免得看到空白
+    if(gridSelected.length === 0 && !localStorage.getItem('micam.grid.inited')){
+      sel = all.filter(function(d){ return d.isOnline; }).slice(0, 4).map(function(d){ return d.name; });
+      gridSelected = sel; gridSave();
+      try { localStorage.setItem('micam.grid.inited', '1'); } catch(e){}
     }
 
-    // 排序：用户拖拽顺序优先
-    if(gridOrder.length){
-      online.sort(function(a,b){
-        var ia = gridOrder.indexOf(a.did), ib = gridOrder.indexOf(b.did);
-        if(ia < 0) ia = 999; if(ib < 0) ib = 999;
-        return ia - ib;
-      });
-    }
-    // 最多显示到布局容量
     var cap = gridLayout;
-    var shown = online.slice(0, cap);
+    var shown = sel.map(function(n){
+      return all.filter(function(d){ return d.name === n; })[0];
+    }).filter(Boolean).slice(0, cap);
 
-    if(!gridFocus || !shown.some(function(d){ return d.did === gridFocus; })){
-      gridFocus = shown.length ? shown[0].did : '';
+    if(!gridFocus || !shown.some(function(d){ return d.name === gridFocus; })){
+      gridFocus = shown.length ? shown[0].name : '';
     }
 
     function tile(d){
-      var dual = (d.lenses||1) >= 2;
       var nm = d.alias || d.name;
       var en = d.aliasEn || '';
-      var foc = d.did === gridFocus;
-      return '<div class="gtile' + (foc ? ' is-focus' : '') + '" data-did="' + esc(d.did) + '" draggable="true">'
-        + '<img data-stream="' + esc(d.did) + '" alt="">'
-        + '<div class="gtile__time"><span class="rec-dot"></span><span data-gclock="' + esc(d.did) + '">' + clockNow() + '</span></div>'
-        + '<div class="gtile__foot">'
-        +   '<div class="gtile__info">'
-        +     '<div class="gtile__name">' + esc(nm) + (en ? ' <em>' + esc(en) + '</em>' : '') + '</div>'
-        +     '<div class="gtile__meta">' + (d.shared ? '共享 · ' : '') + (dual ? '双摄 · ' : '') + '2K</div>'
-        +   '</div>'
-        +   '<div class="gtile__acts">'
-        +     '<button class="gtile__btn" data-gmax="1" title="放大">' + icon('maximize',15) + '</button>'
-        +     '<button class="gtile__btn" data-gfocus="1" title="聚焦">' + icon('eye',15) + '</button>'
-        +   '</div>'
-        + '</div>'
+      var foc = d.name === gridFocus;
+      var on = d.isOnline;
+      var info = gridInfoMode !== 'none';
+      return '<div class="gtile' + (foc ? ' is-focus' : '') + (on ? '' : ' is-offline')
+        + '" data-dev="' + esc(d.name) + '">'
+        + (on ? '<img data-stream="' + esc(d.name) + '" alt="">'
+              : '<div class="gtile__off">' + icon('video-off',30) + '<span>离线</span></div>')
+        + (info && gridInfoMode === 'full' && on
+            ? '<div class="gtile__time"><span class="rec-dot"></span><span data-gclock="' + esc(d.name) + '">' + clockNow() + '</span></div>'
+            : '')
+        + (info
+            ? '<div class="gtile__foot">'
+            +   '<div class="gtile__info">'
+            +     '<div class="gtile__name">' + esc(nm) + (en && gridInfoMode === 'full' ? ' <em>' + esc(en) + '</em>' : '') + '</div>'
+            +     (gridInfoMode === 'full' ? '<div class="gtile__meta">' + (d.shared ? '共享 · ' : '') + (on ? '在线' : '离线') + '</div>' : '')
+            +   '</div>'
+            +   '<div class="gtile__acts">'
+            +     '<button class="gtile__btn" data-gmax="1" title="放大">' + icon('maximize',15) + '</button>'
+            +     '<button class="gtile__btn" data-gfocus="1" title="聚焦">' + icon('eye',15) + '</button>'
+            +   '</div>'
+            + '</div>'
+            : '')
         + (foc ? '<span class="gtile__focusbar"></span>' : '')
         + '</div>';
+    }
+
+    function devicePanel(){
+      var q = (gridQuery || '').trim().toLowerCase();
+      var list = all.filter(function(d){
+        if(!q) return true;
+        return ((d.alias||'') + ' ' + (d.aliasEn||'') + ' ' + d.name).toLowerCase().indexOf(q) >= 0;
+      });
+      var items = list.map(function(d){
+        var added = (gridSelected||[]).indexOf(d.name) >= 0;
+        var nm = d.alias || d.name;
+        var en = d.aliasEn || '';
+        return '<div class="gd-item' + (added ? ' is-added' : '') + '" data-dev="' + esc(d.name) + '">'
+          + '<span class="gd-item__thumb"><img loading="lazy" data-gdthumb="' + esc(d.name) + '" alt=""></span>'
+          + '<span class="gd-item__body">'
+          +   '<span class="gd-item__name">' + esc(nm) + '</span>'
+          +   (en ? '<span class="gd-item__en">' + esc(en) + '</span>' : '')
+          +   '<span class="gd-item__status"><span class="status-dot ' + (d.isOnline?'is-online':'is-offline') + '"></span>'
+          +     (d.isOnline ? '在线' : '离线') + '</span>'
+          + '</span>'
+          + '<button class="gd-item__btn' + (added ? ' is-del' : '') + '" data-gtoggle="' + esc(d.name) + '">'
+          +   (added ? '移除' : '添加') + '</button>'
+          + '</div>';
+      }).join('');
+
+      return '<div class="gd-panel__head">'
+        +   '<span class="gd-panel__title">可选设备 <em>Available</em></span>'
+        +   '<span class="gd-panel__count">' + (gridSelected||[]).length + ' / ' + all.length + '</span>'
+        + '</div>'
+        + '<div class="search gd-panel__search">' + icon('search',14)
+        +   '<input class="input" id="gdSearch" type="search" placeholder="搜索摄像头…" value="' + esc(gridQuery||'') + '">'
+        + '</div>'
+        + '<div class="gd-panel__list">' + (items || empty('camera','没有匹配的设备','','')) + '</div>'
+        + '<div class="gd-panel__hint">' + icon('move',14) + '点「添加」把设备放进画面</div>';
     }
 
     c.innerHTML = '<div class="page__inner">'
@@ -5622,79 +5788,93 @@ function renderGrid(c){
       +     '<h1 class="list-head__title">多路预览</h1>'
       +     '<div class="list-head__en">Multi-Camera View</div>'
       +   '</div>'
-      +   '<div class="segmented" id="gridLayout">'
-      +     '<button class="segmented__btn' + (gridLayout===4?' is-active':'') + '" data-gl="4">' + icon('grid',14) + '4 路</button>'
-      +     '<button class="segmented__btn' + (gridLayout===9?' is-active':'') + '" data-gl="9">' + icon('grid',14) + '9 路</button>'
+      +   '<div class="list-head__acts">'
+      +     '<div class="segmented" id="gridLayout">'
+      +       [1,4,9,16].map(function(n){
+                return '<button class="segmented__btn' + (gridLayout===n?' is-active':'') + '" data-gl="' + n + '">' + n + ' 路</button>';
+              }).join('')
+      +     '</div>'
       +   '</div>'
       + '</div>'
 
-      + '<div class="ggrid ggrid--' + (gridLayout === 9 ? 3 : 2) + '" id="gridBox">'
-      +   (shown.length ? shown.map(tile).join('') : empty('camera','没有在线的摄像头','',''))
+      + '<div class="gbar">'
+      +   '<button class="gbar__btn' + (gridPatrol ? ' is-active' : '') + '" id="gPatrol">'
+      +     icon('refresh',14) + '轮巡' + (gridPatrol ? '中' : '') + '</button>'
+      +   '<label class="gbar__sel">' + icon('eye',14)
+      +     '<select id="gInfo">'
+      +       '<option value="full"' + (gridInfoMode==='full'?' selected':'') + '>显示名称+时间</option>'
+      +       '<option value="name"' + (gridInfoMode==='name'?' selected':'') + '>仅显示名称</option>'
+      +       '<option value="none"' + (gridInfoMode==='none'?' selected':'') + '>隐藏信息</option>'
+      +     '</select></label>'
+      +   '<label class="gbar__sel">' + icon('gauge',14)
+      +     '<select id="gFps">'
+      +       [1,3,5,10].map(function(v){
+                return '<option value="' + v + '"' + (gridFps===v?' selected':'') + '>' + v + ' fps</option>';
+              }).join('')
+      +     '</select></label>'
+      +   '<span class="gbar__right">在线 ' + all.filter(function(d){ return d.isOnline; }).length + ' / 共 ' + all.length + ' 台</span>'
       + '</div>'
 
-      // 底部操作提示条
-      + '<div class="ghint">'
-      +   '<span class="ghint__item">' + icon('eye',14) + '点击 ○ 切换聚焦</span>'
-      +   '<span class="ghint__item">' + icon('maximize',14) + '双击画面放大</span>'
-      +   '<span class="ghint__item">' + icon('move',14) + '拖动调整顺序</span>'
-      +   '<span class="ghint__right" id="ghintStat">在线 ' + online.length + ' / 共 ' + devices.length + ' 台</span>'
+      + '<div class="grid-wrap">'
+      +   '<div class="ggrid ggrid--' + (shown.length === 1 ? 1 : (gridLayout === 16 ? 4 : gridLayout === 9 ? 3 : 2))
+      +     '" id="gridBox">'
+      +     (shown.length ? shown.map(tile).join('') : empty('camera','还没有添加摄像头','从右侧选择要看的设备',''))
+      +   '</div>'
+      +   '<aside class="gd-panel" id="gdPanel">' + devicePanel() + '</aside>'
       + '</div>'
 
       + '</div>';
 
-    var gb = c.querySelector('[data-go]');
-    if(gb) gb.onclick = function(){ page='devices'; renderMenu(); render(); };
-
     // ---- 开流 ----
+    // 注意：宫格用**设备名**作 key（录像接口的 name 参数），
+    // 但实时流接口要的是 **did**，所以这里要查一次。
     Array.prototype.forEach.call(c.querySelectorAll('img[data-stream]'), function(img){
-      img.src = apiUrl('/api/live/mjpeg?did=' + encodeURIComponent(img.dataset.stream) + '&fps=3&w=640');
+      var dev = all.filter(function(d){ return d.name === img.dataset.stream; })[0];
+      if(!dev){ return; }
+      img.src = apiUrl('/api/live/mjpeg?did=' + encodeURIComponent(dev.did) + '&fps=' + gridFps + '&w=640');
     });
 
-    // ---- 定时器：时间戳 ----
+    // ---- 时间戳 ----
     gridTimers.push(setInterval(function(){
       Array.prototype.forEach.call(document.querySelectorAll('[data-gclock]'), function(el){
         el.textContent = clockNow();
       });
     }, 1000));
 
+    // ---- 轮巡 ----
+    function setPatrol(on){
+      gridPatrol = on;
+      if(gridPatrolTimer){ clearInterval(gridPatrolTimer); gridPatrolTimer = null; }
+      if(!on) return;
+      gridPatrolTimer = setInterval(function(){
+        if(shown.length < 2) return;
+        var i = -1;
+        shown.forEach(function(d, k){ if(d.name === gridFocus) i = k; });
+        var next = shown[(i + 1) % shown.length];
+        gridFocus = next.name;
+        Array.prototype.forEach.call(c.querySelectorAll('.gtile'), function(el){
+          el.classList.toggle('is-focus', el.dataset.dev === gridFocus);
+        });
+      }, 15000);
+    }
+    setPatrol(gridPatrol);
+
     // ---- 交互 ----
-    function setFocus(did){
-      gridFocus = did;
+    function setFocus(name){
+      gridFocus = name;
       Array.prototype.forEach.call(c.querySelectorAll('.gtile'), function(el){
-        el.classList.toggle('is-focus', el.dataset.did === did);
+        el.classList.toggle('is-focus', el.dataset.dev === name);
       });
     }
 
     Array.prototype.forEach.call(c.querySelectorAll('.gtile'), function(el){
-      var did = el.dataset.did;
+      var name = el.dataset.dev;
       el.onclick = function(ev){
-        if(ev.target.closest('[data-gmax]')){ gotoLive(did); return; }
-        if(ev.target.closest('[data-gfocus]')){ setFocus(did); return; }
-        setFocus(did);
+        if(ev.target.closest('[data-gmax]')){ gotoLiveByName(name); return; }
+        if(ev.target.closest('[data-gfocus]')){ setFocus(name); return; }
+        setFocus(name);
       };
-      el.ondblclick = function(){ gotoLive(did); };
-
-      // 拖拽排序
-      el.ondragstart = function(ev){
-        ev.dataTransfer.setData('text/plain', did);
-        el.classList.add('is-dragging');
-      };
-      el.ondragend = function(){ el.classList.remove('is-dragging'); };
-      el.ondragover = function(ev){ ev.preventDefault(); el.classList.add('is-over'); };
-      el.ondragleave = function(){ el.classList.remove('is-over'); };
-      el.ondrop = function(ev){
-        ev.preventDefault();
-        el.classList.remove('is-over');
-        var from = ev.dataTransfer.getData('text/plain');
-        if(!from || from === did) return;
-        // 交换顺序
-        var cur = shown.map(function(x){ return x.did; });
-        var i = cur.indexOf(from), j = cur.indexOf(did);
-        if(i < 0 || j < 0) return;
-        cur.splice(i,1); cur.splice(j,0,from);
-        gridOrder = cur;
-        renderGrid(c);
-      };
+      el.ondblclick = function(){ gotoLiveByName(name); };
     });
 
     Array.prototype.forEach.call(c.querySelectorAll('[data-gl]'), function(b){
@@ -5706,9 +5886,70 @@ function renderGrid(c){
         renderGrid(c);
       };
     });
+
+    var gp = document.getElementById('gPatrol');
+    if(gp) gp.onclick = function(){ stopGrid(); gridPatrol = !gridPatrol; renderGrid(c); };
+
+    var gi = document.getElementById('gInfo');
+    if(gi) gi.onchange = function(){ gridInfoMode = this.value; stopGrid(); renderGrid(c); };
+
+    var gf = document.getElementById('gFps');
+    if(gf) gf.onchange = function(){ gridFps = parseInt(this.value,10) || 3; stopGrid(); renderGrid(c); };
+
+    var gs = document.getElementById('gdSearch');
+    if(gs){
+      var deb = null;
+      gs.oninput = function(){
+        gridQuery = this.value;
+        if(deb) clearTimeout(deb);
+        deb = setTimeout(function(){
+          var panel = document.getElementById('gdPanel');
+          if(panel){ panel.innerHTML = devicePanel(); bindPanel(); }
+        }, 200);
+      };
+    }
+
+    function bindPanel(){
+      Array.prototype.forEach.call(document.querySelectorAll('[data-gtoggle]'), function(b){
+        b.onclick = function(){
+          var name = this.dataset.gtoggle;
+          var sel2 = gridLoad().slice();
+          var i = sel2.indexOf(name);
+          if(i >= 0){ sel2.splice(i,1); toast('已移除'); }
+          else {
+            if(sel2.length >= gridLayout){ toast('最多 ' + gridLayout + ' 路，请先调大布局', 'warn'); return; }
+            sel2.push(name); toast('已添加', 'ok');
+          }
+          gridSelected = sel2; gridSave();
+          stopGrid();
+          renderGrid(c);
+        };
+      });
+      Array.prototype.forEach.call(document.querySelectorAll('img[data-gdthumb]'), function(img, i){
+        var name = img.dataset.gdthumb;
+        var dev = all.filter(function(d){ return d.name === name; })[0];
+        if(!dev || !dev.isOnline) return;
+        setTimeout(function(){
+          fetch(apiUrl('/api/live/thumb?did=' + encodeURIComponent(dev.did) + '&w=320'), { cache:'no-store' })
+            .then(function(r){ return r.ok ? r.blob() : null; })
+            .then(function(b){ if(b && document.body.contains(img)) img.src = URL.createObjectURL(b); })
+            .catch(function(){});
+        }, i * 100);
+      });
+    }
+    bindPanel();
+
+    var gb = c.querySelector('[data-go]');
+    if(gb) gb.onclick = function(){ page='devices'; renderMenu(); render(); };
   }).catch(function(err){
     c.innerHTML = '<div class="page__inner">' + errorCard(err, function(){ renderGrid(c); }) + '</div>';
   });
+}
+
+// gotoLiveByName 按设备名进实时预览（宫格用 name 作 key，因为后端接口以 name 为主键）
+function gotoLiveByName(name){
+  var d = (devices||[]).filter(function(x){ return x.name === name; })[0];
+  gotoLive(d ? d.did : name);
 }
 
 // ===== 播放位置记忆 =====

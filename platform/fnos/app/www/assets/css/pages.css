@@ -1054,18 +1054,27 @@
    GRID — 多路预览（对齐效果图）
    ========================================================================== */
 
-.ggrid {
-  display: grid; gap: var(--space-4);
-  margin-bottom: var(--space-4);
-  /* 填满可用高度：监控视图里「用满屏幕」比严格 16:9 更有用
-     （2 台设备时如果只按 16:9，下面会空一大片） */
-  min-height: calc(100vh - 344px);
-  grid-auto-rows: minmax(0, 1fr);
+/* 布局：左宫格 + 右设备面板 */
+.grid-wrap {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 280px;
+  gap: var(--space-4);
+  align-items: start;
 }
+@media (max-width: 1100px) { .grid-wrap { grid-template-columns: 1fr; } }
+
+.ggrid {
+  display: grid; gap: var(--space-3);
+  grid-auto-rows: 1fr;
+  min-height: calc(100vh - 372px);
+}
+.ggrid--1 { grid-template-columns: 1fr; }
 .ggrid--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .ggrid--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-@media (max-width: 1000px) { .ggrid--3 { grid-template-columns: repeat(2, minmax(0,1fr)); } }
-@media (max-width: 700px)  { .ggrid--2, .ggrid--3 { grid-template-columns: 1fr; } }
+.ggrid--4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+@media (max-width: 1400px) { .ggrid--4 { grid-template-columns: repeat(3, minmax(0,1fr)); } }
+@media (max-width: 1000px) { .ggrid--3, .ggrid--4 { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+@media (max-width: 700px)  { .ggrid { grid-template-columns: 1fr !important; } }
 
 .gtile {
   position: relative;
@@ -1126,19 +1135,114 @@
   background: var(--accent);
 }
 
-/* 底部提示条 */
-.ghint {
-  display: flex; align-items: center; gap: var(--space-5);
-  padding: var(--space-3) var(--space-4);
+/* 工具栏 */
+.gbar {
+  display: flex; align-items: center; gap: var(--space-3);
+  margin-bottom: var(--space-4);
+  padding: var(--space-2) var(--space-3);
   background: var(--surface-1);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
-  font-size: var(--text-base); color: var(--text-muted);
   flex-wrap: wrap;
 }
-.ghint__item { display: inline-flex; align-items: center; gap: 6px; }
-.ghint__right { margin-left: auto; color: var(--text-secondary); }
-@media (max-width: 700px) { .ghint__right { margin-left: 0; } }
+.gbar__btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 32px; padding: 0 var(--space-3);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary); font-size: var(--text-base);
+  transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+}
+.gbar__btn:hover { background: var(--surface-2); color: var(--text); }
+.gbar__btn.is-active { background: color-mix(in oklab, var(--accent) 18%, transparent); color: var(--accent); }
+
+.gbar__sel {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 32px; padding: 0 var(--space-3);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  transition: background var(--duration-fast) var(--ease-out);
+}
+.gbar__sel:hover { background: var(--surface-2); }
+.gbar__sel select {
+  background: transparent; border: 0; outline: none;
+  color: inherit; font-size: var(--text-base); font-family: inherit;
+  cursor: pointer; -webkit-appearance: none; appearance: none;
+}
+.gbar__sel select option { background: var(--surface-2); color: var(--text); }
+.gbar__right { margin-left: auto; font-size: var(--text-base); color: var(--text-muted); }
+
+/* 右侧「可选设备」面板 */
+.gd-panel {
+  display: flex; flex-direction: column;
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  max-height: calc(100vh - 300px);
+}
+@media (max-width: 1100px) { .gd-panel { max-height: none; } }
+
+.gd-panel__head {
+  display: flex; align-items: baseline; gap: var(--space-2);
+  padding: var(--space-4) var(--space-4) var(--space-3);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.gd-panel__title { font-size: var(--text-base); font-weight: var(--weight-medium); }
+.gd-panel__title em { font-style: normal; color: var(--text-muted); font-weight: var(--weight-normal); }
+.gd-panel__count { margin-left: auto; font-size: var(--text-sm); color: var(--text-muted); }
+
+.gd-panel__search { margin: var(--space-3) var(--space-3) 0; }
+
+.gd-panel__list { flex: 1; overflow-y: auto; padding: var(--space-2); }
+
+.gd-item {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-2);
+  border-radius: var(--radius-md);
+  transition: background var(--duration-fast) var(--ease-out);
+}
+.gd-item:hover { background: var(--surface-2); }
+.gd-item.is-added { background: color-mix(in oklab, var(--accent) 8%, transparent); }
+
+.gd-item__thumb {
+  flex: 0 0 56px; width: 56px; aspect-ratio: 16/9;
+  border-radius: var(--radius-sm); overflow: hidden;
+  background: #0a0d12; display: block;
+}
+.gd-item__thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.gd-item__body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.gd-item__name {
+  font-size: var(--text-base); color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.gd-item__en { font-size: var(--text-xs); color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gd-item__status { display: inline-flex; align-items: center; gap: 4px; font-size: var(--text-xs); color: var(--text-muted); }
+
+.gd-item__btn {
+  flex: 0 0 auto;
+  height: 26px; padding: 0 10px;
+  border-radius: var(--radius-sm);
+  font-size: var(--text-sm);
+  background: var(--accent); color: #fff;
+  transition: opacity var(--duration-fast) var(--ease-out);
+}
+.gd-item__btn:hover { opacity: .88; }
+.gd-item__btn.is-del { background: var(--surface-3); color: var(--text-secondary); }
+.gd-item__btn.is-del:hover { background: var(--surface-hover); color: var(--text); }
+
+.gd-panel__hint {
+  display: flex; align-items: center; gap: 6px;
+  padding: var(--space-3) var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+  font-size: var(--text-xs); color: var(--text-muted);
+}
+
+/* 宫格里的离线占位 */
+.gtile__off {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: var(--space-2); color: var(--text-muted);
+}
 
 /* 分段按钮里带文字时不换行 */
 .segmented__btn { white-space: nowrap; }
