@@ -70,16 +70,24 @@ func (m *metaStore) Set(did string, v devMeta) error {
 type motionState struct {
 	mu      sync.Mutex
 	prev    map[string][]uint8    // did -> 上一帧灰度
-	prevAt  map[string]time.Time  // did -> 上次采样的缓存时间戳（用于判断缓存是否更新）
-	lastEvt map[string]time.Time  // did -> 上次记录事件的时间
-	streak  map[string]int        // 连续触发次数
+	prevAt   map[string]time.Time  // did -> 上次采样的缓存时间戳（用于判断缓存是否更新）
+	lastEvt  map[string]time.Time  // did -> 上次记录事件的时间
+	streak   map[string]int        // 连续触发次数
+	segStart map[string]segInfo    // did -> 当前活动段（用于累计时长）
+}
+
+// segInfo 一段连续活动的累积信息
+type segInfo struct {
+	Duration int
+	Peak     float64
 }
 
 var motion = &motionState{
-	prev:    map[string][]uint8{},
-	prevAt:  map[string]time.Time{},
-	lastEvt: map[string]time.Time{},
-	streak:  map[string]int{},
+	prev:     map[string][]uint8{},
+	prevAt:   map[string]time.Time{},
+	lastEvt:  map[string]time.Time{},
+	streak:   map[string]int{},
+	segStart: map[string]segInfo{},
 }
 
 const (
@@ -148,10 +156,18 @@ func (s *Server) detectOnce() {
 			continue
 		}
 
-		// 触发：静默期内不重复记
+		// 触发：静默期内不重复记，但要累计时长
 		motion.mu.Lock()
 		last := motion.lastEvt[d.Did]
 		if time.Since(last) < motionSilence {
+			// 同一段活动的延续：累加时长
+			if seg, ok := motion.segStart[d.Did]; ok {
+				seg.Duration += int(motionInterval / time.Second)
+				if score > seg.Peak {
+					seg.Peak = score
+				}
+				motion.segStart[d.Did] = seg
+			}
 			motion.mu.Unlock()
 			continue
 		}
@@ -165,13 +181,22 @@ func (s *Server) detectOnce() {
 			name = m.Alias
 		}
 
+		// 置信度：把帧差分数映射到 78~99 区间
+		// （帧差不是概率，这只是给 UI 一个直观的强弱指示）
+		conf := 78 + score*0.45
+		if conf > 99 {
+			conf = 99
+		}
+
 		s.eventStore.Add(event.Event{
-			Did:    d.Did,
-			Device: name,
-			Type:   event.TypeMotion,
-			Desc:   "检测到画面变化",
-			Thumb:  thumbName,
-			Score:  score,
+			Did:      d.Did,
+			Device:   name,
+			Type:     event.TypeMotion,
+			Desc:     "检测到画面变化",
+			Thumb:    thumbName,
+			Score:    score,
+			Duration: int(motionInterval / time.Second), // 初值，后续延续会累加
+			Conf:     conf,
 		});
 		logf("[motion] %s 检测到移动 (score=%.1f)", d.Name, score);
 	}

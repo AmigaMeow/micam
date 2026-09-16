@@ -43,6 +43,7 @@ type Event struct {
 	Thumb    string  `json:"thumb,omitempty"` // 缩略图文件名
 	Duration int     `json:"duration,omitempty"` // 持续秒数
 	Score    float64 `json:"score,omitempty"`    // 变化强度
+	Conf     float64 `json:"conf,omitempty"`     // 置信度（78~99，给 UI 用的强弱指示）
 	// 便于「点事件跳回放」
 	RecFile string  `json:"recFile,omitempty"`
 	RecOff  float64 `json:"recOff,omitempty"`

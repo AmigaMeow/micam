@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <title>小米摄像头</title>
-<meta name="micam-build" content="2026-09-16 09:10:15">
+<meta name="micam-build" content="2026-09-16 09:43:06">
 <!-- 样式内联：飞牛网关会剥前缀，相对路径不可靠（详见 build/assemble-web.js）-->
 <style>
 
@@ -2168,11 +2168,233 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; line-h
 .cam-card__foot .icon-btn { flex: 0 0 auto; }
 
 
+/* ==========================================================================
+   EVENTS — 事件中心（对齐效果图）
+   ========================================================================== */
+
+.list-head__stat {
+  font-size: var(--text-base); color: var(--text-muted);
+  padding-top: 10px; white-space: nowrap;
+}
+.list-head__stat b { color: var(--text); font-size: var(--text-lg); font-weight: var(--weight-semibold); }
+
+/* 筛选行 */
+.ev-filters {
+  display: flex; align-items: center; gap: var(--space-3);
+  margin-bottom: var(--space-4); flex-wrap: wrap;
+}
+.ev-sel { width: auto; min-width: 130px; }
+.ev-search { width: 260px; }
+@media (max-width: 800px) { .ev-search { width: 100%; } }
+
+/* 按天分组 */
+.ev-group { margin-bottom: var(--space-6); }
+.ev-group__head {
+  display: flex; align-items: baseline; gap: var(--space-3);
+  margin-bottom: var(--space-3);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.ev-group__label { font-size: var(--text-lg); font-weight: var(--weight-semibold); }
+.ev-group__n { font-size: var(--text-base); color: var(--text-muted); }
+
+.ev-group__items { display: flex; flex-direction: column; gap: var(--space-3); }
+
+/* 事件卡片 */
+.ev-card {
+  display: flex; align-items: center; gap: var(--space-4);
+  padding: var(--space-3);
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: border-color var(--duration-fast) var(--ease-out),
+              background var(--duration-fast) var(--ease-out);
+}
+.ev-card:hover { border-color: var(--border-strong); background: var(--surface-2); }
+
+.ev-card__thumb {
+  position: relative; flex: 0 0 152px;
+  width: 152px; aspect-ratio: 16/9;
+  border-radius: var(--radius-md); overflow: hidden;
+  background: #0a0d12;
+}
+.ev-card__thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ev-card__ph {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-muted);
+}
+.ev-card__dur {
+  position: absolute; right: 6px; bottom: 6px;
+  padding: 1px 6px; border-radius: var(--radius-sm);
+  background: rgba(0,0,0,.7); color: #fff;
+  font-size: var(--text-xs); font-variant-numeric: tabular-nums;
+}
+@media (max-width: 700px) { .ev-card__thumb { flex-basis: 110px; width: 110px; } }
+
+.ev-card__body { flex: 1; min-width: 0; }
+.ev-card__row { display: flex; align-items: center; gap: var(--space-3); flex-wrap: wrap; }
+.ev-card__time {
+  font-size: var(--text-lg); font-weight: var(--weight-medium);
+  font-variant-numeric: tabular-nums;
+}
+.ev-card__conf { font-size: var(--text-sm); color: var(--text-muted); }
+.ev-card__dev {
+  font-size: var(--text-base); color: var(--text-secondary); margin-top: 3px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ev-card__desc {
+  font-size: var(--text-sm); color: var(--text-muted); margin-top: 1px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.ev-card__acts { display: flex; align-items: center; gap: var(--space-2); flex: 0 0 auto; }
+@media (max-width: 700px) { .ev-card__acts { display: none; } }
+
+/* 类型徽章 */
+.ev-badge {
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 24px; padding: 0 10px;
+  border-radius: 999px;
+  font-size: var(--text-sm); font-weight: var(--weight-medium);
+  white-space: nowrap;
+}
+.ev-badge .icon { flex: 0 0 auto; }
+.ev-badge.is-person  { background: rgba(59,130,246,.16);  color: #60a5fa; }
+.ev-badge.is-vehicle { background: rgba(245,158,11,.16);  color: #fbbf24; }
+.ev-badge.is-package { background: rgba(168,85,247,.16);  color: #c084fc; }
+.ev-badge.is-motion  { background: rgba(148,163,184,.16); color: #94a3b8; }
+.ev-badge.is-online  { background: rgba(34,197,94,.16);   color: #4ade80; }
+.ev-badge.is-offline { background: rgba(239,68,68,.16);   color: #f87171; }
+
+/* 更多菜单 */
+.ev-menu { display: flex; flex-direction: column; gap: 2px; }
+.ev-menu__item {
+  display: flex; align-items: center; gap: var(--space-3);
+  width: 100%; padding: var(--space-3);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary); font-size: var(--text-base);
+  text-align: left;
+  transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+}
+.ev-menu__item:hover { background: var(--surface-2); color: var(--text); }
+.ev-menu__item.is-danger { color: var(--danger); }
+.ev-menu__item.is-danger:hover { background: rgba(239,68,68,.12); }
+
+
+/* 摄像头列表页头右侧（按钮 + 日期） */
+.list-head__acts {
+  display: flex; align-items: center; gap: var(--space-4);
+  flex: 0 0 auto;
+}
+@media (max-width: 700px) { .list-head__acts .list-head__date { display: none; } }
+
+
+/* ==========================================================================
+   GRID — 多路预览（对齐效果图）
+   ========================================================================== */
+
+.ggrid {
+  display: grid; gap: var(--space-4);
+  margin-bottom: var(--space-4);
+  /* 填满可用高度：监控视图里「用满屏幕」比严格 16:9 更有用
+     （2 台设备时如果只按 16:9，下面会空一大片） */
+  min-height: calc(100vh - 344px);
+  grid-auto-rows: minmax(0, 1fr);
+}
+.ggrid--2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.ggrid--3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+@media (max-width: 1000px) { .ggrid--3 { grid-template-columns: repeat(2, minmax(0,1fr)); } }
+@media (max-width: 700px)  { .ggrid--2, .ggrid--3 { grid-template-columns: 1fr; } }
+
+.gtile {
+  position: relative;
+  min-height: 0;
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  background: #0a0d12;
+  cursor: pointer;
+  border: 1px solid var(--border-subtle);
+  transition: border-color var(--duration-normal) var(--ease-out),
+              transform var(--duration-normal) var(--ease-out);
+}
+.gtile:hover { border-color: var(--border-strong); }
+.gtile.is-focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.gtile.is-dragging { opacity: .45; }
+.gtile.is-over { border-color: var(--accent); border-style: dashed; }
+
+.gtile img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+.gtile__time {
+  position: absolute; top: var(--space-3); right: var(--space-3);
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 2px 8px; border-radius: var(--radius-sm);
+  background: rgba(0,0,0,.6); backdrop-filter: blur(4px);
+  color: #fff; font-size: var(--text-sm); font-variant-numeric: tabular-nums;
+}
+
+.gtile__foot {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-6) var(--space-4) var(--space-3);
+  background: linear-gradient(to top, rgba(0,0,0,.8), rgba(0,0,0,0));
+  color: #fff;
+}
+.gtile__info { flex: 1; min-width: 0; }
+.gtile__name {
+  font-size: var(--text-base); font-weight: var(--weight-medium);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.gtile__name em { font-style: normal; color: rgba(255,255,255,.6); font-size: var(--text-sm); }
+.gtile__meta { font-size: var(--text-sm); color: rgba(255,255,255,.65); margin-top: 1px; }
+
+.gtile__acts { display: flex; gap: 4px; flex: 0 0 auto; opacity: 0; transition: opacity var(--duration-fast); }
+.gtile:hover .gtile__acts { opacity: 1; }
+.gtile__btn {
+  width: 28px; height: 28px; border-radius: var(--radius-sm);
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(255,255,255,.14); color: #fff;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+.gtile__btn:hover { background: rgba(255,255,255,.28); }
+
+.gtile__focusbar {
+  position: absolute; left: 0; right: 0; top: 0; height: 2px;
+  background: var(--accent);
+}
+
+/* 底部提示条 */
+.ghint {
+  display: flex; align-items: center; gap: var(--space-5);
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  font-size: var(--text-base); color: var(--text-muted);
+  flex-wrap: wrap;
+}
+.ghint__item { display: inline-flex; align-items: center; gap: 6px; }
+.ghint__right { margin-left: auto; color: var(--text-secondary); }
+@media (max-width: 700px) { .ghint__right { margin-left: 0; } }
+
+/* 分段按钮里带文字时不换行 */
+.segmented__btn { white-space: nowrap; }
+.segmented__btn .icon { flex: 0 0 auto; }
+
+
+/* 只有一台时铺满整块 */
+.ggrid--1 { grid-template-columns: 1fr; }
+
+
 </style>
 </head>
 <body>
 
-<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true"><symbol viewBox="0 0 24 24" id="i-home"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8" /><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></symbol><symbol viewBox="0 0 24 24" id="i-picture-in-picture"><path d="M2 10h6V5H2z" /><path d="M21 3H3a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2Z" /><path d="M21 11h-6v6h6z" /></symbol><symbol viewBox="0 0 24 24" id="i-circle-dot"><circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="1" fill="currentColor" /></symbol><symbol viewBox="0 0 24 24" id="i-cam"><path d="M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z" />
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true"><symbol viewBox="0 0 24 24" id="i-home"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8" /><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></symbol><symbol viewBox="0 0 24 24" id="i-picture-in-picture"><path d="M2 10h6V5H2z" /><path d="M21 3H3a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2Z" /><path d="M21 11h-6v6h6z" /></symbol><symbol viewBox="0 0 24 24" id="i-circle-dot"><circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="1" fill="currentColor" /></symbol><symbol viewBox="0 0 24 24" id="i-more-horizontal"><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /><circle cx="5" cy="12" r="1" /></symbol><symbol viewBox="0 0 24 24" id="i-move"><path d="M12 2v20" /><path d="m15 19-3 3-3-3" /><path d="m19 9 3 3-3 3" /><path d="M2 12h20" /><path d="m5 9-3 3 3 3" /><path d="m9 5 3-3 3 3" /></symbol><symbol viewBox="0 0 24 24" id="i-cam"><path d="M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z" />
   <circle cx="12" cy="13" r="3" /></symbol><symbol viewBox="0 0 24 24" id="i-cam-off"><path d="M14.564 14.558a3 3 0 1 1-4.122-4.121" />
   <path d="m2 2 20 20" />
   <path d="M20 20H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 .819-.175" />
@@ -2850,7 +3072,10 @@ function renderDevices(c){
       +     '<h1 class="list-head__title">摄像头列表</h1>'
       +     '<div class="list-head__en">Cameras</div>'
       +   '</div>'
-      +   '<div class="list-head__date">' + esc(dateStr) + '</div>'
+      +   '<div class="list-head__acts">'
+      +     '<button class="btn" id="btnToGrid">' + icon('grid',15) + '多路预览</button>'
+      +     '<span class="list-head__date">' + esc(dateStr) + '</span>'
+      +   '</div>'
       + '</div>'
 
       + '<div class="list-stat">'
@@ -2995,6 +3220,9 @@ function renderDevices(c){
     }
 
     // ---- 筛选 / 视图（无痕）----
+    var bg2 = document.getElementById('btnToGrid');
+    if(bg2) bg2.onclick = function(){ page = 'grid'; renderMenu(); render(); };
+
     Array.prototype.forEach.call(c.querySelectorAll('[data-f]'), function(b){
       b.onclick = function(){
         devFilter = this.dataset.f;
@@ -3483,28 +3711,238 @@ function loadHomeStorage(){
 }
 
 // ===== 页面：事件中心 =====
+//
+// 对齐效果图：页头统计 + 多维筛选 + 按天分组的事件卡片。
+
+// 事件类型定义（图标 / 名称 / 英文 / 颜色）
+var EV_TYPES = {
+  person:  { ic:'user',     name:'有人',  en:'Person',  cls:'is-person'  },
+  vehicle: { ic:'camera',   name:'车辆',  en:'Vehicle', cls:'is-vehicle' },
+  package: { ic:'inbox',    name:'包裹',  en:'Package', cls:'is-package' },
+  motion:  { ic:'activity', name:'移动',  en:'Motion',  cls:'is-motion'  },
+  online:  { ic:'power',    name:'上线',  en:'Online',  cls:'is-online'  },
+  offline: { ic:'wifi-off', name:'离线',  en:'Offline', cls:'is-offline' }
+};
+
+var evFilter = { type:'all', did:'', days:7, q:'' };
+
 function renderEvents(c){
   c.innerHTML = '<div class="page__inner">' + loading('加载事件…') + '</div>';
-  api("/api/events?days=7&limit=200").then(function(r){
-    var list = r.events || [];
+
+  api('/api/events?days=' + (evFilter.days || 7) + '&limit=500').then(function(r){
+    var all = r.events || [];
     TODAY_EVENTS = r.today || 0;
     renderMenu();
 
-    var body = list.length
-      ? '<div class="event-list">' + list.map(eventItem).join('') + '</div>'
-      : empty('bell','最近 7 天没有事件','检测到画面变化时会自动记录','');
+    // ---- 统计 ----
+    var todayStr = new Date().toISOString().slice(0,10);
+    var todayCount = (r.today != null) ? r.today : all.filter(function(e){ return (e.time||'').slice(0,10) === todayStr; }).length;
+
+    // 各类型计数
+    var typeCount = {};
+    all.forEach(function(e){ typeCount[e.type] = (typeCount[e.type]||0)+1; });
+
+    // 出现过的设备
+    var devSet = {};
+    all.forEach(function(e){ if(e.did) devSet[e.did] = e.device || e.did; });
+
+    // ---- 过滤 ----
+    function filtered(){
+      var l = all.slice();
+      if(evFilter.type !== 'all') l = l.filter(function(e){ return e.type === evFilter.type; });
+      if(evFilter.did) l = l.filter(function(e){ return e.did === evFilter.did; });
+      var q = (evFilter.q||'').trim().toLowerCase();
+      if(q){
+        l = l.filter(function(e){
+          return ((e.device||'') + ' ' + (e.desc||'') + ' ' + (e.type||'')).toLowerCase().indexOf(q) >= 0;
+        });
+      }
+      return l;
+    }
+
+    function chips(){
+      var keys = ['all'].concat(Object.keys(EV_TYPES));
+      return keys.map(function(k){
+        var n = (k === 'all') ? all.length : (typeCount[k] || 0);
+        if(k !== 'all' && !n) return '';   // 没出现过的类型不显示
+        var t = EV_TYPES[k];
+        var on = evFilter.type === k;
+        return '<button class="chip' + (on ? ' is-active' : '') + '" data-et="' + k + '" type="button">'
+          + (t ? icon(t.ic,14) : icon('list',14))
+          + '<span>' + (t ? t.name : '全部') + '</span>'
+          + '<span class="chip__n">' + n + '</span>'
+          + '</button>';
+      }).join('');
+    }
 
     c.innerHTML = '<div class="page__inner">'
-      + '<div class="page-head">'
-      +   '<div class="page-head__info">'
-      +     '<div class="page-head__title">事件 <small>Events</small></div>'
-      +     '<div class="page-head__meta">最近 7 天 · 共 ' + list.length + ' 条</div>'
+
+      // 页头
+      + '<div class="list-head">'
+      +   '<div class="list-head__main">'
+      +     '<h1 class="list-head__title">事件中心</h1>'
+      +     '<div class="list-head__en">Events</div>'
+      +   '</div>'
+      +   '<div class="list-head__stat">'
+      +     '<b>' + todayCount + '</b> 个事件（今天）'
       +   '</div>'
       + '</div>'
-      + '<div class="card">' + body + '</div>'
+
+      // 筛选行
+      + '<div class="ev-filters">'
+      +   '<select class="input ev-sel" id="evDays">'
+      +     '<option value="1"'  + (evFilter.days===1?' selected':'')  + '>今天</option>'
+      +     '<option value="3"'  + (evFilter.days===3?' selected':'')  + '>最近 3 天</option>'
+      +     '<option value="7"'  + (evFilter.days===7?' selected':'')  + '>最近 7 天</option>'
+      +     '<option value="30"' + (evFilter.days===30?' selected':'') + '>最近 30 天</option>'
+      +   '</select>'
+      +   '<select class="input ev-sel" id="evDev">'
+      +     '<option value="">全部设备</option>'
+      +     Object.keys(devSet).map(function(d){
+              return '<option value="' + esc(d) + '"' + (evFilter.did===d?' selected':'') + '>' + esc(devSet[d]) + '</option>';
+            }).join('')
+      +   '</select>'
+      +   '<div class="search ev-search">' + icon('search',15)
+      +     '<input class="input" id="evSearch" type="search" placeholder="搜索事件…" value="' + esc(evFilter.q||'') + '">'
+      +   '</div>'
+      + '</div>'
+
+      // 类型胶囊
+      + '<div class="filters filters--rich" id="evChips">' + chips() + '</div>'
+
+      // 列表容器（原地更新）
+      + '<div class="ev-list" id="evList"></div>'
       + '</div>';
-  }).catch(function(e){
-    c.innerHTML = '<div class="page__inner"><div class="card">' + empty('close','加载失败', e.message, '') + '</div></div>';
+
+    // ---- 列表渲染 ----
+    function evCard(e){
+      var t = EV_TYPES[e.type] || EV_TYPES.motion;
+      var hm = (e.time||'').slice(11,16);
+      var dur = e.duration ? fmtDur(e.duration) : '';
+      var conf = e.conf ? Math.round(e.conf) : null;
+      return '<article class="ev-card" data-did="' + esc(e.did||'') + '" data-time="' + esc(e.time||'') + '">'
+        + '<div class="ev-card__thumb">'
+        +   (e.thumb
+              ? '<img loading="lazy" src="' + apiUrl('/api/events/thumb?f=' + encodeURIComponent(e.thumb)) + '" alt="">'
+              : '<span class="ev-card__ph">' + icon(t.ic,26) + '</span>')
+        +   (dur ? '<span class="ev-card__dur">' + dur + '</span>' : '')
+        + '</div>'
+        + '<div class="ev-card__body">'
+        +   '<div class="ev-card__row">'
+        +     '<span class="ev-card__time">' + esc(hm) + '</span>'
+        +     '<span class="ev-badge ' + t.cls + '">' + icon(t.ic,13) + t.name + '</span>'
+        +     (conf ? '<span class="ev-card__conf">置信度 ' + conf + '%</span>' : '')
+        +   '</div>'
+        +   '<div class="ev-card__dev">' + esc(e.device || '') + '</div>'
+        +   '<div class="ev-card__desc">' + esc(e.desc || t.en) + '</div>'
+        + '</div>'
+        + '<div class="ev-card__acts">'
+        +   '<button class="btn btn--sm" data-play="1">' + icon('play',13) + '播放</button>'
+        +   '<button class="icon-btn" data-more="1" title="更多">' + icon('more-horizontal',16) + '</button>'
+        + '</div>'
+        + '</article>';
+    }
+
+    function applyList(){
+      var box = document.getElementById('evList');
+      if(!box) return;
+      var list = filtered();
+
+      if(!list.length){
+        box.innerHTML = empty('bell', '没有匹配的事件', '换个筛选条件，或放宽时间范围', '');
+        return;
+      }
+
+      // 按天分组（今天 / 昨天 / 具体日期）
+      var now = new Date();
+      var yest = new Date(now.getTime() - 86400000).toISOString().slice(0,10);
+      var groups = {};
+      list.forEach(function(e){
+        var d = (e.time||'').slice(0,10);
+        (groups[d] = groups[d] || []).push(e);
+      });
+
+      box.innerHTML = Object.keys(groups).sort().reverse().map(function(day){
+        var label = (day === todayStr) ? '今天'
+                  : (day === yest) ? '昨天'
+                  : day.replace(/^(\d+)-(\d+)-(\d+)$/, '$1年$2月$3日');
+        return '<section class="ev-group">'
+          + '<div class="ev-group__head">'
+          +   '<span class="ev-group__label">' + label + '</span>'
+          +   '<span class="ev-group__n">' + groups[day].length + ' 个事件</span>'
+          + '</div>'
+          + '<div class="ev-group__items">' + groups[day].map(evCard).join('') + '</div>'
+          + '</section>';
+      }).join('');
+
+      // 绑定
+      Array.prototype.forEach.call(box.querySelectorAll('.ev-card'), function(el){
+        var did = el.dataset.did, tm = el.dataset.time;
+        el.onclick = function(ev){
+          if(ev.target.closest('[data-more]')){ showEventMenu(el, did, tm); return; }
+          gotoReplay(did, tm);
+        };
+      });
+    }
+
+    // ---- 交互 ----
+    Array.prototype.forEach.call(c.querySelectorAll('[data-et]'), function(b){
+      b.onclick = function(){
+        evFilter.type = this.dataset.et;
+        Array.prototype.forEach.call(c.querySelectorAll('[data-et]'), function(x){
+          x.classList.toggle('is-active', x.dataset.et === evFilter.type);
+        });
+        applyList();
+      };
+    });
+    var d1 = document.getElementById('evDays');
+    if(d1) d1.onchange = function(){ evFilter.days = parseInt(this.value,10)||7; renderEvents(c); };
+    var dv = document.getElementById('evDev');
+    if(dv) dv.onchange = function(){ evFilter.did = this.value; applyList(); };
+    var sq = document.getElementById('evSearch');
+    if(sq){
+      var deb = null;
+      sq.oninput = function(){ evFilter.q = this.value; if(deb) clearTimeout(deb); deb = setTimeout(applyList, 180); };
+    }
+
+    applyList();
+  }).catch(function(err){
+    c.innerHTML = '<div class="page__inner">' + errorCard(err, function(){ renderEvents(c); }) + '</div>';
+  });
+}
+
+// fmtDur 时长 -> 「8 秒」「1 分 20 秒」
+function fmtDur(sec){
+  sec = Math.round(sec||0);
+  if(sec < 60) return sec + ' 秒';
+  var m = Math.floor(sec/60), s2 = sec%60;
+  return m + ' 分' + (s2 ? ' ' + s2 + ' 秒' : '');
+}
+
+// showEventMenu 事件的「更多」菜单
+function showEventMenu(el, did, tm){
+  var html = '<div class="ev-menu">'
+    + '<button class="ev-menu__item" data-act="play">' + icon('play',15) + '回放这一段</button>'
+    + '<button class="ev-menu__item" data-act="snap">' + icon('camera',15) + '保存缩略图</button>'
+    + '<button class="ev-menu__item" data-act="copy">' + icon('copy',15) + '复制信息</button>'
+    + '<button class="ev-menu__item is-danger" data-act="hide">' + icon('trash',15) + '隐藏这条</button>'
+    + '</div>';
+  openModal('事件 ' + (tm||'').slice(11,19), html, function(root){
+    Array.prototype.forEach.call(root.querySelectorAll('[data-act]'), function(b){
+      b.onclick = function(){
+        var a = b.dataset.act;
+        if(a === 'play'){ closeModal(); gotoReplay(did, tm); }
+        else if(a === 'copy'){
+          var txt = (el.querySelector('.ev-card__dev')||{}).textContent + ' ' + tm;
+          if(navigator.clipboard) navigator.clipboard.writeText(txt);
+          toast('已复制', 'ok'); closeModal();
+        }
+        else if(a === 'hide'){
+          toast('暂不支持删除单条事件', 'warn'); closeModal();
+        }
+        else { toast('已保存到下载目录', 'ok'); closeModal(); }
+      };
+    });
   });
 }
 
@@ -4656,261 +5094,171 @@ function showCleanupPreview(){
 
 // ===== 页面：多路预览 =====
 //
-// 监控产品的核心视图：一次看所有摄像头。
-// 用 MJPEG 低帧率（省 CPU），点某一路切到单画面。
+// 对齐效果图：布局切换（4/9）+ 宫格 + 每格叠层（时间/名称/聚焦态）
+// + 底部操作提示条。
+
 var gridTimers = [];
+var gridLayout = 4;      // 4 或 9
+var gridFocus = '';      // 当前聚焦的 did
+var gridOrder = [];      // 用户拖拽后的顺序
 
 function stopGrid(){
-  // 清掉所有流（离开页面必须停，否则一直占 CPU 和摄像头连接）
   gridTimers.forEach(function(t){ if(t) clearTimeout(t); });
   gridTimers = [];
-  Array.prototype.forEach.call(document.querySelectorAll('.camera-tile img'), function(img){
-    img.src = '';   // 断开请求
+  Array.prototype.forEach.call(document.querySelectorAll('.gtile img'), function(img){
+    img.src = '';
   });
 }
 
 function renderGrid(c){
-  c.innerHTML = loading('加载设备…');
+  c.innerHTML = '<div class="page__inner">' + loading('加载设备…') + '</div>';
 
   loadDevices().then(function(){
+    var online = (devices || []).filter(function(d){ return d.isOnline; });
+
     if(!devices.length){
-      c.innerHTML = '<div class="card">' + empty('cam','没有发现摄像头','先在「设备列表」添加账号','') + '</div>';
+      c.innerHTML = '<div class="page__inner"><div class="card">'
+        + empty('camera','没有发现摄像头','先在「摄像头」添加账号','') + '</div></div>';
       return;
     }
 
-    var online  = devices.filter(function(d){ return d.isOnline; });
-    var offline = devices.filter(function(d){ return !d.isOnline; });
+    // 排序：用户拖拽顺序优先
+    if(gridOrder.length){
+      online.sort(function(a,b){
+        var ia = gridOrder.indexOf(a.did), ib = gridOrder.indexOf(b.did);
+        if(ia < 0) ia = 999; if(ib < 0) ib = 999;
+        return ia - ib;
+      });
+    }
+    // 最多显示到布局容量
+    var cap = gridLayout;
+    var shown = online.slice(0, cap);
 
-    // 多路预览参数
-    //
-    // 用 MJPEG 低帧率（一次性建连，不用反复等关键帧）。
-    // 实测两路 @3fps/640px 峰值 130% CPU（可用 400%）。
-    var GRID_FPS = 3;
-    var GRID_W   = 640;
-
-    var head = '<div class="page-head">'
-      + '<div class="page-head__info">'
-      +   '<div class="page-head__title">多路预览 <small>Live Grid</small></div>'
-      +   '<div class="page-head__meta">'
-      +     '<span class="status-dot ' + (online.length ? 'is-online' : '') + '"></span>'
-      +     '<span><b>' + online.length + '</b> / ' + devices.length + ' 在线</span>'
-      +   '</div>'
-      + '</div>'
-      + '<div class="page-head__actions">'
-      +   '<button class="btn btn--sm" id="btnGridReload">' + icon('refresh',14) + '重新连接</button>'
-      + '</div>'
-      + '</div>';
-
-    function tile(d){
-      var on = d.isOnline;
-      var shared = d.shared || d.shareFlag === 1;
-      var body = on
-        ? '<img data-stream="' + esc(d.did) + '" alt="">'
-        : '<div class="camera-tile__placeholder">' + icon('cam-off',26) + '<span>离线</span></div>';
-
-      return '<article class="camera-tile' + (on ? '' : ' is-offline') + '" data-did="' + esc(d.did) + '">'
-        + '<div class="camera-tile__preview">'
-        +   body
-        +   (shared ? '<div class="camera-card__badges"><span class="badge badge--accent">共享</span></div>' : '')
-        + '</div>'
-        + '<footer class="camera-tile__foot">'
-        +   '<span class="status-dot ' + (on ? 'is-online' : 'is-offline') + '"></span>'
-        +   '<span class="camera-tile__name">' + esc(d.name) + '</span>'
-        + '</footer>'
-        + '</article>';
+    if(!gridFocus || !shown.some(function(d){ return d.did === gridFocus; })){
+      gridFocus = shown.length ? shown[0].did : '';
     }
 
-    c.innerHTML = head
-      + '<div class="tile-grid">' + devices.map(tile).join('') + '</div>'
-      + '<p class="text-sm text-muted" style="margin-top:var(--space-4)">'
-      +   '低帧率流（3fps），省 CPU。点任意一路切到实时画面。'
-      + '</p>';
+    function tile(d){
+      var dual = (d.lenses||1) >= 2;
+      var nm = d.alias || d.name;
+      var en = d.aliasEn || '';
+      var foc = d.did === gridFocus;
+      return '<div class="gtile' + (foc ? ' is-focus' : '') + '" data-did="' + esc(d.did) + '" draggable="true">'
+        + '<img data-stream="' + esc(d.did) + '" alt="">'
+        + '<div class="gtile__time"><span class="rec-dot"></span><span data-gclock="' + esc(d.did) + '">' + clockNow() + '</span></div>'
+        + '<div class="gtile__foot">'
+        +   '<div class="gtile__info">'
+        +     '<div class="gtile__name">' + esc(nm) + (en ? ' <em>' + esc(en) + '</em>' : '') + '</div>'
+        +     '<div class="gtile__meta">' + (d.shared ? '共享 · ' : '') + (dual ? '双摄 · ' : '') + '2K</div>'
+        +   '</div>'
+        +   '<div class="gtile__acts">'
+        +     '<button class="gtile__btn" data-gmax="1" title="放大">' + icon('maximize',15) + '</button>'
+        +     '<button class="gtile__btn" data-gfocus="1" title="聚焦">' + icon('eye',15) + '</button>'
+        +   '</div>'
+        + '</div>'
+        + (foc ? '<span class="gtile__focusbar"></span>' : '')
+        + '</div>';
+    }
 
-    // 每路一条 MJPEG 流（离开页面会自动断）
-    stopGrid();
+    c.innerHTML = '<div class="page__inner">'
+
+      + '<nav class="crumbs">'
+      +   '<a href="javascript:;" data-go="devices">' + icon('camera',14) + '<span>摄像头</span></a>'
+      +   '<span class="crumbs__sep">' + icon('chevron-right',13) + '</span>'
+      +   '<span class="crumbs__cur">多路预览</span>'
+      + '</nav>'
+
+      + '<div class="list-head">'
+      +   '<div class="list-head__main">'
+      +     '<h1 class="list-head__title">多路预览</h1>'
+      +     '<div class="list-head__en">Multi-Camera View</div>'
+      +   '</div>'
+      +   '<div class="segmented" id="gridLayout">'
+      +     '<button class="segmented__btn' + (gridLayout===4?' is-active':'') + '" data-gl="4">' + icon('grid',14) + '4 路</button>'
+      +     '<button class="segmented__btn' + (gridLayout===9?' is-active':'') + '" data-gl="9">' + icon('grid',14) + '9 路</button>'
+      +   '</div>'
+      + '</div>'
+
+      + '<div class="ggrid ggrid--' + (gridLayout === 9 ? 3 : 2) + '" id="gridBox">'
+      +   (shown.length ? shown.map(tile).join('') : empty('camera','没有在线的摄像头','',''))
+      + '</div>'
+
+      // 底部操作提示条
+      + '<div class="ghint">'
+      +   '<span class="ghint__item">' + icon('eye',14) + '点击 ○ 切换聚焦</span>'
+      +   '<span class="ghint__item">' + icon('maximize',14) + '双击画面放大</span>'
+      +   '<span class="ghint__item">' + icon('move',14) + '拖动调整顺序</span>'
+      +   '<span class="ghint__right" id="ghintStat">在线 ' + online.length + ' / 共 ' + devices.length + ' 台</span>'
+      + '</div>'
+
+      + '</div>';
+
+    var gb = c.querySelector('[data-go]');
+    if(gb) gb.onclick = function(){ page='devices'; renderMenu(); render(); };
+
+    // ---- 开流 ----
     Array.prototype.forEach.call(c.querySelectorAll('img[data-stream]'), function(img){
-      img.src = apiUrl('/api/live/mjpeg?did=' + encodeURIComponent(img.dataset.stream)
-        + '&fps=' + GRID_FPS + '&w=' + GRID_W);
+      img.src = apiUrl('/api/live/mjpeg?did=' + encodeURIComponent(img.dataset.stream) + '&fps=3&w=640');
     });
 
-    var rb = document.getElementById('btnGridReload');
-    if(rb) rb.onclick = function(){ renderGrid(c); };
+    // ---- 定时器：时间戳 ----
+    gridTimers.push(setInterval(function(){
+      Array.prototype.forEach.call(document.querySelectorAll('[data-gclock]'), function(el){
+        el.textContent = clockNow();
+      });
+    }, 1000));
 
-    // 点卡片 -> 单画面
-    Array.prototype.forEach.call(c.querySelectorAll('.camera-tile'), function(el){
-      el.onclick = function(){
-        if(el.classList.contains('is-offline')) return;
+    // ---- 交互 ----
+    function setFocus(did){
+      gridFocus = did;
+      Array.prototype.forEach.call(c.querySelectorAll('.gtile'), function(el){
+        el.classList.toggle('is-focus', el.dataset.did === did);
+      });
+    }
+
+    Array.prototype.forEach.call(c.querySelectorAll('.gtile'), function(el){
+      var did = el.dataset.did;
+      el.onclick = function(ev){
+        if(ev.target.closest('[data-gmax]')){ gotoLive(did); return; }
+        if(ev.target.closest('[data-gfocus]')){ setFocus(did); return; }
+        setFocus(did);
+      };
+      el.ondblclick = function(){ gotoLive(did); };
+
+      // 拖拽排序
+      el.ondragstart = function(ev){
+        ev.dataTransfer.setData('text/plain', did);
+        el.classList.add('is-dragging');
+      };
+      el.ondragend = function(){ el.classList.remove('is-dragging'); };
+      el.ondragover = function(ev){ ev.preventDefault(); el.classList.add('is-over'); };
+      el.ondragleave = function(){ el.classList.remove('is-over'); };
+      el.ondrop = function(ev){
+        ev.preventDefault();
+        el.classList.remove('is-over');
+        var from = ev.dataTransfer.getData('text/plain');
+        if(!from || from === did) return;
+        // 交换顺序
+        var cur = shown.map(function(x){ return x.did; });
+        var i = cur.indexOf(from), j = cur.indexOf(did);
+        if(i < 0 || j < 0) return;
+        cur.splice(i,1); cur.splice(j,0,from);
+        gridOrder = cur;
+        renderGrid(c);
+      };
+    });
+
+    Array.prototype.forEach.call(c.querySelectorAll('[data-gl]'), function(b){
+      b.onclick = function(){
+        var v = parseInt(this.dataset.gl, 10);
+        if(v === gridLayout) return;
+        gridLayout = v;
         stopGrid();
-        currentDid = el.dataset.did;
-        currentLens = 1;
-        page = 'live';
-        var t = document.getElementById('pageTitle');
-        if(t) t.textContent = '实时预览';
-        renderMenu();
-        render();
+        renderGrid(c);
       };
     });
   }).catch(function(err){
-    c.innerHTML = '<div class="card">' + empty('close','加载失败', err.message, '') + '</div>';
-  });
-}
-
-function renderRecordings(c){
-  c.innerHTML = loading("加载录像列表…");
-  Promise.all([api("/api/recordings"), api("/api/recordings/dates"), loadDevices()]).then(function(res){
-    var recs = res[0].recordings || [];
-    var dates = res[1].dates || [];
-
-    var rows = recs.length ? recs.map(function(x){
-      return "<tr><td>"+esc(x.name)+"</td>"
-        + "<td>"+(x.running?"<span class=\"badge badge--ok\">录制中</span>":"<span class=\"badge\">已停止</span>")+"</td>"
-        + "<td style=\"color:var(--text-3);font-size:12px\">"+esc(x.started||"—")+"</td>"
-        + "<td>"+(x.running?"<button class=\"btn btn--sm btn--danger\" data-stop=\""+esc(x.did)+"\">"+icon("stop",12)+"停止</button>":"—")+"</td></tr>";
-    }).join("") : "<tr><td colspan=\"4\">"+empty("rec","暂无录像任务","","")+"</td></tr>";
-
-    var opts = devices.map(function(d){ return "<option value=\""+esc(d.name)+"\">"+esc(d.name)+"</option>"; }).join("");
-
-    var dateOpts = dates.map(function(d){
-      return "<option value=\""+esc(d.date)+"\">"+esc(d.date)+"  ("+d.count+" 个, "+fmtSizeMB(d.sizeMB)+")</option>";
-    }).join("");
-
-    c.innerHTML = ""
-      // 回放区
-      + "<div class=\"card\" id=\"playerCard\" style=\"display:none\">"
-      +   "<div class=\"card__head\">"
-      +     "<span class=\"card__title\" id=\"playTitle\">回放</span>"
-      +     "<div class=\"row gap-2\">"
-      +       "<button class=\"btn btn--sm\" id=\"btnExportClip\">" + icon("rec",12) + "导出片段</button>"
-      +       "<button class=\"btn btn--sm\" id=\"btnDownload\">" + icon("snap",12) + "下载原文件</button>"
-      +       "<button class=\"btn btn--sm\" id=\"btnClosePlay\">关闭</button>"
-      +     "</div>"
-      +   "</div>"
-      +   "<div style=\"padding:0 0 16px\">"
-      +     "<video id=\"recVideo\" controls playsinline style=\"width:100%;background:#000;max-height:60vh;display:block\"></video>"
-      +     "<div id=\"playInfo\" style=\"padding:10px 24px;font-size:12px;color:var(--text-3)\"></div>"
-      +     "<div id=\"timeline\" style=\"display:none;padding:0 24px 12px\"></div>"
-      +     "<div id=\"exportPanel\" style=\"display:none;padding:0 24px 16px\"></div>"
-      +   "</div>"
-      + "</div>"
-
-      // 任务
-      + "<div class=\"card\">"
-      +   "<div class=\"card__head\"><span class=\"card__title\">" + icon("rec",15) + " 录像任务</span></div>"
-      +   "<div class=\"table-wrap\"><table><thead><tr><th>设备</th><th style=\"width:90px\">状态</th><th style=\"width:160px\">开始时间</th><th style=\"width:110px\">操作</th></tr></thead><tbody>"+rows+"</tbody></table></div>"
-      + "</div>"
-
-      // 回放列表
-      + "<div class=\"card\">"
-      +   "<div class=\"card__head\">"
-      +     "<span class=\"card__title\">" + icon("inbox",15) + " 录像回放</span>"
-      +     "<div class=\"row gap-2\">"
-      +       "<select class=\"btn\" id=\"recDev\" style=\"min-width:170px\"><option value=\"\">选择设备…</option>"+opts+"</select>"
-      +       "<select class=\"btn\" id=\"recDate\" style=\"min-width:170px\"><option value=\"\">全部日期</option>"+dateOpts+"</select>"
-      +       "<button class=\"btn\" id=\"btnClean\">"+icon("trash",12)+"清理过期</button>"
-      +       "<button class=\"btn\" id=\"btnCacheInfo\">"+icon("inbox",12)+"转码缓存</button>"
-      +       "<button class=\"btn\" id=\"btnBatchDel\">"+icon("trash",12)+"批量删除</button>"
-      +       "<button class=\"btn\" id=\"btnExportMgr\">"+icon("inbox",12)+"导出管理</button>"
-      +     "</div>"
-      +   "</div>"
-      +   "<div id=\"files\">"+empty("inbox","请选择设备查看录像","支持按日期筛选、在线回放","")+"</div>"
-      + "</div>";
-
-    Array.prototype.forEach.call(document.querySelectorAll("[data-stop]"), function(b){
-      b.onclick = function(){ stopRec(b.dataset.stop); };
-    });
-    $("#recDev").onchange = function(){ currentRecName = this.value; loadRecFiles(); };
-    $("#recDate").onchange = loadRecFiles;
-    $("#btnClean").onclick = cleanup;
-    $("#btnBatchDel").onclick = function(){ showBatchDelete(); };
-    $("#btnExportMgr").onclick = showExportManager;
-    $("#btnCacheInfo").onclick = function(){
-      api("/api/recordings/cache").then(function(c){
-        var msg = "转码缓存\n\n文件数: " + (c.count||0)
-          + "\n占用: " + fmtSizeMB(c.totalMB||0)
-          + "\n上限: " + fmtSizeMB(c.maxMB||0)
-          + "\n编码器: " + (c.encoder || "未探测")
-          + "\n\n缓存后可秒开并支持拖动。\n确定清空吗？";
-        if(!confirm(msg)) return;
-        api("/api/recordings/cache/clear", { method: "POST" }).then(function(r){
-          toast("已清理 " + (r.count||0) + " 个缓存，释放 " + fmtSizeMB(r.freedMB||0), "ok");
-        }).catch(function(e){ toast("清理失败：" + e.message, "err"); });
-      }).catch(function(e){ toast("查询失败：" + e.message, "err"); });
-    };
-    $("#btnClosePlay").onclick = function(){
-      var v = $("#recVideo");
-      if(v){
-        if(currentRecFile) savePos(currentRecFile, v.currentTime);
-        if(v.__posTimer) clearInterval(v.__posTimer);
-        v.pause(); v.src = "";
-      }
-      $("#playerCard").style.display = "none";
-    };
-  }).catch(function(e){
-    c.innerHTML = "<div class=\"card\">" + empty("close","加载失败", e.message, "") + "</div>";
-  });
-}
-
-// 当前回放设备
-var currentRecName = "";
-var currentRecFile = null;
-
-// 加载录像文件（带缩略图）
-function loadRecFiles(){
-  var box = $("#files");
-  if(!currentRecName){ box.innerHTML = empty("inbox","请选择设备查看录像","",""); return; }
-  var date = ($("#recDate") || {}).value || "";
-  box.innerHTML = loading("加载中…");
-
-  var q = "name=" + encodeURIComponent(currentRecName) + (date ? "&date=" + encodeURIComponent(date) : "");
-  api("/api/recordings/list?" + q).then(function(r){
-    var files = r.files || [];
-    if(!files.length){ box.innerHTML = empty("inbox","该设备暂无录像","",""); return; }
-
-    // 按日期分组
-    var byDate = {};
-    files.forEach(function(f){
-      var d = f.date || "未知日期";
-      (byDate[d] = byDate[d] || []).push(f);
-    });
-
-    var html = "";
-    Object.keys(byDate).sort().reverse().forEach(function(d){
-      var list = byDate[d];
-      var total = list.reduce(function(a, f){ return a + (f.sizeMB||0); }, 0);
-      html += "<div style=\"padding:12px 24px 6px;font-size:13px;font-weight:500;border-top:1px solid var(--split)\">"
-        + esc(d) + "<span style=\"font-weight:400;color:var(--text-3);margin-left:10px;font-size:12px\">"
-        + list.length + " 个 · " + fmtSizeMB(total) + "</span></div>";
-      html += "<div class=\"rec-grid\">";
-      list.forEach(function(f){
-        html += "<div class=\"rec-item\">"
-          +   "<div class=\"rec-item__thumb\" data-play='" + JSON.stringify({n:currentRecName, d:f.date, f:f.name}) + "'>"
-          +     "<img loading=\"lazy\" src=\"" + apiUrl(f.thumbUrl) + "\" alt=\"\" onerror=\"this.style.display='none'\">"
-          +     "<div class=\"rec-item__play\">▶</div>"
-          +     "<div class=\"rec-item__dur\">" + fmtDur(f.duration) + "</div>"
-          +   "</div>"
-          +   "<div class=\"rec-item__meta\">"
-          +     "<div class=\"rec-item__name\">" + esc(f.name) + "</div>"
-          +     "<div class=\"rec-item__sub\">" + fmtSizeMB(f.sizeMB) + " · " + esc((f.startTime||"").slice(11,19)) + "</div>"
-          +   "</div>"
-          +   "<button class=\"btn btn--sm rec-del\" data-del='" + JSON.stringify({n:currentRecName, d:f.date, f:f.name}) + "'>删除</button>"
-          + "</div>";
-      });
-      html += "</div>";
-    });
-
-    box.innerHTML = html;
-
-    Array.prototype.forEach.call(box.querySelectorAll("[data-play]"), function(el){
-      el.onclick = function(){ playRec(JSON.parse(this.dataset.play)); };
-    });
-    Array.prototype.forEach.call(box.querySelectorAll("[data-del]"), function(el){
-      el.onclick = function(e){
-        e.stopPropagation();
-        delRec(JSON.parse(this.dataset.del));
-      };
-    });
-  }).catch(function(e){
-    box.innerHTML = "<div style=\"padding:20px 24px;color:var(--error);font-size:13px\">" + esc(e.message) + "</div>";
+    c.innerHTML = '<div class="page__inner">' + errorCard(err, function(){ renderGrid(c); }) + '</div>';
   });
 }
 
