@@ -1,0 +1,79 @@
+name: 硬件适配
+description: 提交硬件信息，帮助适配你的 NAS
+title: "[硬件适配] "
+labels: ["硬件适配"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        感谢提交硬件信息！
+
+        **最简单的方式**：打开插件 → 系统设置 → **导出诊断包**，
+        然后把压缩包拖到这里。诊断包已自动脱敏（IP/ID/凭据都会打码）。
+
+        下面的问卷是给无法导出诊断包的用户准备的。
+
+  - type: input
+    id: cpu
+    attributes:
+      label: CPU 型号
+      description: 飞牛「系统设置 → 关于」里可以看到
+      placeholder: Intel Celeron J4125
+    validations:
+      required: true
+
+  - type: input
+    id: gpu
+    attributes:
+      label: 核显型号
+      placeholder: Intel UHD Graphics 600
+    validations:
+      required: false
+
+  - type: input
+    id: fnos
+    attributes:
+      label: 飞牛版本
+      placeholder: 1.2.0401
+    validations:
+      required: true
+
+  - type: dropdown
+    id: camera
+    attributes:
+      label: 摄像头型号
+      options:
+        - 小米室外摄像机 CW300
+        - 小米室外摄像机 CW500 双摄版
+        - 小米室外摄像机 CW700S
+        - 米家摄像头系列
+        - 其他（请在下方说明）
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 问题描述
+      description: 具体现象、报错信息、什么时候发生的
+      placeholder: |
+        例如：点击预览后一直转圈，日志里看到 xxx 错误
+    validations:
+      required: true
+
+  - type: textarea
+    id: encoder
+    attributes:
+      label: 编码器探测结果
+      description: 插件 → 开发者 → 能力探测，把结果贴过来
+      render: json
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: confirm
+    attributes:
+      label: 确认
+      options:
+        - label: 我已经确认诊断包里没有我不想公开的信息
+          required: false

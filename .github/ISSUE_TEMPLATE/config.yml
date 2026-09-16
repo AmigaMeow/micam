@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 使用文档
+    url: https://github.com/AmigaMeow/micam#readme
+    about: 先看看 README，常见问题都有答案
+  - name: 讨论区
+    url: https://github.com/AmigaMeow/micam/discussions
+    about: 使用问题、经验分享
