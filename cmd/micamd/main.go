@@ -40,7 +40,10 @@ const appName = "micam"
 // appVersion 用 var 而非 const：
 // 允许构建时用 -ldflags "-X main.appVersion=x.y.z" 注入，
 // 确保二进制里的版本与 manifest 严格一致（构建脚本会校验）。
-var appVersion = "0.20.3"
+// startedAt 进程启动时间（状态条显示「运行时间」用）
+var startedAt = time.Now()
+
+var appVersion = "0.21.0"
 
 func main() {
 	var (
@@ -450,6 +453,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/live/mjpeg", s.handleMJPEG)      // MJPEG 流（<img> 直接显示）
 	mux.HandleFunc("/api/live/snapshot", s.handleSnap)
 	mux.HandleFunc("/api/live/thumb", s.handleLiveThumb)
+	mux.HandleFunc("/api/live/stats", s.handleLiveStats)
 	mux.HandleFunc("/api/live/inject", s.handleInjectSource) // 单帧 JPEG
 
 	// 云台
@@ -519,9 +523,11 @@ func (s *Server) routes(mux *http.ServeMux) {
 
 func (s *Server) handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{
-		"ok":      true,
-		"app":     appName,
-		"version": appVersion,
+		"ok":        true,
+		"app":       appName,
+		"version":   appVersion,
+		"uptimeSec": int(time.Since(startedAt).Seconds()),
+		"startedAt": startedAt.Format("2006-01-02 15:04:05"),
 	})
 }
 

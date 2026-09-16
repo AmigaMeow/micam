@@ -26,7 +26,19 @@ const CHROME = '/root/shot/chrome/chrome-linux64/chrome';
   const p = await ctx.newPage();
   await p.goto('http://127.0.0.1:8900/', { waitUntil:'domcontentloaded', timeout:30000 });
   await p.waitForTimeout(5000);
-  if (pageKey && pageKey !== '-') {
+  if (pageKey === 'live') {
+    // 「实时预览」是「摄像头」的子页，走：摄像头 -> 点第一张在线卡片
+    await p.evaluate(() => {
+      const el = Array.from(document.querySelectorAll('.tabnav')).find(x => x.dataset.k === 'devices');
+      if (el) el.click();
+    });
+    await p.waitForTimeout(5000);
+    await p.evaluate(() => {
+      const c = document.querySelector('.cam-card:not(.is-offline)');
+      if (c) c.click();
+    });
+    await p.waitForTimeout(14000);
+  } else if (pageKey && pageKey !== '-') {
     await p.evaluate(k => {
       const el = Array.from(document.querySelectorAll('.tabnav')).find(x => x.dataset.k === k);
       if (el) el.click();
@@ -97,6 +109,18 @@ const CHROME = '/root/shot/chrome/chrome-linux64/chrome';
           type: '文字溢出', level: 'info', sel: '.' + cls,
           detail: '.' + cls + ' 内容 ' + el.scrollWidth + 'px > 容器 ' + el.clientWidth + 'px',
           hint: '可能需要 text-overflow:ellipsis 或换行',
+        });
+      }
+    });
+
+    // 5) 零尺寸媒体（视频/图片渲染成 0 高 = 布局塌陷）
+    Array.from(document.querySelectorAll('video, .player img, .cam-card img, .cam-tile img')).forEach(el => {
+      const r = rect(el);
+      if (r.width > 50 && r.height < 4) {
+        out.push({
+          type: '零尺寸媒体', level: 'error', sel: el.tagName.toLowerCase(),
+          detail: '<' + el.tagName.toLowerCase() + '> 宽 ' + Math.round(r.width) + ' 但高 ' + Math.round(r.height),
+          hint: '父容器可能没高度，或 JS 设了内联 position 覆盖 CSS',
         });
       }
     });
