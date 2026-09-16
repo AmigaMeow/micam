@@ -46,6 +46,18 @@ type Event struct {
 	Conf     float64 `json:"conf,omitempty"`     // 置信度
 	AICls    string  `json:"aiCls,omitempty"`    // AI 识别的具体类名（person/car/...）
 	AIBox    []int   `json:"aiBox,omitempty"`    // AI 检测框 [x1,y1,x2,y2]
+
+	// ---- 外部视觉大模型补充的字段（第二阶段）----
+	AISummary    string   `json:"aiSummary,omitempty"`    // 一句话描述（「快递员送达包裹后离开」）
+	AITitle      string   `json:"aiTitle,omitempty"`      // 短标题（「包裹送达」）
+	AITags       []string `json:"aiTags,omitempty"`       // 标签
+	AIEntities   []string `json:"aiEntities,omitempty"`   // 实体（person/box/car）
+	AIActions    []string `json:"aiActions,omitempty"`    // 动作序列
+	KeyMoments   []string `json:"keyMoments,omitempty"`   // 关键时刻（带时间）
+	Importance   float64  `json:"importance,omitempty"`   // 重要度 0~1
+	AIProvider   string   `json:"aiProvider,omitempty"`   // 哪个 Provider 分析的
+	AIModel      string   `json:"aiModel,omitempty"`      // 哪个模型
+	AIPromptVer  string   `json:"aiPromptVer,omitempty"`  // Prompt 版本（便于将来重跑）
 	// 便于「点事件跳回放」
 	RecFile string  `json:"recFile,omitempty"`
 	RecOff  float64 `json:"recOff,omitempty"`

@@ -40,10 +40,13 @@ const appName = "micam"
 // appVersion 用 var 而非 const：
 // 允许构建时用 -ldflags "-X main.appVersion=x.y.z" 注入，
 // 确保二进制里的版本与 manifest 严格一致（构建脚本会校验）。
+// appDestDir 应用安装目录（包级，供其它文件使用）
+var appDestDir string
+
 // startedAt 进程启动时间（状态条显示「运行时间」用）
 var startedAt = time.Now()
 
-var appVersion = "0.26.0"
+var appVersion = "0.27.0"
 
 func main() {
 	var (
@@ -59,6 +62,8 @@ func main() {
 	)
 	showVersion := flag.Bool("version", false, "打印版本后退出")
 	flag.Parse()
+
+	appDestDir = *appDest
 
 	// --version：打印版本后退出
 	//
@@ -467,6 +472,9 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/ai/model", s.handleAIModel)
 	mux.HandleFunc("/api/ai/test", s.handleAITest)
 	mux.HandleFunc("/api/ai/search", s.handleAISearch)
+	mux.HandleFunc("/api/ai/overview", s.handleAIOverview)
+	mux.HandleFunc("/api/ai/embed", s.handleAIEmbed)
+	mux.HandleFunc("/api/ai/provider/test", s.handleAIProviderTest)
 
 	// 播放
 	mux.HandleFunc("/api/live/source-status", s.handleSourceStatus)

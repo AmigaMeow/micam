@@ -36,23 +36,59 @@ import (
 
 // aiConfig AI 配置（持久化到 config.json）
 type aiConfig struct {
-	Enabled       bool     `json:"enabled"`        // 总开关（默认 false）
-	Model         string   `json:"model"`          // yolov8n / yolov8s / 自定义
-	ConfThreshold float64  `json:"confThreshold"`  // 置信度阈值
-	Classes       []string `json:"classes"`        // 关心的类（空=全部已映射的）
-	MaxPerMinute  int      `json:"maxPerMinute"`   // 限流
-	PythonPath    string   `json:"pythonPath"`     // "" = 自动探测
-	Threads       int      `json:"threads"`        // onnxruntime 线程数
+	Enabled       bool     `json:"enabled"`       // 总开关（默认 false）
+	Model         string   `json:"model"`         // yolov8n / yolov8s / 自定义
+	ConfThreshold float64  `json:"confThreshold"` // 置信度阈值
+	Classes       []string `json:"classes"`       // 关心的类（空=全部已映射的）
+	MaxPerMinute  int      `json:"maxPerMinute"`  // 限流
+	PythonPath    string   `json:"pythonPath"`    // "" = 自动探测
+	Threads       int      `json:"threads"`       // onnxruntime 线程数
+
+	// ---- AI 模式 ----
+	//   local    只用本地（默认，不花钱）
+	//   balanced 均衡：重要事件送云端
+	//   full     完整智能：所有事件都送云端
+	Mode string `json:"mode"`
+
+	// ---- 云端分析（第二阶段）----
+	CloudEnabled   bool    `json:"cloudEnabled"`
+	CloudImportant bool    `json:"cloudImportant"`
+	DailyBudgetCNY float64 `json:"dailyBudgetCny"`
+	ProviderName   string  `json:"providerName"`
+	ProviderModel  string  `json:"providerModel"`
+	ProviderURL    string  `json:"providerUrl"`
+	ProviderKey    string  `json:"-"` // **绝不下发前端**
+	ProviderReady  bool    `json:"providerReady"`
+
+	// ---- 本地检测项 ----
+	DetectPerson  bool `json:"detectPerson"`
+	DetectVehicle bool `json:"detectVehicle"`
+	DetectPackage bool `json:"detectPackage"`
+	EmbedEnabled  bool `json:"embedEnabled"`
+
+	// ---- 隐私 ----
+	PrivacyCameras map[string]bool `json:"privacyCameras"`
+	UploadMode     string          `json:"uploadMode"`
 }
 
 func defaultaiConfig() aiConfig {
 	return aiConfig{
-		Enabled:       false,
-		Model:         "yolov8n",
-		ConfThreshold: 0.45,
-		Classes:       []string{"person", "vehicle"},
-		MaxPerMinute:  12,
-		Threads:       4,
+		Enabled:        false,
+		Mode:           "local",
+		CloudEnabled:   false,
+		CloudImportant: true,
+		DailyBudgetCNY: 5,
+		DetectPerson:   true,
+		DetectVehicle:  true,
+		DetectPackage:  true,
+		EmbedEnabled:   false,
+		UploadMode:     "snapshot",
+		PrivacyCameras: map[string]bool{},
+		Model:          "yolov8n",
+		ConfThreshold:  0.45,
+		Classes:        []string{"person", "vehicle"},
+		MaxPerMinute:   12,
+		Threads:        4,
 	}
 }
 
@@ -66,27 +102,86 @@ type aiObject struct {
 
 // aiResult 一次推理的结果
 type aiResult struct {
-	Objects  []aiObject
-	MS       int
-	InferMS  int
-	Size     []int
+	Objects []aiObject
+	MS      int
+	InferMS int
+	Size    []int
 }
 
 // aiClient 管理推理子进程
 type aiClient struct {
-	mu      sync.Mutex
-	cmd     *exec.Cmd
-	stdin   io.WriteCloser
-	reader  *bufio.Reader
-	seq     int
-	cfg     aiConfig
-	ready   bool
-	lastErr string
-	status  string // "off" / "ready" / "unavailable" / "error"
+	mu       sync.Mutex
+	cmd      *exec.Cmd
+	stdin    io.WriteCloser
+	reader   *bufio.Reader
+	seq      int
+	cfg      aiConfig
+	ready    bool
+	lastErr  string
+	status   string // "off" / "ready" / "unavailable" / "error"
 	restarts int
-	calls   []time.Time // 限流用
-	modelDir string
+	calls    []time.Time // 限流用
+
+	// 外部 Provider（第二阶段）
+	prov       *aiProvider
+	costCNY    float64
+	costDay    string
+	cloudCount int
+	imgCount   int
+	modelDir   string
 	scriptPath string
+}
+
+// ---- 外部 Provider（第二阶段接入）----
+//
+// 现在只保存配置和记账，实际调用等拿到 API Key 后实现。
+
+// aiProvider 一个外部 AI 服务配置
+type aiProvider struct {
+	Name    string `json:"name"` // deepseek / openai / gemini / qwen / ollama
+	BaseURL string `json:"baseUrl"`
+	APIKey  string `json:"-""`     // **绝不序列化给前端**
+	HasKey  bool   `json:"hasKey"` // 前端只看「有没有配」
+	Model   string `json:"model"`
+	Vision  bool   `json:"vision"`
+	Enabled bool   `json:"enabled"`
+}
+
+// hasProvider 是否配了可用的外部 Provider
+func (a *aiClient) hasProvider() bool {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.cfg.CloudEnabled && a.providerReady()
+}
+
+func (a *aiClient) providerReady() bool {
+	return a.prov != nil && a.prov.HasKey && a.prov.Enabled
+}
+
+// costToday 今日累计费用（元）
+func (a *aiClient) costToday() float64 {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	day := time.Now().Format("2006-01-02")
+	if a.costDay != day {
+		return 0
+	}
+	return a.costCNY
+}
+
+// addCost 记一笔费用
+func (a *aiClient) addCost(cny float64) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	day := time.Now().Format("2006-01-02")
+	if a.costDay != day {
+		a.costDay = day
+		a.costCNY = 0
+		a.cloudCount = 0
+		a.imgCount = 0
+	}
+	a.costCNY += cny
+	a.cloudCount++
 }
 
 var ai *aiClient
