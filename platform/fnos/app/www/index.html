@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <title>小米摄像头</title>
-<meta name="micam-build" content="2026-09-16 06:33:23">
+<meta name="micam-build" content="2026-09-16 06:38:07">
 <!-- 样式内联：飞牛网关会剥前缀，相对路径不可靠（详见 build/assemble-web.js）-->
 <style>
 
@@ -1538,13 +1538,27 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; line-h
   display: flex; align-items: center; justify-content: center;
   background: var(--surface-3); color: var(--text-secondary);
 }
-.stat-card__body { flex: 1; min-width: 0; }
-.stat-card__label { font-size: var(--text-base); color: var(--text-secondary); }
+.stat-card__body {
+  /* 必须是 flex 纵向容器：
+     否则 label 和 value 是行内流，换行后左右错位
+     （实测错位 28~70px） */
+  flex: 1; min-width: 0;
+  display: flex; flex-direction: column; align-items: flex-start;
+  gap: 3px;
+}
+.stat-card__label {
+  font-size: var(--text-base); color: var(--text-secondary);
+  line-height: 1.2; white-space: nowrap;
+}
 .stat-card__value {
   font-size: var(--text-title); font-weight: var(--weight-semibold);
-  line-height: 1.1; letter-spacing: -.02em; margin-top: 2px;
+  line-height: 1.05; letter-spacing: -.02em;
+  white-space: nowrap;
 }
-.stat-card__value small { font-size: var(--text-lg); font-weight: var(--weight-normal); color: var(--text-secondary); }
+.stat-card__value small {
+  font-size: var(--text-lg); font-weight: var(--weight-normal);
+  color: var(--text-secondary); margin-left: 1px;
+}
 .stat-card__chev { color: var(--text-muted); flex: 0 0 auto; }
 
 /* 区块头（摄像头 / 最近事件 / 存储） */
@@ -1599,7 +1613,7 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; line-h
 
 .cam-tile__foot {
   position: absolute; left: 0; right: 0; bottom: 0;
-  display: flex; align-items: baseline; gap: var(--space-2);
+  display: flex; align-items: center; gap: var(--space-2);
   padding: var(--space-5) var(--space-4) var(--space-3);
   background: linear-gradient(to top, rgba(0,0,0,.78), rgba(0,0,0,0));
   color: #fff;
@@ -2849,9 +2863,29 @@ function renderHome(c){
       };
     });
   }).catch(function(e){
-    c.innerHTML = '<div class="page__inner"><div class="card">'
-      + empty('close','加载失败', e.message, '') + '</div></div>';
+    c.innerHTML = '<div class="page__inner">' + errorCard(e, function(){ renderHome(c); }) + '</div>';
   });
+}
+
+// errorCard 统一的错误卡片（带重试）
+//
+// 「Failed to fetch」在部署重启期间必然出现一次，
+// 用户点一下重试就行，不该是死路。
+function errorCard(e, retry){
+  var msg = (e && e.message) || String(e);
+  if(msg.indexOf('Failed to fetch') >= 0 || msg.indexOf('fetch') >= 0){
+    msg = '无法连接插件服务（可能正在重启）';
+  }
+  var id = 'retry_' + Math.random().toString(36).slice(2, 8);
+  setTimeout(function(){
+    var b = document.getElementById(id);
+    if(b) b.onclick = function(){ retry(); };
+  }, 0);
+  return '<div class="card">'
+    + empty('close', '加载失败', msg,
+        '<div class="empty__action"><button class="btn btn--primary" id="' + id + '">'
+        + icon('refresh',14) + '重试</button></div>')
+    + '</div>';
 }
 
 function pad2(n){ return n < 10 ? '0'+n : ''+n; }
