@@ -418,17 +418,69 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; line-h
 
 /* ===== Config row（左侧标签 + 右侧控件）===== */
 
-.cfg-row {
+/* 开关行：左文字 + 右开关，带分隔线
+   （之前完全没定义，导致 4 个开关挤成一团）*/
+.switch-row {
   display: flex; align-items: center; gap: var(--space-4);
-  padding: var(--space-3) 0;
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.switch-row:last-of-type { border-bottom: 0; }
+.switch-row__main { flex: 1; min-width: 0; }
+.switch-row__title {
+  display: flex; align-items: center; gap: var(--space-2);
+  font-size: var(--text-base); color: var(--text);
+}
+.switch-row__hint {
+  font-size: var(--text-sm); color: var(--text-muted);
+  margin-top: 2px; line-height: 1.6;
+}
+
+/* 配置行：标签在左，控件在右，**提示文字另起一行占满宽度**
+   （原来是 flex 三项，hint 被挤到同一行右边，看着很乱）*/
+.cfg-row {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  grid-template-areas:
+    "label control"
+    "hint  hint";
+  align-items: center;
+  column-gap: var(--space-4);
+  row-gap: 2px;
+  padding: var(--space-4) 0;
   border-bottom: 1px solid var(--border-subtle);
 }
 .cfg-row:last-child { border-bottom: 0; }
-.cfg-row--top { align-items: flex-start; }
-.cfg-row__label { width: 108px; flex: 0 0 108px; font-size: var(--text-base); }
-.cfg-row__control { flex: 1; min-width: 0; }
-.cfg-row__hint { font-size: var(--text-sm); color: var(--text-muted); margin-top: 6px; line-height: 1.5; }
-.cfg-row__num { width: 96px; }
+.cfg-row--top { align-items: start; }
+.cfg-row--top .cfg-row__label { padding-top: 8px; }
+
+.cfg-row__label {
+  grid-area: label;
+  font-size: var(--text-base); color: var(--text-secondary);
+}
+.cfg-row__control {
+  grid-area: control;
+  display: flex; align-items: center; gap: var(--space-3);
+  min-width: 0;
+}
+.cfg-row__control .input { width: 100%; }
+.cfg-row__hint {
+  grid-area: hint;
+  font-size: var(--text-sm); color: var(--text-muted);
+  line-height: 1.6; margin-top: 2px;
+}
+.cfg-row__hint b { color: var(--text-secondary); }
+.cfg-row__num { width: 96px; flex: 0 0 auto; }
+.cfg-row__unit { font-size: var(--text-base); color: var(--text-muted); flex: 0 0 auto; }
+
+/* 窄屏：标签和控件也上下排 */
+@media (max-width: 640px) {
+  .cfg-row {
+    grid-template-columns: 1fr;
+    grid-template-areas: "label" "control" "hint";
+    row-gap: 6px;
+  }
+}
 
 /* ===== Stat ===== */
 

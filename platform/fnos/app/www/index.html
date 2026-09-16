@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <title>小米摄像头</title>
-<meta name="micam-build" content="2026-09-16 20:02:00">
+<meta name="micam-build" content="2026-09-16 20:35:00">
 <!-- 样式内联：飞牛网关会剥前缀，相对路径不可靠（详见 build/assemble-web.js）-->
 <style>
 
@@ -759,17 +759,69 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; line-h
 
 /* ===== Config row（左侧标签 + 右侧控件）===== */
 
-.cfg-row {
+/* 开关行：左文字 + 右开关，带分隔线
+   （之前完全没定义，导致 4 个开关挤成一团）*/
+.switch-row {
   display: flex; align-items: center; gap: var(--space-4);
-  padding: var(--space-3) 0;
+  padding: var(--space-4) var(--space-5);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.switch-row:last-of-type { border-bottom: 0; }
+.switch-row__main { flex: 1; min-width: 0; }
+.switch-row__title {
+  display: flex; align-items: center; gap: var(--space-2);
+  font-size: var(--text-base); color: var(--text);
+}
+.switch-row__hint {
+  font-size: var(--text-sm); color: var(--text-muted);
+  margin-top: 2px; line-height: 1.6;
+}
+
+/* 配置行：标签在左，控件在右，**提示文字另起一行占满宽度**
+   （原来是 flex 三项，hint 被挤到同一行右边，看着很乱）*/
+.cfg-row {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  grid-template-areas:
+    "label control"
+    "hint  hint";
+  align-items: center;
+  column-gap: var(--space-4);
+  row-gap: 2px;
+  padding: var(--space-4) 0;
   border-bottom: 1px solid var(--border-subtle);
 }
 .cfg-row:last-child { border-bottom: 0; }
-.cfg-row--top { align-items: flex-start; }
-.cfg-row__label { width: 108px; flex: 0 0 108px; font-size: var(--text-base); }
-.cfg-row__control { flex: 1; min-width: 0; }
-.cfg-row__hint { font-size: var(--text-sm); color: var(--text-muted); margin-top: 6px; line-height: 1.5; }
-.cfg-row__num { width: 96px; }
+.cfg-row--top { align-items: start; }
+.cfg-row--top .cfg-row__label { padding-top: 8px; }
+
+.cfg-row__label {
+  grid-area: label;
+  font-size: var(--text-base); color: var(--text-secondary);
+}
+.cfg-row__control {
+  grid-area: control;
+  display: flex; align-items: center; gap: var(--space-3);
+  min-width: 0;
+}
+.cfg-row__control .input { width: 100%; }
+.cfg-row__hint {
+  grid-area: hint;
+  font-size: var(--text-sm); color: var(--text-muted);
+  line-height: 1.6; margin-top: 2px;
+}
+.cfg-row__hint b { color: var(--text-secondary); }
+.cfg-row__num { width: 96px; flex: 0 0 auto; }
+.cfg-row__unit { font-size: var(--text-base); color: var(--text-muted); flex: 0 0 auto; }
+
+/* 窄屏：标签和控件也上下排 */
+@media (max-width: 640px) {
+  .cfg-row {
+    grid-template-columns: 1fr;
+    grid-template-areas: "label" "control" "hint";
+    row-gap: 6px;
+  }
+}
 
 /* ===== Stat ===== */
 
@@ -3259,6 +3311,92 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; line-h
 .ai-urow__val { font-weight: var(--weight-medium); font-variant-numeric: tabular-nums; }
 
 
+/* AI 设置页：两栏网格（卡片自动等高） */
+.ai-set-grid {
+  display: grid; gap: var(--space-5);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  /* 自然高度：两侧卡片内容量不同，强制等高会留一大片空白 */
+  align-items: start;
+  margin-top: var(--space-5);
+}
+.ai-set-grid > .card { display: flex; flex-direction: column; }
+.ai-set-grid > .card > .sec-head { flex: 0 0 auto; }
+@media (max-width: 1000px) { .ai-set-grid { grid-template-columns: 1fr; } }
+
+/* 卡片内的开关：去掉左右多余缩进（.switch-row 自己带 padding）*/
+.ai-set-grid .switch-row { padding-left: var(--space-5); padding-right: var(--space-5); }
+.ai-set-grid .switch-row:first-of-type { border-top: 1px solid var(--border-subtle); }
+
+/* 卡片底部按钮：贴底、占满内宽 */
+.ai-card-bottom {
+  margin: var(--space-4) var(--space-5) var(--space-5);
+  width: calc(100% - var(--space-5) * 2);
+  flex: 0 0 auto;
+}
+
+/* 单列网格（隐私表 / 用量 需要整行） */
+.ai-set-grid--1 { grid-template-columns: minmax(0, 1fr); }
+
+/* 状态行 */
+.ai-foot-line {
+  display: flex; align-items: center; gap: 6px;
+  padding: var(--space-3) var(--space-5);
+  font-size: var(--text-sm); color: var(--text-muted);
+}
+
+/* 隐私表格：表头 sticky + 行分隔更清晰 */
+.ai-priv__head { position: sticky; top: 0; background: var(--surface-1); z-index: 1; }
+.ai-priv__row:hover { background: var(--surface-2); margin: 0 calc(var(--space-5) * -1); padding-left: var(--space-5); padding-right: var(--space-5); }
+
+
+/* ==========================================================================
+   SETTINGS — 系统设置（���组卡片）
+   ========================================================================== */
+
+.set-group { margin-bottom: var(--space-6); }
+.set-group:last-child { margin-bottom: 0; }
+.set-group__label {
+  font-size: var(--text-sm); font-weight: var(--weight-medium);
+  color: var(--text-muted); letter-spacing: .04em;
+  text-transform: uppercase;
+  margin-bottom: var(--space-3); padding-left: 2px;
+}
+
+.set-text {
+  font-size: var(--text-base); color: var(--text-secondary); line-height: 1.8;
+}
+
+.set-hint {
+  margin-top: var(--space-3);
+  font-size: var(--text-sm); color: var(--text-muted);
+}
+
+.set-mono { font-family: ui-monospace, SFMono-Regular, monospace; font-size: var(--text-sm); font-weight: var(--weight-normal); }
+
+.set-kv { display: flex; flex-direction: column; }
+.set-kv__row {
+  display: flex; align-items: baseline; gap: var(--space-4);
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: var(--text-base);
+}
+.set-kv__row:last-child { border-bottom: 0; }
+.set-kv__row > span { flex: 0 0 120px; color: var(--text-muted); }
+.set-kv__row > b { flex: 1; min-width: 0; font-weight: var(--weight-normal); color: var(--text); word-break: break-all; }
+.set-kv__row .badge { display: inline-flex; }
+
+.set-actions { display: flex; gap: var(--space-3); flex-wrap: wrap; margin-top: var(--space-4); }
+.set-result { margin-top: var(--space-4); }
+.set-result:empty { display: none; }
+
+/* 卡头右侧的状态/链接 */
+.set-status { margin-left: auto; margin-right: var(--space-3); font-size: var(--text-sm); color: var(--text-muted); }
+.card__head { display: flex; align-items: center; gap: var(--space-2); }
+.card__head .card__title { display: inline-flex; align-items: center; gap: 6px; }
+.card__head .btn, .card__head a.btn { margin-left: auto; }
+.card__head .set-status + .btn, .card__head .set-status + a.btn { margin-left: 0; }
+
+
 </style>
 </head>
 <body>
@@ -5431,7 +5569,7 @@ function aiTabSettings(){
     +   '</div>'
     + '</div>'
 
-    + '<div class="ai-row2" style="margin-top:var(--space-5)">'
+    + '<div class="ai-set-grid">'
 
     // 本地分析
     +   '<div class="card">'
@@ -5443,9 +5581,11 @@ function aiTabSettings(){
     +     sw('aiDetVehicle', '车辆检测', '', cf.detectVehicle !== false, !env.available)
     +     sw('aiDetPackage', '包裹检测', '', cf.detectPackage !== false, !env.available)
     +     sw('aiEmbed', '事件 Embedding', '为事件生成向量特征，用于搜索和相似事件匹配。', !!cf.embedEnabled, !env.available)
-    +     '<div class="ai-foot-line">状态：' + (st.status === 'ready' ? '✅ 运行中' : (cf.enabled ? '⚠️ ' + esc(st.status||'异常') : '未启用'))
+    +     '<div class="ai-foot-line">'
+    +       '<span class="status-dot ' + (st.status === 'ready' ? 'is-online' : '') + '"></span>'
+    +       (st.status === 'ready' ? '运行中' : (cf.enabled ? esc(st.status||'异常') : '未启用'))
     +       ' · 模型 ' + esc(cf.model || 'yolov8n') + '</div>'
-    +     '<button class="btn btn--primary" style="margin:12px 24px" id="aiSaveLocal">保存本地设置</button>'
+    +     '<button class="btn btn--primary ai-card-bottom" id="aiSaveLocal">保存本地设置</button>'
     +   '</div>'
 
     // 云端视觉分析
@@ -5498,9 +5638,8 @@ function aiTabSettings(){
 
     + '</div>'
 
-    + '<div class="ai-row2" style="margin-top:var(--space-5)">'
-
-    // 隐私
+    // 隐私（整行：表格需要宽度）
+    + '<div class="ai-set-grid ai-set-grid--1" style="margin-top:var(--space-5)">'
     +   '<div class="card">'
     +     '<div class="sec-head">' + icon('shield',16) + '<span class="sec-head__title">隐私</span>'
     +       '<span class="sec-head__hint">管理各个摄像头的云端上传权限和上传方式。</span>'
@@ -5527,10 +5666,12 @@ function aiTabSettings(){
               + '</div>';
           }).join('') : '<div class="ai-thumbs__empty">还没有设备</div>')
     +     '</div>'
-    +     '<button class="btn btn--primary" style="margin:12px 24px" id="aiSavePriv">保存隐私设置</button>'
+    +     '<button class="btn btn--primary" class="btn btn--primary ai-card-bottom" id="aiSavePriv">保存隐私设置</button>'
     +   '</div>'
+    + '</div>'
 
-    // 今日用量
+    // 今日用量（整行）
+    + '<div class="ai-set-grid ai-set-grid--1" style="margin-top:var(--space-5)">'
     +   '<div class="card">'
     +     '<div class="sec-head">' + icon('chart',16) + '<span class="sec-head__title">今日用量</span>'
     +       '<span class="sec-head__hint">今日 AI 处理情况统计。</span>'
@@ -5541,7 +5682,7 @@ function aiTabSettings(){
     +       aiUsageRow('image', '图片',     (aiCache.ov && aiCache.ov.process ? aiCache.ov.process.cloudAnalyzed * 4 : 0))
     +       aiUsageRow('yuan',  '预计费用', '¥' + (((aiCache.ov && aiCache.ov.process) ? aiCache.ov.process.costCny : 0) || 0).toFixed(2))
     +     '</div>'
-    +     '<div class="ai-foot-line">用量数据为今日统计，可能存在几分钟延迟。</div>'
+    +     '<div class="ai-foot-line">用量数据为今日统计，可能有几分钟延迟。</div>'
     +   '</div>'
 
     + '</div>';
@@ -5673,8 +5814,8 @@ function bindAI(){
     var el = document.getElementById('aiProvRes');
     if(el) el.textContent = '测试中…';
     api('/api/ai/provider/test', { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' })
-      .then(function(r){ if(el) el.textContent = r.ok ? '✅ 连接正常' : '❌ ' + (r.error||'失败'); })
-      .catch(function(e){ if(el) el.textContent = '❌ ' + e.message; });
+      .then(function(r){ if(el) el.textContent = r.ok ? '连接正常' : (r.error||'连接失败'); })
+      .catch(function(e){ if(el) el.textContent = e.message; });
   };
   var sp = document.getElementById('aiSavePriv');
   if(sp) sp.onclick = function(){
@@ -8170,60 +8311,112 @@ function loadDevCaps(){
 
 // ===== 页面：系统设置 =====
 function renderSettings(c){
-  c.innerHTML = "<div class=\"card\">"
-    + "<div class=\"card__head\"><span class=\"card__title\">" + icon("check",15) + " 安装向导</span>"
-    +   "<button class=\"btn btn--sm\" id=\"btnRerunWizard\">重新运行</button></div>"
-    + "<div style=\"padding:16px 24px;font-size:13px;color:var(--text-3)\">"
-    +   "重新检查环境（扫码登录、设备发现、端口、编码器）。首次安装时会自动运行。"
-    + "</div>"
-    + "</div>"
-    + "<div class=\"card\">"
-    + "<div class=\"card__head\"><span class=\"card__title\">" + icon("rec",15) + " 事件通知</span>"
-    +   "<button class=\"btn btn--sm\" id=\"btnNotifyTest\">发送测试</button></div>"
-    + "<div style=\"padding:16px 24px\" id=\"notifyCfg\">" + loading("读取中…") + "</div>"
-    + "</div>"
-    + "<div class=\"card\">"
-    + "<div class=\"card__head\"><span class=\"card__title\">" + icon("cpu",15) + " AI 智能识别</span>"
-    +   "<span id=\"aiHeadStatus\" style=\"font-size:12px;color:var(--text-muted)\"></span></div>"
-    + "<div style=\"padding:16px 24px\" id=\"aiCfg\">" + loading("读取中…") + "</div>"
-    + "</div>"
-    + "<div class=\"card\">"
-    + "<div class=\"card__head\"><span class=\"card__title\">诊断与反馈</span></div>"
-    + "<div style=\"padding:20px 24px\">"
-    +   "<p style=\"font-size:13px;color:var(--text-3);margin-bottom:16px\">"
-    +     "遇到问题时，导出诊断包并提交到 GitHub Issues，我们会据此做适配。"
-    +     "所有敏感信息（账号/凭据/IP）已自动脱敏。"
-    +   "</p>"
-    +   "<div class=\"row gap-2\">"
-    +     "<button class=\"btn btn--primary\" id=\"btnDiagBundle\">" + icon("inbox",14) + "导出诊断包</button>"
-    +     "<button class=\"btn\" id=\"btnDiagReport\">" + icon("device",14) + "查看诊断报告</button>"
-    +     "<button class=\"btn\" id=\"btnShowLog\">" + icon("rec",14) + "查看日志</button>"
-    +   "</div>"
-    +   "<div id=\"diagResult\" style=\"margin-top:16px\"></div>"
-    + "</div></div>"
-    + "<div class=\"card\">"
-    + "<div class=\"card__head\"><span class=\"card__title\">录像设置</span></div>"
-    + "<table>"
-    + "<tr><td style=\"width:180px;color:var(--text-2)\">录像目录</td><td style=\"font-family:ui-monospace,monospace;font-size:12px\">/vol1/@appdata/micam/recordings</td></tr>"
-    + "<tr><td style=\"color:var(--text-2)\">分片时长</td><td>30 秒</td></tr>"
-    + "<tr><td style=\"color:var(--text-2)\">保留天数</td><td>7 天</td></tr>"
-    + "<tr><td style=\"color:var(--text-2)\">磁盘保护</td><td>剩余低于 10 GB 自动停止录像</td></tr>"
-    + "</table></div>"
-    + "<div class=\"card\">"
-    + "<div class=\"card__head\"><span class=\"card__title\">关于</span></div>"
-    + "<table>"
-    + "<tr><td style=\"width:180px;color:var(--text-2)\">应用</td><td>MiCam（小米摄像头）</td></tr>"
-    + "<tr><td style=\"color:var(--text-2)\">版本</td><td>" + (APP_VER || "—") + "</td></tr>"
-    + "<tr><td style=\"color:var(--text-2)\">连接方式</td><td>小米云 P2P 直连</td></tr>"
-    + "<tr><td style=\"color:var(--text-2)\">后端</td><td><span class=\"badge badge--ok\">运行中</span></td></tr>"
-    + "</table></div>";
+  // 按逻辑分组（对齐效果图的层次感）
+  //   01 监控与设备   安装向导 / 录像设置
+  //   02 通知与告警   事件通知
+  //   03 AI 与智能    AI 识别（详细配置在 AI 页）
+  //   04 系统与维护   诊断 / 关于
+
+  c.innerHTML = '<div class="page__inner">'
+
+    + '<div class="list-head">'
+    +   '<div class="list-head__main">'
+    +     '<h1 class="list-head__title">设置</h1>'
+    +     '<div class="list-head__en">Settings</div>'
+    +   '</div>'
+    + '</div>'
+
+    // ===== 监控与设备 =====
+    + '<div class="set-group">'
+    +   '<div class="set-group__label">监控与设备</div>'
+
+    +   '<div class="card">'
+    +     '<div class="card__head">' + icon('check',15) + '<span class="card__title">安装向导</span>'
+    +       '<button class="btn btn--sm" id="btnRerunWizard">重新运行</button></div>'
+    +     '<div class="card__body set-text">'
+    +       '重新检查环境（扫码登录、设备发现、端口、编码器）。首次安装时会自动运行。'
+    +     '</div>'
+    +   '</div>'
+
+    +   '<div class="card">'
+    +     '<div class="card__head">' + icon('film',15) + '<span class="card__title">录像设置</span>'
+    +       '<a class="btn btn--sm" href="javascript:;" data-goto="recordings">打开回放</a></div>'
+    +     '<div class="card__body">'
+    +       '<div class="set-kv">'
+    +         '<div class="set-kv__row"><span>录像目录</span><b class="set-mono">/vol1/@appdata/micam/recordings</b></div>'
+    +         '<div class="set-kv__row"><span>分片时长</span><b>30 秒</b></div>'
+    +         '<div class="set-kv__row"><span>保留天数</span><b>7 天</b></div>'
+    +         '<div class="set-kv__row"><span>磁盘保护</span><b>剩余低于 10 GB 自动停止录像</b></div>'
+    +       '</div>'
+    +       '<div class="set-hint">这些参数在「存储」页可以调整。</div>'
+    +     '</div>'
+    +   '</div>'
+
+    + '</div>'
+
+    // ===== 通知与告警 =====
+    + '<div class="set-group">'
+    +   '<div class="set-group__label">通知与告警</div>'
+    +   '<div class="card">'
+    +     '<div class="card__head">' + icon('bell',15) + '<span class="card__title">事件通知</span>'
+    +       '<button class="btn btn--sm" id="btnNotifyTest">发送测试</button></div>'
+    +     '<div class="card__body" id="notifyCfg">' + loading('读取中…') + '</div>'
+    +   '</div>'
+    + '</div>'
+
+    // ===== AI 与智能 =====
+    + '<div class="set-group">'
+    +   '<div class="set-group__label">AI 与智能</div>'
+    +   '<div class="card">'
+    +     '<div class="card__head">' + icon('cpu',15) + '<span class="card__title">AI 智能识别</span>'
+    +       '<span id="aiHeadStatus" class="set-status"></span>'
+    +       '<a class="btn btn--sm" href="javascript:;" data-goto="ai">详细设置</a></div>'
+    +     '<div class="card__body" id="aiCfg">' + loading('读取中…') + '</div>'
+    +   '</div>'
+    + '</div>'
+
+    // ===== 系统与维护 =====
+    + '<div class="set-group">'
+    +   '<div class="set-group__label">系统与维护</div>'
+
+    +   '<div class="card">'
+    +     '<div class="card__head">' + icon('gauge',15) + '<span class="card__title">诊断与反馈</span></div>'
+    +     '<div class="card__body">'
+    +       '<p class="set-text">遇到问题时，导出诊断包并提交到 GitHub Issues，我们会据此做适配。'
+    +         '所有敏感信息（账号/凭据/IP）已自动脱敏。</p>'
+    +       '<div class="set-actions">'
+    +         '<button class="btn btn--primary" id="btnDiagBundle">' + icon('inbox',14) + '导出诊断包</button>'
+    +         '<button class="btn" id="btnDiagReport">' + icon('device',14) + '查看诊断报告</button>'
+    +         '<button class="btn" id="btnShowLog">' + icon('film',14) + '查看日志</button>'
+    +       '</div>'
+    +       '<div id="diagResult" class="set-result"></div>'
+    +     '</div>'
+    +   '</div>'
+
+    +   '<div class="card">'
+    +     '<div class="card__head">' + icon('info',15) + '<span class="card__title">关于</span></div>'
+    +     '<div class="card__body">'
+    +       '<div class="set-kv">'
+    +         '<div class="set-kv__row"><span>应用</span><b>MiCam（小米摄像头）</b></div>'
+    +         '<div class="set-kv__row"><span>版本</span><b class="set-mono">' + (APP_VER || '—') + '</b></div>'
+    +         '<div class="set-kv__row"><span>连接方式</span><b>小米云 P2P 直连</b></div>'
+    +         '<div class="set-kv__row"><span>后端</span><b><span class="badge badge--ok">运行中</span></b></div>'
+    +       '</div>'
+    +     '</div>'
+    +   '</div>'
+
+    + '</div>'
+
+    + '</div>';
 
   // ---- 加载异步区块 ----
-  //
-  // 诊断按钮（btnDiagBundle / btnDiagReport / btnShowLog）用**全局事件委托**绑定，
-  // 见文件下方 document.addEventListener("click")，这里不用重复绑。
+  // 诊断按钮用全局事件委托绑定（见文件下方 document.addEventListener）
   var rw = document.getElementById('btnRerunWizard');
   if(rw) rw.onclick = function(){ page = 'setup'; renderMenu(); render(); };
+
+  Array.prototype.forEach.call(c.querySelectorAll('[data-goto]'), function(b){
+    b.onclick = function(){ page = this.dataset.goto; renderMenu(); render(); };
+  });
 
   loadNotifyCfg();
   loadAICfg();
@@ -8696,7 +8889,7 @@ document.addEventListener("click", function(e){
   if(t.id === "btnDiagBundle"){
     toast("正在生成诊断包…");
     window.open(apiUrl("/api/diag/bundle"), "_blank");
-    setTimeout(function(){ toast("诊断��已开始下载", "ok"); }, 1500);
+    setTimeout(function(){ toast("诊断已开始下载", "ok"); }, 1500);
   }
 
   if(t.id === "btnDiagReport"){

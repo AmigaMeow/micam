@@ -2016,3 +2016,89 @@
 .ai-urow__icon { color: var(--text-muted); flex: 0 0 auto; }
 .ai-urow__label { flex: 1; color: var(--text-muted); }
 .ai-urow__val { font-weight: var(--weight-medium); font-variant-numeric: tabular-nums; }
+
+
+/* AI 设置页：两栏网格（卡片自动等高） */
+.ai-set-grid {
+  display: grid; gap: var(--space-5);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  /* 自然高度：两侧卡片内容量不同，强制等高会留一大片空白 */
+  align-items: start;
+  margin-top: var(--space-5);
+}
+.ai-set-grid > .card { display: flex; flex-direction: column; }
+.ai-set-grid > .card > .sec-head { flex: 0 0 auto; }
+@media (max-width: 1000px) { .ai-set-grid { grid-template-columns: 1fr; } }
+
+/* 卡片内的开关：去掉左右多余缩进（.switch-row 自己带 padding）*/
+.ai-set-grid .switch-row { padding-left: var(--space-5); padding-right: var(--space-5); }
+.ai-set-grid .switch-row:first-of-type { border-top: 1px solid var(--border-subtle); }
+
+/* 卡片底部按钮：贴底、占满内宽 */
+.ai-card-bottom {
+  margin: var(--space-4) var(--space-5) var(--space-5);
+  width: calc(100% - var(--space-5) * 2);
+  flex: 0 0 auto;
+}
+
+/* 单列网格（隐私表 / 用量 需要整行） */
+.ai-set-grid--1 { grid-template-columns: minmax(0, 1fr); }
+
+/* 状态行 */
+.ai-foot-line {
+  display: flex; align-items: center; gap: 6px;
+  padding: var(--space-3) var(--space-5);
+  font-size: var(--text-sm); color: var(--text-muted);
+}
+
+/* 隐私表格：表头 sticky + 行分隔更清晰 */
+.ai-priv__head { position: sticky; top: 0; background: var(--surface-1); z-index: 1; }
+.ai-priv__row:hover { background: var(--surface-2); margin: 0 calc(var(--space-5) * -1); padding-left: var(--space-5); padding-right: var(--space-5); }
+
+
+/* ==========================================================================
+   SETTINGS — 系统设置（���组卡片）
+   ========================================================================== */
+
+.set-group { margin-bottom: var(--space-6); }
+.set-group:last-child { margin-bottom: 0; }
+.set-group__label {
+  font-size: var(--text-sm); font-weight: var(--weight-medium);
+  color: var(--text-muted); letter-spacing: .04em;
+  text-transform: uppercase;
+  margin-bottom: var(--space-3); padding-left: 2px;
+}
+
+.set-text {
+  font-size: var(--text-base); color: var(--text-secondary); line-height: 1.8;
+}
+
+.set-hint {
+  margin-top: var(--space-3);
+  font-size: var(--text-sm); color: var(--text-muted);
+}
+
+.set-mono { font-family: ui-monospace, SFMono-Regular, monospace; font-size: var(--text-sm); font-weight: var(--weight-normal); }
+
+.set-kv { display: flex; flex-direction: column; }
+.set-kv__row {
+  display: flex; align-items: baseline; gap: var(--space-4);
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: var(--text-base);
+}
+.set-kv__row:last-child { border-bottom: 0; }
+.set-kv__row > span { flex: 0 0 120px; color: var(--text-muted); }
+.set-kv__row > b { flex: 1; min-width: 0; font-weight: var(--weight-normal); color: var(--text); word-break: break-all; }
+.set-kv__row .badge { display: inline-flex; }
+
+.set-actions { display: flex; gap: var(--space-3); flex-wrap: wrap; margin-top: var(--space-4); }
+.set-result { margin-top: var(--space-4); }
+.set-result:empty { display: none; }
+
+/* 卡头右侧的状态/链接 */
+.set-status { margin-left: auto; margin-right: var(--space-3); font-size: var(--text-sm); color: var(--text-muted); }
+.card__head { display: flex; align-items: center; gap: var(--space-2); }
+.card__head .card__title { display: inline-flex; align-items: center; gap: 6px; }
+.card__head .btn, .card__head a.btn { margin-left: auto; }
+.card__head .set-status + .btn, .card__head .set-status + a.btn { margin-left: 0; }
