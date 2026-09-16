@@ -35,6 +35,7 @@ type devMeta struct {
 	Group    string `json:"group,omitempty"`    // 分组
 	Favorite bool   `json:"favorite,omitempty"` // 收藏
 	Hidden   bool   `json:"hidden,omitempty"`   // 从列表隐藏（清理已拆掉的离线设备）
+	DevName  string `json:"devName,omitempty"`  // 设备原名（别名反查用）
 }
 
 type metaStore struct {
@@ -64,6 +65,21 @@ func (m *metaStore) Set(did string, v devMeta) error {
 	err := os.WriteFile(m.path, raw, 0o644)
 	m.mu.Unlock()
 	return err
+}
+
+// GetByDevName 按设备名找别名。
+//
+// 搜索时用户说的是别名（「门口」），而事件里存的是设备名，
+// 需要反查。
+func (m *metaStore) GetByDevName(devName string) string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for _, v := range m.data {
+		if v.DevName == devName && v.Alias != "" {
+			return v.Alias
+		}
+	}
+	return ""
 }
 
 // ---- 侦测状态 ----
@@ -311,6 +327,10 @@ func (s *Server) handleDevMeta(w http.ResponseWriter, r *http.Request) {
 	cur.Alias = req.Alias
 	cur.AliasEn = req.AliasEn
 	cur.Group = req.Group
+	// 顺便存设备原名，便于搜索时按别名反查
+	if dev, err := s.ensureDevice(req.Did); err == nil && dev != nil {
+		cur.DevName = dev.Name
+	}
 	if req.Favorite != nil {
 		cur.Favorite = *req.Favorite
 	}

@@ -466,6 +466,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/ai/status", s.handleAIStatus)
 	mux.HandleFunc("/api/ai/model", s.handleAIModel)
 	mux.HandleFunc("/api/ai/test", s.handleAITest)
+	mux.HandleFunc("/api/ai/search", s.handleAISearch)
 
 	// 播放
 	mux.HandleFunc("/api/live/source-status", s.handleSourceStatus)

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <title>小米摄像头</title>
-<meta name="micam-build" content="2026-09-16 18:48:31">
+<meta name="micam-build" content="2026-09-16 18:51:27">
 <!-- 样式内联：飞牛网关会剥前缀，相对路径不可靠（详见 build/assemble-web.js）-->
 <style>
 
@@ -2670,6 +2670,141 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; line-h
 .pb-file__meta { font-size: var(--text-sm); color: var(--text-muted); }
 
 
+/* ==========================================================================
+   AI INTELLIGENCE — AI 智能页（4 个 Tab）
+   ========================================================================== */
+
+/* 横向 Tab 线 */
+.tabs-line {
+  display: flex; align-items: center; gap: var(--space-1);
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: var(--space-5);
+}
+.tabline {
+  position: relative;
+  padding: 10px var(--space-4);
+  color: var(--text-secondary);
+  font-size: var(--text-base); font-weight: var(--weight-medium);
+  transition: color var(--duration-fast) var(--ease-out);
+}
+.tabline:hover { color: var(--text); }
+.tabline.is-active { color: var(--accent); }
+.tabline::after {
+  content: ""; position: absolute; left: var(--space-3); right: var(--space-3); bottom: -1px;
+  height: 2px; background: transparent; border-radius: 2px;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+.tabline.is-active::after { background: var(--accent); }
+
+/* 概览统计 */
+.ai-stats {
+  display: grid; gap: var(--space-4);
+  grid-template-columns: repeat(4, 1fr);
+}
+@media (max-width: 900px) { .ai-stats { grid-template-columns: repeat(2, 1fr); } }
+
+.ai-stat {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-4);
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
+.ai-stat__icon {
+  width: 38px; height: 38px; flex: 0 0 38px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--surface-3); color: var(--text-secondary);
+}
+.ai-stat__body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ai-stat__label { font-size: var(--text-sm); color: var(--text-muted); }
+.ai-stat__val { font-size: var(--text-title); font-weight: var(--weight-semibold); line-height: 1.1; }
+
+/* 说明块 */
+.ai-note { padding: 0 var(--space-5) var(--space-5); }
+.ai-note__sub { margin-top: 6px; font-size: var(--text-base); color: var(--text-muted); line-height: 1.7; }
+.ai-note b { color: var(--accent); }
+
+/* 搜索框 */
+.ai-search-box { display: flex; gap: var(--space-3); padding: 0 var(--space-5); }
+.ai-search-box__input { flex: 1; }
+@media (max-width: 700px) { .ai-search-box { flex-direction: column; } }
+
+.ai-examples {
+  display: flex; gap: var(--space-2); flex-wrap: wrap;
+  padding: var(--space-4) var(--space-5) 0;
+}
+.ai-examples .chip { cursor: pointer; }
+
+.ai-hint {
+  padding: var(--space-4) var(--space-5);
+  font-size: var(--text-sm); color: var(--text-muted); line-height: 1.7;
+}
+.ai-hint b { color: var(--text-secondary); }
+
+/* 回答块 */
+.ai-answer {
+  margin: var(--space-4) var(--space-5) 0;
+  padding: var(--space-4);
+  background: color-mix(in oklab, var(--accent) 8%, var(--surface-2));
+  border: 1px solid color-mix(in oklab, var(--accent) 24%, transparent);
+  border-radius: var(--radius-lg);
+}
+.ai-answer__head { display: flex; align-items: center; gap: 6px; font-size: var(--text-base); color: var(--text); }
+.ai-answer__head b { color: var(--accent); }
+.ai-answer__q { margin-top: 6px; font-size: var(--text-sm); color: var(--text-muted); }
+
+.ai-empty {
+  padding: var(--space-8) var(--space-5);
+  text-align: center; color: var(--text-muted);
+  display: flex; flex-direction: column; align-items: center; gap: var(--space-2);
+}
+.ai-empty__sub { font-size: var(--text-sm); }
+
+.ai-err {
+  margin: var(--space-4) var(--space-5);
+  padding: var(--space-3) var(--space-4);
+  background: rgba(239,68,68,.10); border-radius: var(--radius-md);
+  color: var(--danger); font-size: var(--text-base);
+}
+
+/* 调查页占位 */
+.ai-soon {
+  padding: var(--space-6) var(--space-5);
+  display: flex; flex-direction: column; align-items: center;
+  gap: var(--space-3); text-align: center;
+  color: var(--text-muted);
+}
+.ai-soon__title { font-size: var(--text-lg); color: var(--text); }
+.ai-soon__desc { font-size: var(--text-base); max-width: 460px; line-height: 1.7; }
+.ai-soon__desc b { color: var(--text-secondary); }
+.ai-soon__facts { display: flex; flex-direction: column; gap: 6px; margin-top: var(--space-2); }
+.ai-fact { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-base); }
+.ai-fact.is-ok { color: var(--online); }
+.ai-fact.is-warn { color: var(--warning); }
+.ai-fact.is-bad { color: var(--danger); }
+.ai-soon__note { margin-top: var(--space-3); font-size: var(--text-sm); color: var(--text-muted); }
+.ai-soon__note b { color: var(--text-secondary); }
+
+/* 能力状态表 */
+.ai-rows { padding: 0 var(--space-5) var(--space-4); }
+.ai-row {
+  display: flex; align-items: center; justify-content: space-between; gap: var(--space-4);
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-subtle);
+  font-size: var(--text-base);
+}
+.ai-row:last-child { border-bottom: 0; }
+.ai-row__label { color: var(--text-muted); }
+.ai-row__val {
+  display: inline-flex; align-items: center; gap: 5px;
+  color: var(--text-secondary);
+}
+.ai-row__val.is-ok { color: var(--online); }
+.ai-row__val.is-warn { color: var(--warning); }
+.ai-row__val.is-bad { color: var(--danger); }
+
+
 </style>
 </head>
 <body>
@@ -4227,17 +4362,332 @@ function showEventMenu(el, did, tm){
   });
 }
 
-// ===== 页面：AI 智能（占位） =====
+// ===== 页面：AI 智能 =====
+//
+// 按用户的架构建议：不做成一个巨大的 Chat 页面，而是 4 个 Tab。
+//   概览  —— 今日统计 + AI 已过滤多少无意义活动 + 最近摘要
+//   搜索  —— 自然语言查询（LLM 解析 -> 事件库过滤 -> 返回证据）
+//   调查  —— 保存的长期调查（如「黑色 SUV 出现过几次」）
+//   设置  —— 指向设置页的 AI 区块（按需再展开）
+//
+// 设计原则：**没有配置外部 LLM 时，搜索降级为本地关键词匹配**，
+// 保证功能不依赖云也能用。
+
+var aiTab = 'overview';
+var aiSearchQuery = '';
+var aiSearchResult = null;
+
 function renderAI(c){
-  c.innerHTML = '<div class="page__inner">'
-    + '<div class="page-head">'
-    +   '<div class="page-head__info">'
-    +     '<div class="page-head__title">AI 智能 <small>AI</small></div>'
-    +     '<div class="page-head__meta">用自然语言查询录像</div>'
+  c.innerHTML = '<div class="page__inner">' + loading('加载中…') + '</div>';
+
+  Promise.all([
+    api('/api/events?days=1&limit=500').catch(function(){ return { events: [], today: 0 }; }),
+    api('/api/ai/status').catch(function(){ return { status: {}, env: {}, models: [] }; }),
+    api('/api/ai/config').catch(function(){ return { config: {} }; }),
+  ]).then(function(res){
+    var ev = res[0].events || [];
+    var aiSt = res[1].status || {};
+    var aiEnv = res[1].env || {};
+    var aiCfg = res[2].config || {};
+    var todayN = res[0].today || 0;
+
+    // 统计
+    var byType = { person: 0, vehicle: 0, package: 0, motion: 0, online: 0, offline: 0 };
+    ev.forEach(function(x){ byType[x.type] = (byType[x.type] || 0) + 1; });
+    var meaningful = (byType.person||0) + (byType.vehicle||0) + (byType.package||0);
+    var noise = (byType.motion||0);
+
+    c.innerHTML = '<div class="page__inner">'
+
+      + '<div class="list-head">'
+      +   '<div class="list-head__main">'
+      +     '<h1 class="list-head__title">AI 智能</h1>'
+      +     '<div class="list-head__en">AI Intelligence</div>'
+      +   '</div>'
+      +   '<div class="list-head__acts">'
+      +     '<span class="chip ' + (aiSt.status === 'ready' ? 'is-active' : '') + '">'
+      +       '<span class="status-dot ' + (aiSt.status === 'ready' ? 'is-online' : '') + '"></span>'
+      +       '本地 AI ' + (aiSt.status === 'ready' ? '运行中' : (aiCfg.enabled ? '异常' : '未启用'))
+      +     '</span>'
+      +   '</div>'
+      + '</div>'
+
+      + '<div class="tabs-line" id="aiTabs">'
+      +   ['overview:概览', 'search:搜索', 'investigate:调查', 'settings:设置'].map(function(x){
+            var p = x.split(':');
+            return '<button class="tabline' + (aiTab === p[0] ? ' is-active' : '') + '" data-ait="' + p[0] + '">' + p[1] + '</button>';
+          }).join('')
+      + '</div>'
+
+      + '<div id="aiBody"></div>'
+
+      + '</div>';
+
+    function paint(){
+      var box = document.getElementById('aiBody');
+      if(!box) return;
+
+      if(aiTab === 'overview')      box.innerHTML = aiOverview(byType, meaningful, noise, todayN, ev, aiSt, aiCfg);
+      else if(aiTab === 'search')   box.innerHTML = aiSearchPage(aiSt, aiCfg);
+      else if(aiTab === 'investigate') box.innerHTML = aiInvestigate(aiSt, aiCfg);
+      else                          box.innerHTML = aiSettingsPage(aiEnv, aiSt, aiCfg);
+
+      bind();
+    }
+
+    function bind(){
+      Array.prototype.forEach.call(c.querySelectorAll('[data-ait]'), function(b){
+        b.onclick = function(){
+          aiTab = this.dataset.ait;
+          Array.prototype.forEach.call(c.querySelectorAll('[data-ait]'), function(x){
+            x.classList.toggle('is-active', x.dataset.ait === aiTab);
+          });
+          paint();
+        };
+      });
+
+      // 事件卡片点击 -> 回放
+      Array.prototype.forEach.call(c.querySelectorAll('[data-ev-did]'), function(el){
+        el.onclick = function(){ gotoReplay(el.dataset.evDid, el.dataset.evTime); };
+      });
+
+      var q = document.getElementById('aiQ');
+      if(q){
+        q.onkeydown = function(e){ if(e.key === 'Enter') doSearch(); };
+        var btn = document.getElementById('aiGo');
+        if(btn) btn.onclick = doSearch;
+      }
+
+      Array.prototype.forEach.call(c.querySelectorAll('[data-aigoto]'), function(b){
+        b.onclick = function(){
+          var t = this.dataset.aigoto;
+          if(t === '__settings'){ page = 'settings'; renderMenu(); render(); return; }
+          aiTab = t;
+          Array.prototype.forEach.call(c.querySelectorAll('[data-ait]'), function(x){
+            x.classList.toggle('is-active', x.dataset.ait === aiTab);
+          });
+          paint();
+        };
+      });
+
+      // 示例问句
+      Array.prototype.forEach.call(c.querySelectorAll('[data-aiex]'), function(b){
+        b.onclick = function(){
+          var q = document.getElementById('aiQ');
+          if(q){ q.value = this.dataset.aiex; doSearch(); }
+        };
+      });
+    }
+
+    function doSearch(){
+      var q2 = (document.getElementById('aiQ')||{}).value || '';
+      if(!q2.trim()) return;
+      aiSearchQuery = q2;
+      var res2 = document.getElementById('aiRes');
+      if(res2) res2.innerHTML = loading('分析中…');
+
+      // 本地解析 + 事件库过滤（不依赖外部 LLM）
+      api('/api/ai/search', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ q: q2 })
+      }).then(function(r){
+        aiSearchResult = r;
+        var el = document.getElementById('aiRes');
+        if(el) el.innerHTML = aiSearchView(r);
+        bind();
+      }).catch(function(err){
+        var el = document.getElementById('aiRes');
+        if(el) el.innerHTML = '<div class="ai-err">查询失败：' + esc(err.message) + '</div>';
+      });
+    }
+
+    paint();
+  }).catch(function(err){
+    c.innerHTML = '<div class="page__inner">' + errorCard(err, function(){ renderAI(c); }) + '</div>';
+  });
+}
+
+// ---- 概览 ----
+function aiOverview(byType, meaningful, noise, todayN, events, aiSt, aiCfg){
+  var recent = events.slice(0, 6);
+
+  function stat(ic, label, val, cls){
+    return '<div class="ai-stat' + (cls ? ' ' + cls : '') + '">'
+      + '<span class="ai-stat__icon">' + icon(ic, 18) + '</span>'
+      + '<span class="ai-stat__body">'
+      +   '<span class="ai-stat__label">' + label + '</span>'
+      +   '<span class="ai-stat__val">' + val + '</span>'
+      + '</span>'
+      + '</div>';
+  }
+
+  return '<div class="ai-stats">'
+    + stat('user',     '人员',   byType.person || 0)
+    + stat('car',      '车辆',   byType.vehicle || 0)
+    + stat('inbox',    '包裹',   byType.package || 0)
+    + stat('activity', '移动',   noise)
+    + '</div>'
+
+    + '<div class="card" style="margin-top:var(--space-4)">'
+    +   '<div class="sec-head">'
+    +     '<span class="sec-head__title">AI 处理情况</span>'
+    +   '</div>'
+    +   '<div class="ai-note">'
+    +     (aiSt.status === 'ready'
+        ? '本地 AI 正在工作：把「画面变化」升级为「有人 / 有车 / 有包裹」。'
+        : '本地 AI 未启用 —— 目前只记录「画面变化」，不区分是人还是车。')
+    +     '<div class="ai-note__sub">'
+    +       '今日共 ' + (todayN || 0) + ' 条事件，其中 '
+    +       '<b>' + meaningful + '</b> 条已识别为目标，'
+    +       '<b>' + noise + '</b> 条为未分类的移动。'
+    +     '</div>'
+    +     (aiSt.status === 'ready' ? '' :
+          '<button class="btn btn--primary" style="margin-top:12px" data-aigoto="settings">'
+          + icon('cpu',14) + '去启用 AI</button>')
     +   '</div>'
     + '</div>'
-    + '<div class="card">' + empty('zap','AI 智能待接入',
-        '先用「事件」页面查看已记录的动静。AI 调查会基于事件库做自然语言检索。','') + '</div>'
+
+    + '<div class="card" style="margin-top:var(--space-4)">'
+    +   '<div class="sec-head">'
+    +     '<span class="sec-head__title">最近事件 <span class="sec-head__en">Recent</span></span>'
+    +     '<a class="sec-head__more" href="javascript:;" data-aigoto="search">搜索 ' + icon('chevron-right',14) + '</a>'
+    +   '</div>'
+    +   '<div class="event-list">'
+    +   (recent.length ? recent.map(function(e){
+        var t = EV_TYPES[e.type] || EV_TYPES.motion;
+        return '<div class="event-item" data-ev-did="' + esc(e.did||'') + '" data-ev-time="' + esc(e.time||'') + '">'
+          + '<span class="event-item__thumb">'
+          +   (e.thumb ? '<img loading="lazy" src="' + apiUrl('/api/events/thumb?f=' + encodeURIComponent(e.thumb)) + '" alt="">' : '')
+          + '</span>'
+          + '<span class="event-item__time">' + esc((e.time||'').slice(11,16)) + '</span>'
+          + '<span class="event-item__where">' + esc(e.device || '') + '</span>'
+          + '<span class="event-item__type">' + icon(t.ic,17) + '</span>'
+          + '<span class="event-item__body">'
+          +   '<span class="event-item__name">' + t.name + (e.aiCls ? ' · ' + esc(e.aiCls) : '') + '</span>'
+          +   '<span class="event-item__desc">' + esc(e.desc || t.desc || '') + '</span>'
+          + '</span>'
+          + '<span class="event-item__chev">' + icon('chevron-right',15) + '</span>'
+          + '</div>';
+      }).join('') : empty('bell','今天还没有事件','',''))
+    +   '</div>'
+    + '</div>';
+}
+
+// ---- 搜索 ----
+function aiSearchPage(aiSt, aiCfg){
+  return '<div class="card">'
+    + '<div class="sec-head">'
+    +   '<span class="sec-head__title">问一问 <span class="sec-head__en">Ask</span></span>'
+    + '</div>'
+    + '<div class="ai-search-box">'
+    +   '<div class="search ai-search-box__input">' + icon('search',16)
+    +     '<input class="input" id="aiQ" type="text" placeholder="例如：昨天门口有人吗？" value="' + esc(aiSearchQuery||'') + '">'
+    +   '</div>'
+    +   '<button class="btn btn--primary" id="aiGo">' + icon('zap',15) + '搜索</button>'
+    + '</div>'
+    + '<div class="ai-examples">'
+    +   ['今天有人吗', '昨晚有没有车', '门口出现过包裹吗', '最近移动事件'].map(function(x){
+          return '<button class="chip" data-aiex="' + esc(x) + '">' + esc(x) + '</button>';
+        }).join('')
+    + '</div>'
+    + '<div class="ai-hint">'
+    +   (aiCfg.enabled && aiSt.status === 'ready'
+        ? '已启用本地 AI —— 搜索基于识别结果（人 / 车 / 包裹）过滤，不依赖外部服务。'
+        : '当前用**本地关键词匹配**事件库。启用 AI 后可以按「人 / 车 / 包裹」精确筛选。')
+    + '</div>'
+    + '<div id="aiRes">' + (aiSearchResult ? aiSearchView(aiSearchResult) : '') + '</div>'
+    + '</div>';
+}
+
+// aiSearchView 搜索结果
+function aiSearchView(r){
+  var hit = r.events || [];
+  if(!hit.length){
+    return '<div class="ai-empty">' + icon('search',28) + '<div>没有找到匹配的事件</div>'
+      + '<div class="ai-empty__sub">试试更宽的时间范围，或换个说法</div></div>';
+  }
+  return '<div class="ai-answer">'
+    + '<div class="ai-answer__head">' + icon('zap',15) + '找到 <b>' + hit.length + '</b> 条相关事件</div>'
+    + '<div class="ai-answer__q">' + esc(r.parsed || r.q || '') + '</div>'
+    + '</div>'
+    + '<div class="event-list" style="margin-top:12px">'
+    + hit.slice(0, 30).map(function(e){
+        var t = EV_TYPES[e.type] || EV_TYPES.motion;
+        return '<div class="event-item" data-ev-did="' + esc(e.did||'') + '" data-ev-time="' + esc(e.time||'') + '">'
+          + '<span class="event-item__thumb">'
+          +   (e.thumb ? '<img loading="lazy" src="' + apiUrl('/api/events/thumb?f=' + encodeURIComponent(e.thumb)) + '" alt="">' : '')
+          + '</span>'
+          + '<span class="event-item__time">' + esc((e.time||'').slice(11,16)) + '</span>'
+          + '<span class="event-item__where">' + esc(e.device || '') + '</span>'
+          + '<span class="event-item__type">' + icon(t.ic,17) + '</span>'
+          + '<span class="event-item__body">'
+          +   '<span class="event-item__name">' + t.name + (e.aiCls ? ' · ' + esc(e.aiCls) : '') + '</span>'
+          +   '<span class="event-item__desc">' + esc((e.time||'').slice(0,10)) + ' · ' + esc(e.device||'') + '</span>'
+          + '</span>'
+          + '<span class="event-item__chev">' + icon('chevron-right',15) + '</span>'
+          + '</div>';
+      }).join('')
+    + '</div>';
+}
+
+// ---- 调查 ----
+function aiInvestigate(aiSt, aiCfg){
+  return '<div class="card">'
+    + '<div class="sec-head">'
+    +   '<span class="sec-head__title">调查 <span class="sec-head__en">Investigations</span></span>'
+    + '</div>'
+    + '<div class="ai-soon">'
+    +   icon('search',30)
+    +   '<div class="ai-soon__title">跨事件调查</div>'
+    +   '<div class="ai-soon__desc">'
+    +     '「这辆车之前来过吗？」这类能力需要**图像向量搜索**。'
+    +   '</div>'
+    +   '<div class="ai-soon__facts">'
+    +     '<div class="ai-fact is-ok">' + icon('check',14) + '本地 img2vec + faiss 可用（已实测）</div>'
+    +     '<div class="ai-fact is-warn">' + icon('alert',14) + '单张向量化约 3.7 秒，只适合按需搜索</div>'
+    +     '<div class="ai-fact is-bad">' + icon('close',14) + '人体 Re-ID 精度不足（img2vec 对人形区分度低）</div>'
+    +   '</div>'
+    +   '<div class="ai-soon__note">'
+    +     '结论：<b>「找相似的车」可以做</b>，「找同一个人」暂时做不了。'
+    +   '</div>'
+    + '</div>'
+    + '</div>';
+}
+
+// ---- 设置（指向设置页） ----
+function aiSettingsPage(aiEnv, aiSt, aiCfg){
+  var rows = [
+    ['本地 AI 检测', aiSt.status === 'ready' ? '运行中' : (aiCfg.enabled ? '异常' : '未启用'),
+      aiSt.status === 'ready' ? 'ok' : (aiCfg.enabled ? 'warn' : '')],
+    ['识别模型', aiCfg.model || 'yolov8n', ''],
+    ['置信度阈值', String(aiCfg.confThreshold || 0.45), ''],
+    ['识别频率上限', (aiCfg.maxPerMinute || 12) + ' 次/分钟', ''],
+    ['运行环境', aiEnv.available ? '飞牛 AI 运行时可用' : '不可用', aiEnv.available ? 'ok' : 'bad'],
+    ['外部视觉理解', '未配置', 'warn'],
+    ['自然语言查询', '本地关键词匹配', ''],
+    ['隐私', 'AI 在本机运行，不上传画面', 'ok'],
+  ];
+
+  return '<div class="card">'
+    + '<div class="sec-head">'
+    +   '<span class="sec-head__title">AI 能力状态 <span class="sec-head__en">Status</span></span>'
+    +   '<a class="sec-head__more" href="javascript:;" data-aigoto="__settings">去设置 ' + icon('chevron-right',14) + '</a>'
+    + '</div>'
+    + '<div class="ai-rows">'
+    + rows.map(function(r){
+        var cls = r[2] === 'ok' ? 'is-ok' : r[2] === 'warn' ? 'is-warn' : r[2] === 'bad' ? 'is-bad' : '';
+        return '<div class="ai-row">'
+          + '<span class="ai-row__label">' + r[0] + '</span>'
+          + '<span class="ai-row__val ' + cls + '">'
+          + (r[2] === 'ok' ? icon('check',13) : r[2] === 'warn' ? icon('alert',13) : r[2] === 'bad' ? icon('close',13) : '')
+          + esc(r[1]) + '</span>'
+          + '</div>';
+      }).join('')
+    + '</div>'
+    + '<div class="ai-hint" style="margin-top:16px">'
+    +   '外部视觉理解（DeepSeek）和自然语言查询计划在下一阶段接入。'
+    +   '当前所有 AI 都在本机运行。'
+    + '</div>'
     + '</div>';
 }
 
