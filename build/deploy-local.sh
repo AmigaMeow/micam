@@ -75,3 +75,9 @@ if ! echo "$RUNNING" | grep -q "\"version\":\"$EXPECT\""; then
   exit 1
 fi
 echo "完成: v$EXPECT 已上线"
+
+echo "==> 6/6 前端自检"
+bash "$ROOT/build/verify-ui.sh" || {
+  echo "!! 前端自检失败" >&2
+  exit 1
+}

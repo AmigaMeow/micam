@@ -328,3 +328,70 @@ Basecoat 用 shadcn 语义变量。**不修改它的 dist 文件**，
 | 页面级细节 | 各页可继续按效果图细化（当前是统一改造） |
 | 图标按需加载 | 当前 sprite 92 个；可按页拆分 |
 | 业务组件抽象 | camera-card / rec-item 可进一步参数化 |
+
+---
+
+## 八、踩坑记录：网关路径与外部资源
+
+### 8.1 事故（v0.16.0 首发）
+
+Haven 重构后发布，用户打开发现**完全无样式**（裸 HTML + 巨大图标）。
+
+### 8.2 根因
+
+飞牛网关转发时会**改变路径形态**。实测日志：
+
+~~~
+GET /app/micam/      <- 页面加载成功
+GET /hls.min.js      <- 相对路径被解析到**根**，而不是 /app/micam/hls.min.js
+~~~
+
+于是 CSS 的 `assets/css/tokens.css` 同样解析错 → 全部 404 → 无样式。
+
+### 8.3 修复
+
+**样式一律内联进 index.html。**
+
+~~~js
+// build/assemble-web.js
+const CSS_FILES = ['assets/ui/basecoat.css', 'assets/css/tokens.css', ...];
+let css = '';
+for (const f of CSS_FILES) css += read(f);
+out = shell.replace('<!--INLINE_CSS-->', css);
+~~~
+
+- 内联 CSS：253KB（主要是 Basecoat）
+- 图标 sprite：19KB（本来就内联）
+- 应用 JS：97KB（本来就内联）
+- **index.html 总计 371KB，零外部 CSS 依赖**
+
+hls.js（620KB）保持外部，但用**多路径回退**：
+
+~~~js
+var candidates = [
+  "assets/vendor/hls.min.js",             // 相对（直连）
+  "/app/micam/assets/vendor/hls.min.js",  // 网关绝对
+  "/assets/vendor/hls.min.js"             // 直连绝对
+];
+// 全部失败 -> 降级 MJPEG（功能不受影响）
+~~~
+
+### 8.4 流程改进
+
+**问题不在代码，在验证方式** —— 之前只测了直连 8900，
+没测网关路径，也没真正"以用户视角打开看"。
+
+新增 `build/verify-ui.sh`，**已接入 deploy-local.sh**：
+
+~~~
+==> 6/6 前端自检
+  ✅ GET /                          200
+  ✅ GET /app/micam/                200
+  ✅ 含内联 <style>
+  ✅ 无外部 CSS 引用          <- 关键检查
+  ✅ class="app" / id="menu" / id="content" / id="i-camera"
+  ✅ DOCTYPE 位置 0
+  ✅ hls.js 候选路径全部 200
+~~~
+
+**规则：任何前端改动，部署后必须跑自检；发布前必须在浏览器里确认计算样式。**
