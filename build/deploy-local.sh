@@ -24,11 +24,14 @@ rm -f "$PLATFORM/app/server/micamd"
 echo "==> 2/5 全新编译"
 mkdir -p "$PLATFORM/app/server"
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-  "$GO" build -trimpath -ldflags="-s -w" \
+  "$GO" build -trimpath -ldflags="-s -w -X main.appVersion=$EXPECT" \
   -o "$PLATFORM/app/server/micamd" "$ROOT/cmd/micamd"
 
-# 从二进制里读出版本，和 manifest 对比
-GOT="$(grep -aoE '0\.[0-9]+\.[0-9]+' "$PLATFORM/app/server/micamd" | sort -u | tail -1)"
+# 用二进制自己的 --version 校验（权威）
+#
+# 为什么不用 grep：二进制里含依赖的版本号（如 go2rtc 0.8.1），
+# grep 会抓错。--version 是程序自己报的，可靠。
+GOT="$("$PLATFORM/app/server/micamd" --version 2>/dev/null | awk '{print $2}')"
 if [ "$GOT" != "$EXPECT" ]; then
   echo "!! 版本不一致：二进制=$GOT manifest=$EXPECT" >&2
   exit 1
@@ -46,6 +49,15 @@ sleep 3
 
 cp "$PLATFORM/app/server/micamd" /vol1/@appcenter/micam/server/micamd
 chown micam:micam /vol1/@appcenter/micam/server/micamd
+
+# 部署前端（很容易忘——忘了就是「改了界面但没生效」）
+mkdir -p /vol1/@appcenter/micam/www
+cp "$PLATFORM/app/www/"* /vol1/@appcenter/micam/www/ 2>/dev/null || true
+chown -R micam:micam /vol1/@appcenter/micam/www
+# 强制让服务重新部署 web（删除目标，触发 deployWeb 的 mtime 判断）
+rm -f /vol1/@appdata/micam/web/index.html
+echo "    前端已同步"
+
 rm -f /vol1/@appcenter/micam/app.sock /vol1/@appdata/micam/app.pid
 
 echo "==> 4/5 重启"

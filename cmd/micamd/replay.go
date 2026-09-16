@@ -691,7 +691,18 @@ func (s *Server) handleRecConfig(w http.ResponseWriter, r *http.Request) {
 		logf("[rec] 策略已更新: enabled=%v segment=%ds keepDays=%d minFreeGB=%d cacheGB=%d",
 			cur.Enabled, int(cur.Segment.Seconds()), cur.KeepDays, cur.MinFreeGB, s.cfg.TranscodeCacheGB)
 
-		writeJSON(w, 200, map[string]any{"ok": true})
+		// 开关 = 真实行为
+		//
+		// 用户明确要求：不能悄悄地录，打开才录，关闭立刻停。
+		if req.Enabled != nil {
+			if *req.Enabled {
+				go s.startAllRecordings()
+			} else {
+				go s.stopAllRecordings()
+			}
+		}
+
+		writeJSON(w, 200, map[string]any{"ok": true, "enabled": cur.Enabled})
 		return
 
 	default:

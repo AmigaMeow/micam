@@ -100,6 +100,6 @@ func readJPEG(r io.Reader, timeout time.Duration) ([]byte, error) {
 	case r := <-ch:
 		return r.b, r.err
 	case <-time.After(timeout):
-		return nil, fmt.Errorf("等待画面超时（摄像头可能被米家 App 或 EasyNVR 占用）")
+		return nil, fmt.Errorf("等待画面超时（摄像头可能被米家 App 占用）")
 	}
 }

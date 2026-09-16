@@ -528,7 +528,6 @@ var MENU = [
   {k:"storage",   t:"存储监控", i:"inbox"},
   {k:"recordings",t:"录像管理", i:"rec"},
   {k:"accounts",  t:"账号管理", i:"user"},
-  {k:"setup",     t:"安装向导", i:"check"},
   {k:"settings",  t:"系统设置", i:"set"},
   {k:"dev",       t:"开发者",   i:"code", dev:true}
 ];
@@ -1310,57 +1309,157 @@ function renderStorage(c){
 function loadRecConfig(){
   var box = $("#recCfg");
   if(!box) return;
-  api("/api/recordings/config").then(function(c){
+
+  Promise.all([
+    api("/api/recordings/config"),
+    api("/api/storage/locations").catch(function(){ return {locations:[]}; })
+  ]).then(function(res){
+    var c = res[0] || {};
+    var locs = (res[1] || {}).locations || [];
+    var cur = c.dir || "";
+
+    // 存储位置下拉
+    var note = (res[1] || {}).note || "";
+    var opts = locs.map(function(l){
+      var sel = (l.path === cur) ? ' selected' : '';
+      var badge = l.badge ? '【' + l.badge + '】' : '';
+      var tag = l.writable ? '' : '（不可写）';
+      var size = l.totalGB ? '  ' + l.freeGB.toFixed(0) + 'G / ' + l.totalGB.toFixed(0) + 'G' : '';
+      return '<option value="' + esc(l.path) + '"' + sel + '>' + badge + esc(l.name) + size + tag + '</option>';
+    }).join("");
+    if(!opts){
+      opts = '<option value="' + esc(cur) + '" selected>' + esc(cur) + '</option>';
+    }
+    // 当前项说明
+    var curLoc = null;
+    locs.forEach(function(l){ if(l.path === cur) curLoc = l; });
+    var curDesc = curLoc && curLoc.desc ? curLoc.desc : "";
+
     box.innerHTML = ""
-      + "<div class=\"cfg-row\">"
-      +   "<div class=\"cfg-label\">自动录像</div>"
-      +   "<label class=\"switch\"><input type=\"checkbox\" id=\"cfgEnabled\"" + (c.enabled ? " checked" : "") + "><span></span></label>"
-      +   "<div class=\"cfg-hint\">开启后按分片时长连续录制</div>"
+      // ---- 存储位置 ----
+      + "<div class='cfg-row' style='align-items:flex-start'>"
+      +   "<div class='cfg-label' style='padding-top:8px'>录像位置</div>"
+      +   "<div style='flex:1;min-width:0'>"
+      +     "<select class='btn' id='cfgDir' style='width:100%;text-align:left;font-size:12px'>" + opts + "</select>"
+      +     "<div class='cfg-hint' style='margin-top:6px'>"
+      +       (curDesc ? "当前：" + esc(curDesc) + "<br>" : "")
+      +       "录像存到「目录/设备名/日期/」下。"
+      +       (note ? "<br><span style='color:var(--text-3)'>" + esc(note) + "</span>" : "")
+      +     "</div>"
+      +     "<div style='margin-top:8px'>"
+      +       "<input class='btn' id='cfgDirCustom' placeholder='或手动输入绝对路径，如 /vol1/1000/micam' "
+      +         "style='width:100%;text-align:left;font-size:12px'>"
+      +     "</div>"
+      +   "</div>"
       + "</div>"
-      + "<div class=\"cfg-row\">"
-      +   "<div class=\"cfg-label\">分片时长</div>"
-      +   "<input class=\"btn cfg-input\" id=\"cfgSegment\" type=\"number\" min=\"10\" max=\"3600\" value=\"" + (c.segmentSec||300) + "\">"
-      +   "<div class=\"cfg-hint\">秒（10-3600，越小文件越多）</div>"
+
+      // ---- 自动录像（需确认）----
+      + "<div class='cfg-row' style='align-items:flex-start;border-top:1px solid var(--split);margin-top:6px;padding-top:14px'>"
+      +   "<div class='cfg-label' style='padding-top:8px'>自动录像</div>"
+      +   "<div style='flex:1'>"
+      +     "<label class='switch'><input type='checkbox' id='cfgEnabled'" + (c.enabled ? " checked" : "") + "><span></span></label>"
+      +     "<div class='cfg-hint' style='margin-top:6px'>"
+      +       (c.enabled
+              ? "<span style='color:var(--warning)'>正在录像</span> —— 持续占用磁盘，按「保留天数」自动清理旧文件。"
+              : "关闭中。<b>打开后会立即开始录制所有在线摄像头</b>，并持续占用磁盘空间。")
+      +     "</div>"
+      +   "</div>"
       + "</div>"
-      + "<div class=\"cfg-row\">"
-      +   "<div class=\"cfg-label\">保留天数</div>"
-      +   "<input class=\"btn cfg-input\" id=\"cfgKeep\" type=\"number\" min=\"1\" max=\"365\" value=\"" + (c.keepDays||7) + "\">"
-      +   "<div class=\"cfg-hint\">天（超期自动清理）</div>"
+
+      + "<div class='cfg-row'>"
+      +   "<div class='cfg-label'>分片时长</div>"
+      +   "<input class='btn cfg-input' id='cfgSegment' type='number' min='10' max='3600' value='" + (c.segmentSec||300) + "'>"
+      +   "<div class='cfg-hint'>秒（越短文件越多，10-3600）</div>"
       + "</div>"
-      + "<div class=\"cfg-row\">"
-      +   "<div class=\"cfg-label\">磁盘阈值</div>"
-      +   "<input class=\"btn cfg-input\" id=\"cfgMinFree\" type=\"number\" min=\"0\" max=\"10000\" value=\"" + (c.minFreeGB||10) + "\">"
-      +   "<div class=\"cfg-hint\">GB（剩余低于此值就紧急清理）</div>"
+      + "<div class='cfg-row'>"
+      +   "<div class='cfg-label'>保留天数</div>"
+      +   "<input class='btn cfg-input' id='cfgKeep' type='number' min='1' max='365' value='" + (c.keepDays||7) + "'>"
+      +   "<div class='cfg-hint'>天（超期自动清理）</div>"
       + "</div>"
-      + "<div class=\"cfg-row\">"
-      +   "<div class=\"cfg-label\">转码缓存上限</div>"
-      +   "<input class=\"btn cfg-input\" id=\"cfgCache\" type=\"number\" min=\"1\" max=\"500\" value=\"" + (c.cacheGB||5) + "\">"
-      +   "<div class=\"cfg-hint\">GB（回放缓存，超了删最旧的）</div>"
+      + "<div class='cfg-row'>"
+      +   "<div class='cfg-label'>磁盘阈值</div>"
+      +   "<input class='btn cfg-input' id='cfgMinFree' type='number' min='0' max='10000' value='" + (c.minFreeGB||10) + "'>"
+      +   "<div class='cfg-hint'>GB（剩余低于此值就紧急清理）</div>"
       + "</div>"
-      + "<div style=\"font-size:12px;color:var(--text-3);margin-top:10px\">"
-      +   "录像目录：" + esc(c.dir||"") + "</div>";
+      + "<div class='cfg-row'>"
+      +   "<div class='cfg-label'>转码缓存</div>"
+      +   "<input class='btn cfg-input' id='cfgCache' type='number' min='1' max='500' value='" + (c.cacheGB||5) + "'>"
+      +   "<div class='cfg-hint'>GB（回放缓存上限）</div>"
+      + "</div>";
+
+    // 位置切换：立即生效
+    var sel = $("#cfgDir");
+    if(sel) sel.onchange = function(){ changeRecDir(this.value); };
+
+    var custom = $("#cfgDirCustom");
+    if(custom) custom.onkeydown = function(e){
+      if(e.key === "Enter" && this.value.trim()){
+        changeRecDir(this.value.trim());
+      }
+    };
+
+    // 自动录像开关：需确认
+    var en = $("#cfgEnabled");
+    if(en) en.onchange = function(){
+      var on = this.checked;
+      var self = this;
+      if(on){
+        if(!confirm(
+          "开启自动录像？\n\n" +
+          "· 会立即开始录制所有在线摄像头\n" +
+          "· 持续占用磁盘空间\n" +
+          "· 按「保留天数」自动清理旧文件\n\n" +
+          "确定开启吗？"
+        )){
+          self.checked = false;
+          return;
+        }
+      } else {
+        if(!confirm("关闭自动录像？\n\n正在进行的录像会停止。")){
+          self.checked = true;
+          return;
+        }
+      }
+      saveRecConfig();
+    };
 
     var sb = $("#btnRecCfgSave");
     if(sb) sb.onclick = saveRecConfig;
   }).catch(function(e){
-    box.innerHTML = "<div style=\"color:var(--error);font-size:13px\">" + esc(e.message) + "</div>";
+    box.innerHTML = "<div style='color:var(--error);font-size:13px'>" + esc(e.message) + "</div>";
   });
+}
+
+// changeRecDir 切换录像目录（单独接口，立即生效）
+function changeRecDir(dir){
+  if(!dir) return;
+  toast("正在切换录像目录…");
+  api("/api/storage/record-dir", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ dir: dir })
+  }).then(function(r){
+    toast("录像目录已切换到 " + r.dir, "ok");
+    loadRecConfig();
+  }).catch(function(e){ toast("切换失败：" + e.message, "err"); });
 }
 
 function saveRecConfig(){
   var body = {
-    enabled:    ($("#cfgEnabled")||{}).checked || false,
     segmentSec: parseInt(($("#cfgSegment")||{}).value, 10) || 300,
     keepDays:   parseInt(($("#cfgKeep")||{}).value, 10) || 7,
     minFreeGB:  parseInt(($("#cfgMinFree")||{}).value, 10),
     cacheGB:    parseInt(($("#cfgCache")||{}).value, 10) || 5
   };
   if(isNaN(body.minFreeGB)) body.minFreeGB = 10;
+  var en = $("#cfgEnabled");
+  if(en) body.enabled = en.checked;
+
   api("/api/recordings/config", {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body)
-  }).then(function(){
-    toast("存储策略已保存", "ok");
+  }).then(function(r){
+    toast(body.enabled ? "已开启自动录像（" + (r.enabled ? "生效中" : "已关闭") + "）" : "设置已保存", "ok");
+    setTimeout(loadRecConfig, 1200);
   }).catch(function(e){ toast("保存失败：" + e.message, "err"); });
 }
 
@@ -2361,6 +2460,13 @@ function loadDevCaps(){
 // ===== 页面：系统设置 =====
 function renderSettings(c){
   c.innerHTML = "<div class=\"card\">"
+    + "<div class=\"card-head\"><span class=\"card-title\">" + icon("check",15) + " 安装向导</span>"
+    +   "<button class=\"btn btn-sm\" id=\"btnRerunWizard\">重新运行</button></div>"
+    + "<div style=\"padding:16px 24px;font-size:13px;color:var(--text-3)\">"
+    +   "重新检查环境（扫码登录、设备发现、端口、编码器）。首次安装时会自动运行。"
+    + "</div>"
+    + "</div>"
+    + "<div class=\"card\">"
     + "<div class=\"card-head\"><span class=\"card-title\">" + icon("rec",15) + " 事件通知</span>"
     +   "<button class=\"btn btn-sm\" id=\"btnNotifyTest\">发送测试</button></div>"
     + "<div style=\"padding:16px 24px\" id=\"notifyCfg\">" + loading("读取中…") + "</div>"
@@ -2392,7 +2498,7 @@ function renderSettings(c){
     + "<table>"
     + "<tr><td style=\"width:180px;color:var(--text-2)\">应用</td><td>MiCam（小米摄像头）</td></tr>"
     + "<tr><td style=\"color:var(--text-2)\">版本</td><td>" + (APP_VER || "—") + "</td></tr>"
-    + "<tr><td style=\"color:var(--text-2)\">连接方式</td><td>小米云 P2P 直连（不依赖 EasyNVR）</td></tr>"
+    + "<tr><td style=\"color:var(--text-2)\">连接方式</td><td>小米云 P2P 直连</td></tr>"
     + "<tr><td style=\"color:var(--text-2)\">后端</td><td><span class=\"tag tag-on\">运行中</span></td></tr>"
     + "</table></div>";
 }
@@ -2704,9 +2810,20 @@ document.addEventListener("click", function(e){
 // 如果要离线使用，可以把 hls.min.js 放到 www/ 目录，改用本地路径。
 (function(){
   var s = document.createElement("script");
-  s.src = "https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js";
+  // 优先用本地内置的 hls.js
+  //
+  // 为什么内置：原来从 jsdelivr CDN 加载，国内网络经常连不上，
+  // 结果就是「已连接但黑屏」——服务端流是好的，只是播放库没加载到。
+  // NAS 插件不该依赖外部 CDN。
+  s.src = "hls.min.js";
   s.onerror = function(){
-    console.warn("hls.js 加载失败，将自动使用 MJPEG 模式");
+    // 本地失败 -> 再试 CDN（最后兜底）
+    console.warn("[micam] 本地 hls.js 加载失败，尝试 CDN…");
+    var s2 = document.createElement("script");
+    s2.src = "https://cdn.jsdelivr.net/npm/hls.js@1/dist/hls.min.js";
+    s2.onload = function(){ window.__hlsLoaded && window.__hlsLoaded(); };
+    s2.onerror = function(){ console.warn("[micam] CDN 也失败，将使用 MJPEG 模式"); };
+    document.head.appendChild(s2);
     window.__hlsFailed = true;
   };
   s.onload = function(){ window.__hlsReady = true; };

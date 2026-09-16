@@ -33,10 +33,12 @@ import (
 	"github.com/micam/micam/internal/xiaomi"
 )
 
-const (
-	appName    = "micam"
-	appVersion = "0.14.0"
-)
+const appName = "micam"
+
+// appVersion 用 var 而非 const：
+// 允许构建时用 -ldflags "-X main.appVersion=x.y.z" 注入，
+// 确保二进制里的版本与 manifest 严格一致（构建脚本会校验）。
+var appVersion = "0.14.0"
 
 func main() {
 	var (
@@ -49,7 +51,17 @@ func main() {
 		ffmpegPath = flag.String("ffmpeg", "ffmpeg", "ffmpeg 可执行文件路径")
 		daemonMode = flag.Bool("daemon", false, "后台运行（自己 daemon 化）")
 	)
+	showVersion := flag.Bool("version", false, "打印版本后退出")
 	flag.Parse()
+
+	// --version：打印版本后退出
+	//
+	// 用途：构建脚本用 `micamd --version` 校验二进制版本，
+	// 比在二进制里 grep 版本号可靠（避免匹配到依赖的版本）。
+	if *showVersion {
+		fmt.Printf("%s %s\n", appName, appVersion)
+		return
+	}
 
 	// daemon 化：重新 exec 自己并脱离父进程
 	//
@@ -130,6 +142,16 @@ func main() {
 
 	// 设备在线状态守护：离线/上线发通知
 	srv.startDeviceWatcher()
+
+	// 自动录像：只有配置里明确打开了才恢复
+	//
+	// 用户明确要求「同意才开始录制」，所以默认是关的。
+	if cfg.RecordEnabled {
+		go func() {
+			time.Sleep(20 * time.Second) // 等设备列表就绪
+			srv.startAllRecordings()
+		}()
+	}
 
 	_ = rtspPort // 保留参数，当前用管道方案，不需要 RTSP 中转
 
@@ -309,6 +331,8 @@ func deployWeb(dataDir string) {
 	}
 	// 目标已存在且不比源旧则跳过
 	if di, err := os.Stat(dst); err == nil && !di.ModTime().Before(info.ModTime()) {
+		// index.html 没变，但仍要补齐其他静态文件（如 hls.min.js）
+		copyWebAssets(filepath.Dir(src), dstDir)
 		return
 	}
 	if err := os.MkdirAll(dstDir, 0o755); err != nil {
@@ -335,6 +359,11 @@ func deployWeb(dataDir string) {
 		return
 	}
 	log.Printf("已部署前端页面: %s", dst)
+
+	// 一并部署同目录的其他静态资源（hls.min.js 等）
+	//
+	// 漏了这步的表现：hls.js 404 -> HLS 播放黑屏。
+	copyWebAssets(filepath.Dir(src), dstDir)
 }
 
 // looksLikeHTML 基本结构检查。
@@ -403,6 +432,9 @@ func (s *Server) routes(mux *http.ServeMux) {
 
 	// 云台
 	// 事件通知
+	mux.HandleFunc("/api/storage/locations", s.handleStorageLocations)
+	mux.HandleFunc("/api/storage/record-dir", s.handleSetRecordDir)
+
 	mux.HandleFunc("/api/notify/config", s.handleNotifyConfig)
 	mux.HandleFunc("/api/notify/events", s.handleNotifyEvents)
 	mux.HandleFunc("/api/notify/test", s.handleNotifyTest)
@@ -765,3 +797,38 @@ func base64Encode(b []byte) string {
 }
 
 var _ = fmt.Sprintf
+
+// copyWebAssets 把 www 目录下的静态资源复制到部署目录。
+//
+// 为什么需要：前端原来只有 index.html，后来加了 hls.min.js。
+// 只复制 index.html 的话，播放库会 404 -> HLS 播放黑屏。
+func copyWebAssets(srcDir, dstDir string) {
+	entries, err := os.ReadDir(srcDir)
+	if err != nil {
+		return
+	}
+	for _, ent := range entries {
+		if ent.IsDir() || ent.Name() == "index.html" {
+			continue
+		}
+		s := filepath.Join(srcDir, ent.Name())
+		d := filepath.Join(dstDir, ent.Name())
+
+		si, err := os.Stat(s)
+		if err != nil {
+			continue
+		}
+		if di, err := os.Stat(d); err == nil && !di.ModTime().Before(si.ModTime()) {
+			continue
+		}
+		raw, err := os.ReadFile(s)
+		if err != nil {
+			continue
+		}
+		if err := os.WriteFile(d, raw, 0o644); err != nil {
+			log.Printf("复制静态资源 %s 失败: %v", ent.Name(), err)
+			continue
+		}
+		log.Printf("已部署静态资源: %s (%d 字节)", ent.Name(), len(raw))
+	}
+}

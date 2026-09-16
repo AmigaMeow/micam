@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"time"
+
+	"github.com/micam/micam/internal/xiaomi"
 )
 
 // handleRecordings：GET 列表 / POST 开始录像
@@ -32,20 +34,8 @@ func (s *Server) handleRecordings(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// 独占连接 + consumer
-		_, mc, release, err := s.useConn(dev)
-		if err != nil {
+		if err := s.startRecording(dev); err != nil {
 			writeErr(w, 502, err.Error())
-			return
-		}
-		pr := newBufferedPipe(16 << 20)
-		go func() {
-			defer release()
-			_, _ = mc.Consumer().WriteTo(pr)
-		}()
-
-		if err := s.rec.Start(req.Did, dev.Name, pr); err != nil {
-			writeErr(w, 500, err.Error())
 			return
 		}
 		writeJSON(w, 200, map[string]any{"ok": true, "did": req.Did, "name": dev.Name})
@@ -104,3 +94,65 @@ func (s *Server) handleRecordCleanup(w http.ResponseWriter, r *http.Request) {
 }
 
 var _ = time.Now
+
+// startRecording 为一台设备开始录像。
+//
+// 公共逻辑：建连接 -> 取 consumer -> 起后台协程喂数据 -> 交给录像器。
+func (s *Server) startRecording(dev *xiaomi.Device) error {
+	_, mc, release, err := s.useConn(dev)
+	if err != nil {
+		return err
+	}
+
+	pr := newBufferedPipe(16 << 20)
+	go func() {
+		defer release()
+		_, _ = mc.Consumer().WriteTo(pr)
+	}()
+
+	return s.rec.Start(dev.Did, dev.Name, pr)
+}
+
+// startAllRecordings 为所有在线摄像头开始录像。
+//
+// 为什么需要：配置里的「自动录像」开关原来只改标志位，不真的录。
+// 现在开关 = 真实行为：打开就录，关闭就停。
+func (s *Server) startAllRecordings() {
+	cams := s.allCameras()
+	var started, failed int
+
+	for _, d := range cams {
+		if !d.IsCamera() || !d.IsOnline {
+			continue
+		}
+		// 已经在录就跳过
+		for _, st := range s.rec.List() {
+			if st.Did == d.Did && st.Running {
+				started++
+				goto next
+			}
+		}
+		if err := s.startRecording(d); err != nil {
+			logf("[rec] %s 开始录像失败: %v", d.Did, err)
+			failed++
+		} else {
+			logf("[rec] %s 已开始录像", d.Name)
+			started++
+		}
+	next:
+	}
+
+	logf("[rec] 自动录像已启动: %d 台成功, %d 台失败", started, failed)
+}
+
+// stopAllRecordings 停止所有录像。
+func (s *Server) stopAllRecordings() {
+	n := 0
+	for _, st := range s.rec.List() {
+		if st.Running {
+			n++
+		}
+	}
+	s.rec.StopAll()
+	logf("[rec] 已停止全部录像（%d 路）", n)
+}

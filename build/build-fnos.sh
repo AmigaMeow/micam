@@ -18,8 +18,16 @@ mkdir -p "$STAGE" "$DIST"
 echo "==> 交叉编译后端（linux/amd64）"
 mkdir -p "$STAGE/server"
 CGO_ENABLED=0 GOOS=linux GOARCH=amd64 \
-  "$GO" build -trimpath -ldflags="-s -w" \
+  "$GO" build -trimpath -ldflags="-s -w -X main.appVersion=$VERSION" \
   -o "$STAGE/server/micamd" "$ROOT/cmd/micamd"
+
+# 校验版本（用二进制自己报的）
+BUILT="$("$STAGE/server/micamd" --version 2>/dev/null | awk '{print $2}')"
+if [ "$BUILT" != "$VERSION" ]; then
+  echo "!! 版本不一致：二进制=$BUILT manifest=$VERSION" >&2
+  exit 1
+fi
+echo "    版本校验通过: $BUILT"
 
 echo "==> 复制平台文件"
 cp "$PLATFORM/manifest" "$STAGE/"

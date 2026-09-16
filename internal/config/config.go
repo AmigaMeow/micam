@@ -164,3 +164,11 @@ func (c *Config) SetNotify(enabled *bool, webhook *string, events *[]string) err
 	c.mu.Unlock()
 	return c.SaveSelf()
 }
+
+// SetRecordDir 设置录像目录并落盘。
+func (c *Config) SetRecordDir(dir string) error {
+	c.mu.Lock()
+	c.RecordDir = dir
+	c.mu.Unlock()
+	return c.SaveSelf()
+}
