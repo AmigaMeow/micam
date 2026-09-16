@@ -245,3 +245,86 @@ renderDev         开发者（开放模式）
 | 无统一间距体系 | 引入 `--space-*` 令牌（4/8/12/16/24） |
 | 无统一动效 | 引入 `--ease` / `--duration` 令牌 |
 | 图标为内联 SVG 函数 | 可抽成图标集 |
+
+---
+
+## 七、实现现状（v0.16.0）
+
+### 7.1 技术栈落地方案
+
+~~~
+Haven UI = Basecoat primitives + shadcn/Linear 视觉
+         + Haven Tokens + Lucide + Vanilla JS
+~~~
+
+| 层 | 选型 | 位置 |
+|---|---|---|
+| 基础组件 | **Basecoat** 1.0.2（自托管，无构建） | `assets/ui/basecoat.css` + `assets/ui/js/` |
+| 设计令牌 | **Haven**（本项目定义） | `assets/css/tokens.css` |
+| 图标 | **Lucide** 1.46.0 子集（92 个，19KB sprite） | `assets/img/icons.svg` |
+| 业务组件 | 自研 | `assets/css/components.css` |
+| 播放库 | hls.js（自托管） | `assets/vendor/hls.min.js` |
+| 交互 | Vanilla JS | `index.html`（组装产物） |
+
+**为什么不用框架**：飞牛插件无官方 UI 要求；保持无构建能"改完即生效"。
+**硬约束**：所有依赖必须本地化（CDN 在国内不可靠）。
+
+### 7.2 目录结构
+
+~~~
+platform/fnos/app/
+├── shell.html              外壳模板（占位符：<!--SPRITE--> <!--APP_JS-->）
+├── www/
+│   ├── index.html          组装产物
+│   └── assets/
+│       ├── css/            tokens / base / components / pages
+│       ├── js/             （应用逻辑内联在 index.html，此目录预留）
+│       ├── ui/             Basecoat CSS + 组件 JS
+│       ├── img/            Lucide sprite
+│       └── vendor/         hls.js
+└── ...
+~~~
+
+组装：`node build/assemble-web.js`（外壳 + sprite + JS → index.html）
+
+### 7.3 Basecoat 集成方式
+
+Basecoat 用 shadcn 语义变量。**不修改它的 dist 文件**，
+而是在 `tokens.css` 里把这些变量指向 Haven 令牌：
+
+~~~css
+--background: var(--bg);
+--card:       var(--surface-1);
+--primary:    var(--accent);
+--muted:      var(--surface-2);
+--border:     var(--border);
+--radius-sm:  6px;   /* 覆盖 Basecoat 的 calc 派生 */
+~~~
+
+这样 Basecoat 组件自动套上 Haven 皮肤。
+
+### 7.4 明暗模式
+
+- 默认 `<html class="dark">`（对齐效果图）
+- 飞牛宿主为浅色时，SDK 回调移除 `dark` 类
+- 令牌按 `.dark` 作用域切换
+
+### 7.5 浏览器实测
+
+| 项 | 计算值 | 期望 | |
+|---|---|---|---|
+| 背景 | `rgb(14,17,22)` | `#0e1116` | ✅ |
+| 侧边栏 | `rgb(18,23,30)` | `#12171e` | ✅ |
+| 激活项 | `rgb(27,33,42)` | `#1b212a` | ✅ |
+| 文字 | `rgb(230,237,243)` | `#e6edf3` | ✅ |
+| 侧边栏宽 | `232px` | `--sider-w` | ✅ |
+
+8 个页面全部渲染正常，无 JS 错误。
+
+### 7.6 待优化
+
+| 项 | 说明 |
+|---|---|
+| 页面级细节 | 各页可继续按效果图细化（当前是统一改造） |
+| 图标按需加载 | 当前 sprite 92 个；可按页拆分 |
+| 业务组件抽象 | camera-card / rec-item 可进一步参数化 |
