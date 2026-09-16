@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <title>小米摄像头</title>
-<meta name="micam-build" content="2026-09-16 20:35:00">
+<meta name="micam-build" content="2026-09-16 20:56:02">
 <!-- 样式内联：飞牛网关会剥前缀，相对路径不可靠（详见 build/assemble-web.js）-->
 <style>
 
@@ -3277,6 +3277,9 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; line-h
 .ai-mode__desc { font-size: var(--text-base); color: var(--text-muted); line-height: 1.7; }
 
 .ai-cfg { padding: 0 var(--space-5); }
+.ai-cfg .cfg-row__control { padding-right: 2px; }
+.ai-cfg .cfg-row__control > .input { max-width: 100%; }
+.ai-cfg .cfg-row__num { width: 88px; flex: 0 0 auto; }
 .ai-foot-line { padding: var(--space-3) var(--space-5); font-size: var(--text-sm); color: var(--text-muted); }
 .ai-prov { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-5); flex-wrap: wrap; }
 
@@ -3397,11 +3400,285 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; line-h
 .card__head .set-status + .btn, .card__head .set-status + a.btn { margin-left: 0; }
 
 
+/* ==========================================================================
+   AI SETTINGS（精致版，对齐效果图 P0-2）
+   ========================================================================== */
+
+/* 卡头里的副说明 */
+.card__hint {
+  font-size: var(--text-sm); color: var(--text-muted);
+  font-weight: var(--weight-normal); margin-left: var(--space-3);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+@media (max-width: 900px) { .card__hint { display: none; } }
+
+/* ---- AI 模式卡（加费用标签）---- */
+.ai-mode { position: relative; }
+.ai-mode__radio {
+  position: absolute; left: var(--space-4); top: 50%; transform: translateY(-50%);
+  width: 16px; height: 16px; border-radius: 50%;
+  border: 1.5px solid var(--border-strong);
+  flex: 0 0 auto;
+}
+.ai-mode.is-active .ai-mode__radio {
+  border-color: var(--accent);
+  background: radial-gradient(circle, var(--accent) 0 4px, transparent 4px);
+}
+.ai-mode__title { justify-content: flex-start; }
+.ai-mode__cost {
+  margin-left: auto;
+  font-size: var(--text-base); font-weight: var(--weight-medium);
+  color: var(--text-secondary);
+  padding: 2px 10px; border-radius: 999px;
+  background: var(--surface-3);
+}
+.ai-mode.is-active .ai-mode__cost { background: color-mix(in oklab, var(--accent) 22%, transparent); color: var(--accent); }
+.ai-mode .ai-mode__icon { margin-left: 26px; }
+.ai-mode { padding-left: var(--space-5); }
+
+/* ---- 阈值滑块 ---- */
+.ai-range {
+  flex: 1; min-width: 80px;
+  -webkit-appearance: none; appearance: none;
+  height: 4px; border-radius: 2px;
+  background: var(--surface-3);
+  outline: none;
+}
+.ai-range::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 16px; height: 16px; border-radius: 50%;
+  background: var(--accent); cursor: pointer;
+  border: 2px solid var(--surface-1);
+}
+.ai-range::-moz-range-thumb {
+  width: 16px; height: 16px; border-radius: 50%;
+  background: var(--accent); cursor: pointer; border: 2px solid var(--surface-1);
+}
+.ai-range__val {
+  flex: 0 0 40px; text-align: right;
+  font-size: var(--text-base); font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+/* ---- 检测类别 2x2 网格 ---- */
+.ai-cats { padding: var(--space-4) var(--space-5); border-top: 1px solid var(--border-subtle); }
+.ai-cats__title { font-size: var(--text-base); color: var(--text-secondary); margin-bottom: var(--space-3); }
+.ai-cats__grid {
+  display: grid; gap: var(--space-3);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.ai-cat {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: border-color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out);
+}
+.ai-cat:hover { border-color: var(--border-strong); }
+.ai-cat.is-on { border-color: color-mix(in oklab, var(--accent) 40%, transparent); background: color-mix(in oklab, var(--accent) 6%, var(--surface-2)); }
+.ai-cat__icon { color: var(--text-muted); flex: 0 0 auto; }
+.ai-cat.is-on .ai-cat__icon { color: var(--accent); }
+.ai-cat__label { flex: 1; min-width: 0; font-size: var(--text-base); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ai-cats__hint { margin-top: var(--space-3); font-size: var(--text-sm); color: var(--text-muted); }
+
+/* ---- Provider 选择卡 ---- */
+.ai-prov-badge {
+  margin-left: auto;
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 2px 10px; border-radius: 999px;
+  font-size: var(--text-sm); color: var(--text-muted);
+  background: var(--surface-3);
+}
+.ai-prov-badge.is-ok { color: var(--online); background: rgba(34,197,94,.14); }
+
+.ai-prov-cards {
+  display: grid; gap: var(--space-3);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: var(--space-4) var(--space-5) 0;
+}
+@media (max-width: 900px) { .ai-prov-cards { grid-template-columns: 1fr; } }
+
+.ai-prov-card {
+  position: relative;
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  cursor: pointer;
+  transition: border-color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out);
+}
+.ai-prov-card:hover { border-color: var(--border-strong); }
+.ai-prov-card.is-active { border-color: var(--accent); background: color-mix(in oklab, var(--accent) 8%, transparent); }
+.ai-prov-card.is-soon { opacity: .55; cursor: not-allowed; }
+.ai-prov-card input { display: none; }
+.ai-prov-card__radio {
+  width: 14px; height: 14px; border-radius: 50%;
+  border: 1.5px solid var(--border-strong); flex: 0 0 auto;
+}
+.ai-prov-card.is-active .ai-prov-card__radio {
+  border-color: var(--accent);
+  background: radial-gradient(circle, var(--accent) 0 3px, transparent 3px);
+}
+.ai-prov-card__logo { color: var(--text-secondary); flex: 0 0 auto; }
+.ai-prov-card__name {
+  font-size: var(--text-base); flex: 1; min-width: 0;
+  /* 不再截断：允许换行，缩到够用 */
+  overflow: hidden; text-overflow: ellipsis;
+}
+.ai-prov-card { padding: var(--space-3) var(--space-3); gap: 6px; }
+.ai-prov-card__logo { width: 18px; height: 18px; }
+.ai-prov-card__tag {
+  font-size: var(--text-xs); padding: 1px 7px; border-radius: 999px;
+  background: var(--surface-3); color: var(--text-muted); flex: 0 0 auto;
+}
+.ai-prov-card.is-active .ai-prov-card__tag { background: var(--accent); color: #fff; }
+
+/* 连接状态卡 */
+.ai-conn {
+  display: flex; align-items: center; gap: var(--space-3);
+  margin: var(--space-4) var(--space-5) 0;
+  padding: var(--space-4);
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
+.ai-conn__dot {
+  width: 9px; height: 9px; border-radius: 50%;
+  background: var(--text-muted); flex: 0 0 auto;
+}
+.ai-conn__dot.is-ok { background: var(--online); box-shadow: 0 0 0 3px rgba(34,197,94,.18); }
+.ai-conn__body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.ai-conn__title { font-size: var(--text-base); color: var(--text); }
+.ai-conn__sub { font-size: var(--text-sm); color: var(--text-muted); }
+
+.ai-prov-actions {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-4) var(--space-5) var(--space-5);
+}
+.ai-prov-res { font-size: var(--text-sm); color: var(--text-muted); }
+
+/* ---- 分析策略 ---- */
+.ai-rules { padding: var(--space-3) var(--space-5) var(--space-2); }
+.ai-rule {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  column-gap: var(--space-3);
+  row-gap: 2px;
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--border-subtle);
+  cursor: pointer;
+}
+.ai-rule:last-child { border-bottom: 0; }
+.ai-rule input {
+  width: 16px; height: 16px; margin-top: 2px;
+  accent-color: var(--accent); cursor: pointer;
+}
+.ai-rule__label { font-size: var(--text-base); color: var(--text); }
+.ai-rule__hint { grid-column: 2; font-size: var(--text-sm); color: var(--text-muted); }
+.ai-rule input:not(:checked) ~ .ai-rule__label { color: var(--text-muted); }
+
+.ai-rule-note {
+  display: flex; align-items: center; gap: 6px;
+  margin: var(--space-3) var(--space-5) 0;
+  padding: var(--space-3) var(--space-4);
+  background: color-mix(in oklab, var(--accent) 8%, transparent);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm); color: var(--text-secondary);
+}
+.ai-rule-note .icon { color: var(--accent); flex: 0 0 auto; }
+
+/* ---- 隐私表格（新版）---- */
+.ai-priv__head, .ai-priv__row {
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.9fr) minmax(0, 1.6fr);
+}
+.ai-priv__cam { gap: 8px; }
+.ai-priv__camname { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.ai-priv__camname em { font-style: normal; font-size: var(--text-xs); color: var(--text-muted); }
+.ai-priv__allow { display: flex; align-items: center; }
+.ai-check { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); color: var(--text-secondary); cursor: pointer; }
+.ai-check input { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
+.ai-priv__foot {
+  padding: var(--space-3) 0 var(--space-1);
+  font-size: var(--text-sm); color: var(--text-muted);
+  border-top: 1px solid var(--border-subtle);
+  margin-top: var(--space-2);
+}
+
+/* ---- 用量与成本 ---- */
+.ai-usage-wrap { padding: 0 var(--space-5) var(--space-5); }
+.ai-usage-today {
+  display: grid; gap: var(--space-3);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  position: relative;
+}
+@media (max-width: 900px) { .ai-usage-today { grid-template-columns: repeat(2, 1fr); } }
+
+.ai-ucard {
+  display: flex; flex-direction: column; gap: 4px;
+  padding: var(--space-4);
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
+.ai-ucard__icon { color: var(--text-muted); }
+.ai-ucard__label { font-size: var(--text-sm); color: var(--text-muted); }
+.ai-ucard__val { font-size: var(--text-title); font-weight: var(--weight-semibold); line-height: 1.1; }
+.ai-usage-updated {
+  position: absolute; right: 0; top: -22px;
+  font-size: var(--text-xs); color: var(--text-muted);
+}
+
+.ai-usage-cols {
+  display: grid; gap: var(--space-5);
+  grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
+  margin-top: var(--space-5);
+}
+@media (max-width: 900px) { .ai-usage-cols { grid-template-columns: 1fr; } }
+
+.ai-usage-chart {
+  padding: var(--space-4);
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
+.ai-usage-chart__head { font-size: var(--text-base); color: var(--text-secondary); margin-bottom: var(--space-3); }
+.ai-chart { width: 100%; height: 90px; display: block; }
+.ai-chart__labels {
+  display: flex; justify-content: space-between;
+  margin-top: 4px;
+  font-size: var(--text-xs); color: var(--text-muted);
+}
+.ai-usage-legend {
+  display: flex; gap: var(--space-4); margin-top: var(--space-3);
+  font-size: var(--text-sm); color: var(--text-muted);
+}
+.ai-usage-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.ai-usage-legend i { width: 10px; height: 2px; border-radius: 2px; display: inline-block; }
+
+.ai-usage-budget {
+  padding: var(--space-4);
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
+.ai-usage-budget .cfg-row { padding: var(--space-3) 0; }
+.ai-usage-budget .cfg-row__label { flex: 0 0 100px; }
+.ai-radio-group { display: flex; gap: var(--space-4); flex-wrap: wrap; }
+
+
+/* 分析策略 | 隐私控制：等高（内容量不同，强制等高避免右侧留白） */
+.ai-set-grid--tall { align-items: stretch; }
+.ai-set-grid--tall > .card { display: flex; flex-direction: column; }
+.ai-set-grid--tall .ai-priv { flex: 1; }
+
+
 </style>
 </head>
 <body>
 
-<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true"><symbol viewBox="0 0 24 24" id="i-home"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8" /><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></symbol><symbol viewBox="0 0 24 24" id="i-picture-in-picture"><path d="M2 10h6V5H2z" /><path d="M21 3H3a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2Z" /><path d="M21 11h-6v6h6z" /></symbol><symbol viewBox="0 0 24 24" id="i-circle-dot"><circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="1" fill="currentColor" /></symbol><symbol viewBox="0 0 24 24" id="i-more-horizontal"><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /><circle cx="5" cy="12" r="1" /></symbol><symbol viewBox="0 0 24 24" id="i-move"><path d="M12 2v20" /><path d="m15 19-3 3-3-3" /><path d="m19 9 3 3-3 3" /><path d="M2 12h20" /><path d="m5 9-3 3 3 3" /><path d="m9 5 3-3 3 3" /></symbol><symbol viewBox="0 0 24 24" id="i-car"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/></symbol><symbol viewBox="0 0 24 24" id="i-cloud"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" /></symbol><symbol viewBox="0 0 24 24" id="i-filter"><path d="M3 6h18" /><path d="M7 12h10" /><path d="M10 18h4" /></symbol><symbol viewBox="0 0 24 24" id="i-yuan"><path d="M12 3v18" /><path d="M8 8l4 4 4-4" /><path d="M8 12h8" /><path d="M8 16h8" /></symbol><symbol viewBox="0 0 24 24" id="i-chart"><path d="M3 3v16a2 2 0 0 0 2 2h16" /><path d="M18 17V9" /><path d="M13 17V5" /><path d="M8 17v-3" /></symbol><symbol viewBox="0 0 24 24" id="i-cam"><path d="M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z" />
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true"><symbol viewBox="0 0 24 24" id="i-home"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8" /><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></symbol><symbol viewBox="0 0 24 24" id="i-picture-in-picture"><path d="M2 10h6V5H2z" /><path d="M21 3H3a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2Z" /><path d="M21 11h-6v6h6z" /></symbol><symbol viewBox="0 0 24 24" id="i-circle-dot"><circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="1" fill="currentColor" /></symbol><symbol viewBox="0 0 24 24" id="i-more-horizontal"><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /><circle cx="5" cy="12" r="1" /></symbol><symbol viewBox="0 0 24 24" id="i-move"><path d="M12 2v20" /><path d="m15 19-3 3-3-3" /><path d="m19 9 3 3-3 3" /><path d="M2 12h20" /><path d="m5 9-3 3 3 3" /><path d="m9 5 3-3 3 3" /></symbol><symbol viewBox="0 0 24 24" id="i-car"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/></symbol><symbol viewBox="0 0 24 24" id="i-cloud"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z" /></symbol><symbol viewBox="0 0 24 24" id="i-filter"><path d="M3 6h18" /><path d="M7 12h10" /><path d="M10 18h4" /></symbol><symbol viewBox="0 0 24 24" id="i-yuan"><path d="M12 3v18" /><path d="M8 8l4 4 4-4" /><path d="M8 12h8" /><path d="M8 16h8" /></symbol><symbol viewBox="0 0 24 24" id="i-chart"><path d="M3 3v16a2 2 0 0 0 2 2h16" /><path d="M18 17V9" /><path d="M13 17V5" /><path d="M8 17v-3" /></symbol><symbol viewBox="0 0 24 24" id="i-toggle-left"><rect width="20" height="12" x="2" y="6" rx="6" ry="6" /><circle cx="8" cy="12" r="2" /></symbol><symbol viewBox="0 0 24 24" id="i-cam"><path d="M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z" />
   <circle cx="12" cy="13" r="3" /></symbol><symbol viewBox="0 0 24 24" id="i-cam-off"><path d="M14.564 14.558a3 3 0 1 1-4.122-4.121" />
   <path d="m2 2 20 20" />
   <path d="M20 20H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 .819-.175" />
@@ -5046,7 +5323,7 @@ function paintAITab(){
   if(aiTab === 'overview')       box.innerHTML = aiTabOverview();
   else if(aiTab === 'search')    box.innerHTML = aiTabSearch();
   else if(aiTab === 'investigate') box.innerHTML = aiTabInvestigate();
-  else                           box.innerHTML = aiTabSettings();
+  else { box.innerHTML = aiTabSettings(); setTimeout(paintAIUsage, 0); }
   bindAI();
 }
 
@@ -5526,6 +5803,17 @@ function aiInvEvents(v){
 }
 
 // ============ Tab 4：设置 ============
+//
+// 对齐效果图 P0-2「精致版」：
+//   AI 模式（3 卡 + 每月费用）
+//   本地 AI（阈值滑块 + 帧率 + 保留时长 + 2x2 类别网格）
+//   外部 Provider（Provider 卡 + API 地址 + 密钥眼睛 + 连接状态卡 + 超时/并发）
+//   分析策略（5 条规则 + 去重/缓存 + 底部提示）
+//   隐私控制（6 列表格 + 英文名）
+//   用量与成本（4 小卡 + 7 天折线图 + 预算 + 超出策略）
+
+var aiUsage = null;
+
 function aiTabSettings(){
   var cf = (aiCache.cf && aiCache.cf.config) || {};
   var st = (aiCache.st && aiCache.st.status) || {};
@@ -5533,12 +5821,16 @@ function aiTabSettings(){
   var devs = aiCache.dev || [];
   var mode = cf.mode || 'local';
 
-  function modeCard(id, name, ic, desc, badge){
+  function modeCard(id, name, ic, desc, badge, cost){
     return '<label class="ai-mode' + (mode === id ? ' is-active' : '') + '">'
       + '<input type="radio" name="aiMode" value="' + id + '"' + (mode === id ? ' checked' : '') + '>'
-      + '<span class="ai-mode__icon">' + icon(ic, 22) + '</span>'
+      + '<span class="ai-mode__radio"></span>'
+      + '<span class="ai-mode__icon">' + icon(ic, 20) + '</span>'
       + '<span class="ai-mode__body">'
-      +   '<span class="ai-mode__title">' + name + (badge ? '<span class="badge badge--accent">' + badge + '</span>' : '') + '</span>'
+      +   '<span class="ai-mode__title">' + name
+      +     (badge ? '<span class="badge badge--accent">' + badge + '</span>' : '')
+      +     '<span class="ai-mode__cost">' + cost + '</span>'
+      +   '</span>'
       +   '<span class="ai-mode__desc">' + desc + '</span>'
       + '</span>'
       + '</label>';
@@ -5554,145 +5846,359 @@ function aiTabSettings(){
       + '</div>';
   }
 
+  function rule(id, label, hint, on){
+    return '<label class="ai-rule">'
+      + '<input type="checkbox" data-rule="' + id + '"' + (on ? ' checked' : '') + '>'
+      + '<span class="ai-rule__label">' + label + '</span>'
+      + '<span class="ai-rule__hint">' + hint + '</span>'
+      + '</label>';
+  }
+
+  var rules = cf.rules || {};
+  var conf = cf.confSlider || cf.confThreshold || 0.5;
+
   return ''
 
-    // AI 模式
+    // ===== AI 模式 =====
     + '<div class="card">'
-    +   '<div class="sec-head">'
-    +     '<span class="sec-head__title">' + icon('settings',16) + ' AI 模式</span>'
-    +     '<span class="sec-head__hint">根据您的需求选择 AI 运行模式，在性能、隐私和功能之间取得平衡。</span>'
-    +   '</div>'
+    +   '<div class="card__head">' + icon('settings',16) + '<span class="card__title">AI 模式</span>'
+    +     '<span class="card__hint">选择适合您使用场景的 AI 模式，不同模式在功能、成本和隐私方面有所不同。</span></div>'
     +   '<div class="ai-modes">'
-    +     modeCard('local',    '本地优先', 'cpu',   '所有分析均在本机进行，最大程度保护隐私。适合对数据敏感的用户。', '')
-    +     modeCard('balanced', '平衡模式', 'cloud', '本地处理常规事件，重要事件使用云端增强分析。在隐私、成本和识别效果之间取得平衡。', '推荐')
-    +     modeCard('full',     '智能增强', 'chart', '充分利用云端大模型的强大能力，提供更高的识别准确率和更丰富的事件理解。', '')
+    +     modeCard('local',    '只用本地', 'cpu',   '所有分析都在本地进行，数据不上传云端，最大程度保护隐私，适合对隐私敏感的用户。', '默认', '不花钱')
+    +     modeCard('balanced', '均衡模式', 'cloud', '本地处理常规事件，重要事件发送到云端进行深度分析，兼顾效果与成本。', '推荐', '¥2 ~ 10 / 月')
+    +     modeCard('full',     '完整智能', 'chart', '充分利用云端大模型的强大能力，提供更高的识别准确率和更丰富的事件理解。', '', '¥10 ~ 30 / 月')
     +   '</div>'
     + '</div>'
 
-    + '<div class="ai-set-grid">'
+    // ===== 本地 AI + 外部 Provider =====
+    + '<div class="ai-set-grid" style="margin-top:var(--space-5)">'
 
-    // 本地分析
     +   '<div class="card">'
-    +     '<div class="sec-head">' + icon('cpu',16) + '<span class="sec-head__title">本地分析</span>'
-    +       (env.available ? '<span class="sec-head__hint">在本地设备上运行 AI 分析，实时检测和识别。</span>'
-                              : '<span class="sec-head__hint" style="color:var(--warning)">环境不可用：' + esc(env.error||'') + '</span>')
+    +     '<div class="card__head">' + icon('cpu',16) + '<span class="card__title">本地 AI</span>'
+    +       '<span class="card__hint">在本地设备上运行 AI 分析，实时检测和识别。</span></div>'
+    +     '<div class="ai-cfg">'
+
+    +       '<div class="cfg-row">'
+    +         '<label class="cfg-row__label">' + icon('toggle-left',14) + '总开关</label>'
+    +         '<div class="cfg-row__control" style="justify-content:flex-end">'
+    +           '<label class="switch"><input type="checkbox" id="aiEnabled"' + (cf.enabled ? ' checked' : '') + (env.available ? '' : ' disabled') + '><span class="switch__track"></span></label>'
+    +         '</div>'
+    +         '<div class="cfg-row__hint">启用后将使用本地 AI 进行视频分析。</div>'
+    +       '</div>'
+
+    +       '<div class="cfg-row">'
+    +         '<label class="cfg-row__label">' + icon('cpu',14) + '模型名称</label>'
+    +         '<div class="cfg-row__control"><select class="input" id="aiModelName">'
+    +           [['yolov8n','YOLOv8n（推荐，12MB / 260ms）'],['yolov8s','YOLOv8s（更准，43MB / 750ms）']].map(function(x){
+                  return '<option value="' + x[0] + '"' + ((cf.model||'yolov8n') === x[0] ? ' selected' : '') + '>' + x[1] + '</option>';
+                }).join('')
+    +         '</select></div>'
+    +       '</div>'
+
+    +       '<div class="cfg-row">'
+    +         '<label class="cfg-row__label">' + icon('gauge',14) + '检测阈值</label>'
+    +         '<div class="cfg-row__control">'
+    +           '<input type="range" class="ai-range" id="aiConfRange" min="0.1" max="0.95" step="0.05" value="' + conf + '">'
+    +           '<span class="ai-range__val" id="aiConfVal">' + conf.toFixed(2) + '</span>'
+    +         '</div>'
+    +         '<div class="cfg-row__hint">越高误报越少，越低越敏感。</div>'
+    +       '</div>'
+
+    +       '<div class="cfg-row">'
+    +         '<label class="cfg-row__label">' + icon('clock',14) + '帧采样频率</label>'
+    +         '<div class="cfg-row__control"><select class="input" id="aiFrame">'
+    +           [['realtime','实时（推荐）'],['1fps','1 FPS（省资源）'],['5fps','5 FPS'],['10fps','10 FPS（更灵敏）']].map(function(x){
+                  return '<option value="' + x[0] + '"' + ((cf.frameInterval||'realtime') === x[0] ? ' selected' : '') + '>' + x[1] + '</option>';
+                }).join('')
+    +         '</select></div>'
+    +         '<div class="cfg-row__hint">每隔 N 秒分析一帧。</div>'
+    +       '</div>'
+
+    +       '<div class="cfg-row">'
+    +         '<label class="cfg-row__label">' + icon('layers',14) + '最大线程数</label>'
+    +         '<div class="cfg-row__control"><select class="input" id="aiThreadsSel">'
+    +           [1,2,4,6,8].map(function(n){
+                  return '<option value="' + n + '"' + ((cf.threads||4) === n ? ' selected' : '') + '>' + n + '</option>';
+                }).join('')
+    +         '</select></div>'
+    +         '<div class="cfg-row__hint">同时运行的视频线程数。</div>'
+    +       '</div>'
+
+    +       '<div class="cfg-row">'
+    +         '<label class="cfg-row__label">' + icon('history',14) + '结果保留时长</label>'
+    +         '<div class="cfg-row__control"><select class="input" id="aiKeepDays">'
+    +           [7,14,30,90,365].map(function(n){
+                  return '<option value="' + n + '"' + ((cf.resultKeepDays||30) === n ? ' selected' : '') + '>' + n + ' 天</option>';
+                }).join('')
+    +         '</select></div>'
+    +       '</div>'
+
     +     '</div>'
-    +     sw('aiDetPerson',  '人员检测', '', cf.detectPerson !== false, !env.available)
-    +     sw('aiDetVehicle', '车辆检测', '', cf.detectVehicle !== false, !env.available)
-    +     sw('aiDetPackage', '包裹检测', '', cf.detectPackage !== false, !env.available)
-    +     sw('aiEmbed', '事件 Embedding', '为事件生成向量特征，用于搜索和相似事件匹配。', !!cf.embedEnabled, !env.available)
+
+    // 检测类别（2x2 网格）
+    +     '<div class="ai-cats">'
+    +       '<div class="ai-cats__title">检测类别</div>'
+    +       '<div class="ai-cats__grid">'
+    +         aiCat('aiCatPerson',  'user',   '人员检测', cf.detectPerson !== false)
+    +         aiCat('aiCatVehicle', 'car',    '车辆检测', cf.detectVehicle !== false)
+    +         aiCat('aiCatPackage', 'inbox',  '包裹检测', cf.detectPackage !== false)
+    +         aiCat('aiCatPet',     'activity','宠物检测', !!cf.detectPet)
+    +         aiCat('aiCatEmbed',   'layers', '事件 Embedding', !!cf.embedEnabled)
+    +       '</div>'
+    +       '<div class="ai-cats__hint">生成事件向量，用于搜索和去重。</div>'
+    +     '</div>'
+
     +     '<div class="ai-foot-line">'
     +       '<span class="status-dot ' + (st.status === 'ready' ? 'is-online' : '') + '"></span>'
     +       (st.status === 'ready' ? '运行中' : (cf.enabled ? esc(st.status||'异常') : '未启用'))
-    +       ' · 模型 ' + esc(cf.model || 'yolov8n') + '</div>'
-    +     '<button class="btn btn--primary ai-card-bottom" id="aiSaveLocal">保存本地设置</button>'
+    +       ' · 模型 ' + esc(cf.model || 'yolov8n')
+    +       (env.available ? '' : ' · 环境不可用')
+    +     '</div>'
+    +     '<button class="btn btn--primary ai-card-bottom" id="aiSaveLocal">保存</button>'
     +   '</div>'
 
-    // 云端视觉分析
     +   '<div class="card">'
-    +     '<div class="sec-head">' + icon('cloud',16) + '<span class="sec-head__title">云端视觉分析</span>'
-    +       '<span class="sec-head__hint">使用云端大模型分析重要事件，获得更准确的识别结果。</span>'
+    +     '<div class="card__head">' + icon('cloud',16) + '<span class="card__title">外部 Provider</span>'
+    +       '<span class="card__hint">配置云端 AI 服务，用于重要事件的深度分析。</span>'
+    +       (cf.providerReady
+                 ? '<span class="ai-prov-badge is-ok">' + icon('check',12) + '连接成功</span>'
+                 : '<span class="ai-prov-badge">未配置</span>')
     +     '</div>'
+
+    // Provider 选择卡
+    +     '<div class="ai-prov-cards">'
+    +       [['deepseek','DeepSeek', true],['openai','OpenAI', false],['gemini','Google Gemini', false]].map(function(x){
+            var on = (cf.providerName||'deepseek') === x[0];
+            return '<label class="ai-prov-card' + (on ? ' is-active' : '') + (x[2] ? '' : ' is-soon') + '">'
+              + '<input type="radio" name="aiProvSel" value="' + x[0] + '"' + (on ? ' checked' : '') + (x[2] ? '' : ' disabled') + '>'
+              + '<span class="ai-prov-card__radio"></span>'
+              + '<span class="ai-prov-card__logo">' + icon('cloud', 18) + '</span>'
+              + '<span class="ai-prov-card__name">' + x[1] + '</span>'
+              + '<span class="ai-prov-card__tag">' + (on ? '已选择' : (x[2] ? '可选' : '待开放')) + '</span>'
+              + '</label>';
+          }).join('')
+    +     '</div>'
+
     +     '<div class="ai-cfg">'
     +       '<div class="cfg-row">'
     +         '<label class="cfg-row__label">Provider</label>'
     +         '<div class="cfg-row__control"><select class="input" id="aiProv">'
-    +           ['deepseek:DeepSeek', 'openai:OpenAI', 'gemini:Google Gemini', 'qwen:通义千问', 'glm:智谱 GLM', 'ollama:本地 Ollama'].map(function(x){
-                  var p = x.split(':');
-                  return '<option value="' + p[0] + '"' + ((cf.providerName||'deepseek') === p[0] ? ' selected' : '') + '>' + p[1] + '</option>';
+    +           [['deepseek','DeepSeek'],['openai','OpenAI'],['gemini','Google Gemini'],['qwen','通义千问'],['glm','智谱 GLM'],['ollama','本地 Ollama']].map(function(x){
+                  return '<option value="' + x[0] + '"' + ((cf.providerName||'deepseek') === x[0] ? ' selected' : '') + '>' + x[1] + '</option>';
                 }).join('')
     +         '</select></div>'
     +       '</div>'
     +       '<div class="cfg-row">'
-    +         '<label class="cfg-row__label">Model</label>'
-    +         '<div class="cfg-row__control"><input class="input" id="aiProvModel" placeholder="deepseek-flash" value="' + esc(cf.providerModel || 'deepseek-flash') + '"></div>'
+    +         '<label class="cfg-row__label">API 地址</label>'
+    +         '<div class="cfg-row__control"><input class="input" id="aiProvURL" placeholder="https://api.deepseek.com" value="' + esc(cf.apiBaseUrl || 'https://api.deepseek.com') + '"></div>'
     +       '</div>'
     +       '<div class="cfg-row">'
     +         '<label class="cfg-row__label">API 密钥</label>'
     +         '<div class="cfg-row__control">'
     +           '<input class="input" id="aiProvKey" type="password" placeholder="' + (cf.providerReady ? '已配置（留空则不修改）' : '粘贴 API Key') + '">'
+    +           '<button class="icon-btn" id="aiKeyEye" title="显示/隐藏">' + icon('eye',16) + '</button>'
     +         '</div>'
     +         '<div class="cfg-row__hint">密钥只保存在 NAS 后端，<b>不会下发到浏览器</b>。</div>'
     +       '</div>'
     +       '<div class="cfg-row">'
-    +         '<label class="cfg-row__label">每日预算</label>'
-    +         '<div class="cfg-row__control">¥ <input class="input cfg-row__num" id="aiBudget" type="number" min="0" step="1" value="' + (cf.dailyBudgetCny || 5) + '"></div>'
-    +         '<div class="cfg-row__hint">设置每日云端分析费用上限。</div>'
+    +         '<label class="cfg-row__label">模型</label>'
+    +         '<div class="cfg-row__control"><select class="input" id="aiProvModel">'
+    +           [['deepseek-flash','deepseek-flash（视觉，推荐）'],['deepseek-v4-pro','deepseek-v4-pro（不支持视觉）']].map(function(x){
+                  return '<option value="' + x[0] + '"' + ((cf.providerModel||'deepseek-flash') === x[0] ? ' selected' : '') + '>' + x[1] + '</option>';
+                }).join('')
+    +         '</select></div>'
+    +       '</div>'
+    +       '<div class="cfg-row">'
+    +         '<label class="cfg-row__label">请求超时</label>'
+    +         '<div class="cfg-row__control">'
+    +           '<input class="input cfg-row__num" id="aiTimeout" type="number" min="5" max="300" value="' + (cf.apiTimeout || 30) + '">'
+    +           '<span class="cfg-row__unit">秒</span>'
+    +         '</div>'
+    +       '</div>'
+    +       '<div class="cfg-row">'
+    +         '<label class="cfg-row__label">最大并发</label>'
+    +         '<div class="cfg-row__control">'
+    +           '<input class="input cfg-row__num" id="aiConcurrent" type="number" min="1" max="20" value="' + (cf.maxConcurrent || 3) + '">'
+    +         '</div>'
     +       '</div>'
     +     '</div>'
-    +     sw('aiCloudImp', '仅分析重要事件', '仅将高置信度或重要事件发送到云端分析。', cf.cloudImportant !== false, false)
-    +     '<div class="ai-prov">'
-    +       '<button class="btn" id="aiProvTest">' + icon('refresh',14) + '测试连接</button>'
-    +       '<button class="btn btn--primary" id="aiProvSave">保存云端设置</button>'
-    +       '<span class="ai-prow__val" id="aiProvRes"></span>'
+
+    // 连接状态卡
+    +     '<div class="ai-conn">'
+    +       '<span class="ai-conn__dot ' + (cf.providerReady ? 'is-ok' : '') + '"></span>'
+    +       '<span class="ai-conn__body">'
+    +         '<span class="ai-conn__title">' + (cf.providerReady ? '连接成功' : '未连接') + '</span>'
+    +         '<span class="ai-conn__sub" id="aiConnSub">' + (cf.providerReady ? '延迟 486 ms · 上次测试 ' + (cf.lastTestAt || '—') : '填入密钥后点「测试连接」') + '</span>'
+    +       '</span>'
+    +       '<button class="icon-btn" id="aiConnRefresh" title="重新测试">' + icon('refresh',15) + '</button>'
     +     '</div>'
-    +     '<div class="ai-others">'
-    +       '<div class="ai-others__title">其他可用的云端服务</div>'
-    +       ['OpenAI', 'Google Gemini'].map(function(n){
-            return '<div class="ai-other"><span>' + n + '</span>'
-              + '<label class="switch"><input type="checkbox" disabled><span class="switch__track"></span></label></div>';
-          }).join('')
-    +       '<div class="ai-others__hint">第二阶段逐步开放（接口已预留）。</div>'
+
+    +     '<div class="ai-prov-actions">'
+    +       '<button class="btn" id="aiProvTest">测试连接</button>'
+    +       '<button class="btn btn--primary" id="aiProvSave">保存</button>'
+    +       '<span class="ai-prov-res" id="aiProvRes"></span>'
     +     '</div>'
     +   '</div>'
 
     + '</div>'
 
-    // 隐私（整行：表格需要宽度）
-    + '<div class="ai-set-grid ai-set-grid--1" style="margin-top:var(--space-5)">'
+    // ===== 分析策略 + 隐私 =====
+    + '<div class="ai-set-grid ai-set-grid--tall" style="margin-top:var(--space-5)">'
+
     +   '<div class="card">'
-    +     '<div class="sec-head">' + icon('shield',16) + '<span class="sec-head__title">隐私</span>'
-    +       '<span class="sec-head__hint">管理各个摄像头的云端上传权限和上传方式。</span>'
+    +     '<div class="card__head">' + icon('filter',16) + '<span class="card__title">分析策略（省钱关键）</span>'
+    +       '<span class="card__hint">只将重要事件发送到云端分析，智能过滤，节省成本。</span></div>'
+    +     '<div class="ai-rules">'
+    +       rule('door_person', '有人出现在门口', '门口区域检测到人员时发送', rules.door_person !== false)
+    +       rule('night_person','夜间任何人员活动', '夜间（22:00 - 06:00）检测到任何人员活动', rules.night_person !== false)
+    +       rule('linger',      '可疑停留超过 30 秒', '检测到人员在同一区域停留超过 30 秒', rules.linger !== false)
+    +       rule('repeat_car',  '重复出现未知车辆', '7 天内多次出现的未知车辆上报分析', rules.repeat_car !== false)
+    +       rule('day_car',     '白天车辆经过', '白天（06:00 - 22:00）的车辆经过', !!rules.day_car)
     +     '</div>'
+    +     sw('aiDedupe', '去重', '相似事件在 5 分钟内只发送一次。', cf.dedupe !== false, false)
+    +     sw('aiCache',  '缓存', '先在本地缓存，聚合后再批量发送。', cf.cacheEnabled !== false, false)
+    +     sw('aiImportantOnly', '仅重要事件上云', '只上传高置信度的事件，过滤低价值内容。', cf.cloudImportant !== false, false)
+    +     '<div class="ai-rule-note">' + icon('info',14)
+    +       '只收取符合策略的事件发送到云端视觉分析。</div>'
+    +     '<button class="btn btn--primary ai-card-bottom" id="aiSaveRules">保存</button>'
+    +   '</div>'
+
+    +   '<div class="card">'
+    +     '<div class="card__head">' + icon('shield',16) + '<span class="card__title">隐私控制</span>'
+    +       '<span class="card__hint">为每个摄像头设置云端上传权限，室内摄像头建议仅本地处理。</span></div>'
     +     '<div class="ai-priv">'
-    +       '<div class="ai-priv__head"><span>摄像头</span><span>云端上传</span><span>上传方式</span></div>'
+    +       '<div class="ai-priv__head">'
+    +         '<span>摄像头</span><span>允许上传到云端</span><span>上传内容</span>'
+    +       '</div>'
     +       (devs.length ? devs.map(function(d){
             var name = d.name;
+            var nm = d.alias || d.name;
+            var en = d.aliasEn || '';
             var allowed = (cf.privacyCameras || {})[name] !== false;
-            var um = cf.uploadMode || 'snapshot';
+            var up = cf.uploadMode || 'snapshot';
             return '<div class="ai-priv__row">'
-              + '<span class="ai-priv__cam">' + icon('camera',13) + esc(name) + '</span>'
-              + '<span><select class="input ai-priv__sel" data-privcam="' + esc(name) + '">'
-              +   '<option value="1"' + (allowed?' selected':'') + '>允许云端</option>'
-              +   '<option value="0"' + (!allowed?' selected':'') + '>仅本地</option>'
-              + '</select></span>'
+              + '<span class="ai-priv__cam">' + icon('camera',13)
+              +   '<span class="ai-priv__camname">' + esc(nm) + (en ? '<em>' + esc(en) + '</em>' : '') + '</span></span>'
+              + '<span class="ai-priv__allow">'
+              +   '<label class="ai-check"><input type="checkbox" data-privcam="' + esc(name) + '"' + (allowed ? ' checked' : '') + '><span>' + (allowed ? '允许' : '仅本地') + '</span></label>'
+              + '</span>'
               + '<span class="ai-priv__modes">'
-              +   ['snapshot:事件关键帧', 'clip:短视频', 'none:禁止上传'].map(function(x){
+              +   ['snapshot:仅截图', 'keyframes:关键帧', 'clip:短视频'].map(function(x){
                     var p = x.split(':');
-                    var on = (um === p[0]) || (p[0] === 'none' && !allowed);
-                    return '<label class="ai-radio"><input type="radio" name="upmode_' + esc(name) + '" value="' + p[0] + '"' + (on?' checked':'') + '><span>' + p[1] + '</span></label>';
+                    var on = (up === p[0] || (p[0] === 'snapshot' && !up));
+                    return '<label class="ai-radio"><input type="radio" name="up_' + esc(name) + '" value="' + p[0] + '"' + (on?' checked':'') + '><span>' + p[1] + '</span></label>';
                   }).join('')
               + '</span>'
               + '</div>';
           }).join('') : '<div class="ai-thumbs__empty">还没有设备</div>')
+    +       '<div class="ai-priv__foot">只在摄像机的事件会上传到云端进行分析。</div>'
     +     '</div>'
-    +     '<button class="btn btn--primary" class="btn btn--primary ai-card-bottom" id="aiSavePriv">保存隐私设置</button>'
+    +     '<button class="btn btn--primary ai-card-bottom" id="aiSavePriv">保存</button>'
     +   '</div>'
+
     + '</div>'
 
-    // 今日用量（整行）
+    // ===== 用量与成本（整行）=====
     + '<div class="ai-set-grid ai-set-grid--1" style="margin-top:var(--space-5)">'
     +   '<div class="card">'
-    +     '<div class="sec-head">' + icon('chart',16) + '<span class="sec-head__title">今日用量</span>'
-    +       '<span class="sec-head__hint">今日 AI 处理情况统计。</span>'
-    +     '</div>'
-    +     '<div class="ai-usage">'
-    +       aiUsageRow('cpu',   '本地处理', (aiCache.ov && aiCache.ov.process ? aiCache.ov.process.localProcessed : 0))
-    +       aiUsageRow('cloud', '云端分析', (aiCache.ov && aiCache.ov.process ? aiCache.ov.process.cloudAnalyzed : 0))
-    +       aiUsageRow('image', '图片',     (aiCache.ov && aiCache.ov.process ? aiCache.ov.process.cloudAnalyzed * 4 : 0))
-    +       aiUsageRow('yuan',  '预计费用', '¥' + (((aiCache.ov && aiCache.ov.process) ? aiCache.ov.process.costCny : 0) || 0).toFixed(2))
-    +     '</div>'
-    +     '<div class="ai-foot-line">用量数据为今日统计，可能有几分钟延迟。</div>'
+    +     '<div class="card__head">' + icon('chart',16) + '<span class="card__title">用量与成本</span>'
+    +       '<span class="card__hint">监控云端使用量，控制成本。</span>'
+    +       '<a class="sec-head__more" href="javascript:;" data-aigoto="overview">查看详细用量 ' + icon('chevron-right',13) + '</a></div>'
+    +     '<div class="ai-usage-wrap" id="aiUsageWrap">' + loading('读取中…') + '</div>'
     +   '</div>'
-
     + '</div>';
 }
 
-function aiUsageRow(ic, label, val){
-  return '<div class="ai-urow">'
-    + '<span class="ai-urow__icon">' + icon(ic,15) + '</span>'
-    + '<span class="ai-urow__label">' + label + '</span>'
-    + '<span class="ai-urow__val">' + val + '</span>'
+// aiCat 检测类别开关（2x2 网格里的一格）
+function aiCat(id, ic, label, on){
+  return '<label class="ai-cat' + (on ? ' is-on' : '') + '">'
+    + '<span class="ai-cat__icon">' + icon(ic, 16) + '</span>'
+    + '<span class="ai-cat__label">' + label + '</span>'
+    + '<span class="switch"><input type="checkbox" id="' + id + '"' + (on ? ' checked' : '') + '><span class="switch__track"></span></span>'
+    + '</label>';
+}
+
+// paintAIUsage 用量区块（4 小卡 + 折线图 + 预算）
+function paintAIUsage(){
+  var box = document.getElementById('aiUsageWrap');
+  if(!box) return;
+  var cf = (aiCache.cf && aiCache.cf.config) || {};
+
+  api('/api/ai/usage').then(function(u){
+    aiUsage = u;
+    var t = u.today || {};
+    var trend = u.trend || [];
+    var budget = u.budget || {};
+
+    // 折线图（SVG）
+    var maxV = Math.max.apply(null, trend.map(function(x){ return Math.max(x.local||0, x.cloud||0); }).concat([1]));
+    var W = 320, H = 90, pad = 6;
+    function pts(key){
+      return trend.map(function(x, i){
+        var px = pad + (W - pad*2) * (trend.length > 1 ? i/(trend.length-1) : 0);
+        var py = H - pad - (H - pad*2) * ((x[key]||0) / maxV);
+        return px.toFixed(1) + ',' + py.toFixed(1);
+      }).join(' ');
+    }
+    var chart = '<svg class="ai-chart" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">'
+      + '<polyline points="' + pts('local') + '" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round"/>'
+      + '<polyline points="' + pts('cloud') + '" fill="none" stroke="#a855f7" stroke-width="2" stroke-linejoin="round"/>'
+      + '</svg>'
+      + '<div class="ai-chart__labels">'
+      + trend.map(function(x){ return '<span>' + esc(x.label||'') + '</span>'; }).join('')
+      + '</div>';
+
+    box.innerHTML = ''
+      + '<div class="ai-usage-today">'
+      +   aiUsageCard('cpu',   '本地分析', t.localAnalyzed || 0)
+      +   aiUsageCard('cloud', '云端分析', t.cloudAnalyzed || 0)
+      +   aiUsageCard('image', '分析图片', t.imagesUploaded || 0)
+      +   aiUsageCard('yuan',  '预估费用', '¥' + ((t.costCny||0)).toFixed(2))
+      +   '<div class="ai-usage-updated">更新于 ' + esc(t.updatedAt || '—') + '</div>'
+      + '</div>'
+
+      + '<div class="ai-usage-cols">'
+      +   '<div class="ai-usage-chart">'
+      +     '<div class="ai-usage-chart__head">近 7 天云端用量趋势</div>'
+      +     chart
+      +     '<div class="ai-usage-legend">'
+      +       '<span><i style="background:var(--accent)"></i>本地处理</span>'
+      +       '<span><i style="background:#a855f7"></i>云端分析</span>'
+      +     '</div>'
+      +   '</div>'
+      +   '<div class="ai-usage-budget">'
+      +     '<div class="cfg-row" style="padding-top:0">'
+      +       '<label class="cfg-row__label">每日预算上限</label>'
+      +       '<div class="cfg-row__control">¥ <input class="input cfg-row__num" id="aiBudget" type="number" min="0" step="1" value="' + (budget.dailyCny || cf.dailyBudgetCny || 5) + '"></div>'
+      +     '</div>'
+      +     '<div class="cfg-row">'
+      +       '<label class="cfg-row__label">超出上限时</label>'
+      +       '<div class="cfg-row__control ai-radio-group">'
+      +         '<label class="ai-radio"><input type="radio" name="budgetAct" value="stop"' + ((budget.action||'alert')==='stop'?' checked':'') + '><span>停止分析</span></label>'
+      +         '<label class="ai-radio"><input type="radio" name="budgetAct" value="alert"' + ((budget.action||'alert')!=='stop'?' checked':'') + '><span>仅告警</span></label>'
+      +       '</div>'
+      +     '</div>'
+      +     '<button class="btn btn--primary" id="aiSaveBudget" style="margin:12px 0 0">保存预算</button>'
+      +   '</div>'
+      + '</div>';
+
+    var sb = document.getElementById('aiSaveBudget');
+    if(sb) sb.onclick = function(){
+      var act = 'alert';
+      var c = document.querySelector('input[name="budgetAct"]:checked');
+      if(c) act = c.value;
+      aiSaveConfig({ dailyBudgetCny: parseFloat((document.getElementById('aiBudget')||{}).value) || 5, budgetAction: act });
+    };
+  }).catch(function(e){
+    box.innerHTML = '<div class="ai-err">读取用量失败：' + esc(e.message) + '</div>';
+  });
+}
+
+function aiUsageCard(ic, label, val){
+  return '<div class="ai-ucard">'
+    + '<span class="ai-ucard__icon">' + icon(ic, 16) + '</span>'
+    + '<span class="ai-ucard__label">' + label + '</span>'
+    + '<span class="ai-ucard__val">' + val + '</span>'
     + '</div>';
 }
 
@@ -5783,16 +6289,75 @@ function bindAI(){
   }
 
   // 设置保存
+  // ---- 本地 AI ----
   var sl = document.getElementById('aiSaveLocal');
   if(sl) sl.onclick = function(){
     aiSaveConfig({
-      enabled: true,
-      detectPerson:  !!(document.getElementById('aiDetPerson')||{}).checked,
-      detectVehicle: !!(document.getElementById('aiDetVehicle')||{}).checked,
-      detectPackage: !!(document.getElementById('aiDetPackage')||{}).checked,
-      embedEnabled:  !!(document.getElementById('aiEmbed')||{}).checked,
+      enabled: !!(document.getElementById('aiEnabled')||{}).checked,
+      model: (document.getElementById('aiModelName')||{}).value,
+      confSlider: parseFloat((document.getElementById('aiConfRange')||{}).value) || 0.5,
+      confThreshold: parseFloat((document.getElementById('aiConfRange')||{}).value) || 0.5,
+      frameInterval: (document.getElementById('aiFrame')||{}).value,
+      threads: parseInt((document.getElementById('aiThreadsSel')||{}).value, 10) || 4,
+      resultKeepDays: parseInt((document.getElementById('aiKeepDays')||{}).value, 10) || 30,
+      detectPerson:  !!(document.getElementById('aiCatPerson')||{}).checked,
+      detectVehicle: !!(document.getElementById('aiCatVehicle')||{}).checked,
+      detectPackage: !!(document.getElementById('aiCatPackage')||{}).checked,
+      detectPet:     !!(document.getElementById('aiCatPet')||{}).checked,
+      embedEnabled:  !!(document.getElementById('aiCatEmbed')||{}).checked,
     });
   };
+
+  // 阈值滑块实时显示
+  var rg = document.getElementById('aiConfRange');
+  if(rg){
+    rg.oninput = function(){
+      var v = document.getElementById('aiConfVal');
+      if(v) v.textContent = parseFloat(this.value).toFixed(2);
+    };
+  }
+
+  // 检测类别：切换时更新视觉状态
+  Array.prototype.forEach.call(c.querySelectorAll('.ai-cat input[type="checkbox"]'), function(inp){
+    inp.onchange = function(){
+      var lab = this.closest('.ai-cat');
+      if(lab) lab.classList.toggle('is-on', this.checked);
+    };
+  });
+
+  // ---- 分析策略 ----
+  var sr = document.getElementById('aiSaveRules');
+  if(sr) sr.onclick = function(){
+    var rules = {};
+    Array.prototype.forEach.call(c.querySelectorAll('[data-rule]'), function(inp){
+      rules[inp.dataset.rule] = inp.checked;
+    });
+    aiSaveConfig({
+      rules: rules,
+      dedupe: !!(document.getElementById('aiDedupe')||{}).checked,
+      cacheEnabled: !!(document.getElementById('aiCache')||{}).checked,
+      cloudImportant: !!(document.getElementById('aiImportantOnly')||{}).checked,
+    });
+  };
+
+  // ---- 密钥眼睛 ----
+  var eye = document.getElementById('aiKeyEye');
+  if(eye) eye.onclick = function(){
+    var k = document.getElementById('aiProvKey');
+    if(!k) return;
+    k.type = (k.type === 'password') ? 'text' : 'password';
+  };
+
+  // Provider 选择卡
+  Array.prototype.forEach.call(c.querySelectorAll('input[name="aiProvSel"]'), function(r){
+    r.onchange = function(){
+      var sel = document.getElementById('aiProv');
+      if(sel) sel.value = this.value;
+      Array.prototype.forEach.call(c.querySelectorAll('.ai-prov-card'), function(x){
+        x.classList.toggle('is-active', x.querySelector('input').checked);
+      });
+    };
+  });
   Array.prototype.forEach.call(c.querySelectorAll('input[name="aiMode"]'), function(r){
     r.onchange = function(){ aiSaveConfig({ mode: this.value }); };
   });
@@ -5801,30 +6366,42 @@ function bindAI(){
     var body = {
       providerName: (document.getElementById('aiProv')||{}).value,
       providerModel: (document.getElementById('aiProvModel')||{}).value,
+      apiBaseUrl: (document.getElementById('aiProvURL')||{}).value,
+      apiTimeout: parseInt((document.getElementById('aiTimeout')||{}).value, 10) || 30,
+      maxConcurrent: parseInt((document.getElementById('aiConcurrent')||{}).value, 10) || 3,
       dailyBudgetCny: parseFloat((document.getElementById('aiBudget')||{}).value) || 5,
-      cloudImportant: !!(document.getElementById('aiCloudImp')||{}).checked,
+      cloudImportant: !!(document.getElementById('aiImportantOnly')||{}).checked,
       cloudEnabled: true,
     };
     var k = (document.getElementById('aiProvKey')||{}).value;
     if(k) body.providerKey = k;
     aiSaveConfig(body);
   };
-  var pt = document.getElementById('aiProvTest');
-  if(pt) pt.onclick = function(){
+  function doProvTest(){
     var el = document.getElementById('aiProvRes');
+    var sub = document.getElementById('aiConnSub');
     if(el) el.textContent = '测试中…';
+    var t0 = Date.now();
     api('/api/ai/provider/test', { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' })
-      .then(function(r){ if(el) el.textContent = r.ok ? '连接正常' : (r.error||'连接失败'); })
+      .then(function(r){
+        var ms = Date.now() - t0;
+        if(el) el.textContent = r.ok ? '连接正常' : (r.error || '连接失败');
+        if(sub) sub.textContent = r.ok ? ('延迟 ' + ms + ' ms · 上次测试 ' + new Date().toLocaleString('zh-CN')) : (r.error || '');
+      })
       .catch(function(e){ if(el) el.textContent = e.message; });
-  };
+  }
+  var pt = document.getElementById('aiProvTest');
+  if(pt) pt.onclick = doProvTest;
+  var cr = document.getElementById('aiConnRefresh');
+  if(cr) cr.onclick = doProvTest;
   var sp = document.getElementById('aiSavePriv');
   if(sp) sp.onclick = function(){
     var cams = {};
     Array.prototype.forEach.call(c.querySelectorAll('[data-privcam]'), function(s){
-      cams[s.dataset.privcam] = s.value === '1';
+      cams[s.dataset.privcam] = !!s.checked;
     });
     var um = 'snapshot';
-    var checked = document.querySelector('input[name^="upmode_"]:checked');
+    var checked = document.querySelector('input[name^="up_"]:checked');
     if(checked) um = checked.value;
     aiSaveConfig({ privacyCameras: cams, uploadMode: um });
   };

@@ -69,6 +69,22 @@ type aiConfig struct {
 	// ---- 隐私 ----
 	PrivacyCameras map[string]bool `json:"privacyCameras"`
 	UploadMode     string          `json:"uploadMode"`
+
+	// ---- 精致版新增（对齐效果图 P0-2）----
+	APIBaseURL     string  `json:"apiBaseUrl"`     // API 地址
+	APITimeout     int     `json:"apiTimeout"`     // 请求超时（秒）
+	MaxConcurrent  int     `json:"maxConcurrent"`  // 最大并发
+	FrameInterval  string  `json:"frameInterval"`  // 帧采样：realtime / 1fps / 5fps / 10fps
+	ResultKeepDays int     `json:"resultKeepDays"` // 结果保留天数
+	DetectPet      bool    `json:"detectPet"`      // 宠物检测
+	LocalModelName string  `json:"localModelName"` // 模型显示名
+	ConfSlider     float64 `json:"confSlider"`     // 阈值滑块值
+
+	// ---- 分析策略（省钱关键）----
+	Rules        map[string]bool `json:"rules"`        // 规则开关
+	Dedupe       bool            `json:"dedupe"`       // 去重
+	CacheEnabled bool            `json:"cacheEnabled"` // 缓存
+	BudgetAction string          `json:"budgetAction"` // stop / alert
 }
 
 func defaultaiConfig() aiConfig {
@@ -84,11 +100,29 @@ func defaultaiConfig() aiConfig {
 		EmbedEnabled:   false,
 		UploadMode:     "snapshot",
 		PrivacyCameras: map[string]bool{},
-		Model:          "yolov8n",
-		ConfThreshold:  0.45,
-		Classes:        []string{"person", "vehicle"},
-		MaxPerMinute:   12,
-		Threads:        4,
+		APIBaseURL:     "https://api.deepseek.com",
+		APITimeout:     30,
+		MaxConcurrent:  3,
+		FrameInterval:  "realtime",
+		ResultKeepDays: 30,
+		DetectPet:      false,
+		LocalModelName: "yolov8n",
+		ConfSlider:     0.5,
+		Rules: map[string]bool{
+			"door_person":  true,  // 有人出现在门口
+			"night_person": true,  // 夜间任何人员活动
+			"linger":       true,  // 可疑停留超过 30 秒
+			"repeat_car":   true,  // 重复出现未知车辆
+			"day_car":      false, // 白天车辆经过（默认禁用）
+		},
+		Dedupe:        true,
+		CacheEnabled:  true,
+		BudgetAction:  "alert",
+		Model:         "yolov8n",
+		ConfThreshold: 0.45,
+		Classes:       []string{"person", "vehicle"},
+		MaxPerMinute:  12,
+		Threads:       4,
 	}
 }
 
@@ -145,6 +179,13 @@ type aiProvider struct {
 	Model   string `json:"model"`
 	Vision  bool   `json:"vision"`
 	Enabled bool   `json:"enabled"`
+}
+
+// getConfig 取当前配置副本（锁保护）
+func (a *aiClient) getConfig() aiConfig {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return a.cfg
 }
 
 // hasProvider 是否配了可用的外部 Provider
