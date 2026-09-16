@@ -230,32 +230,81 @@ func (s *Server) handleRecDates(w http.ResponseWriter, r *http.Request) {
 // ---- 文件列表 ----
 
 // handleRecList 返回某设备某日的录像文件。
+// recFileInfo 一个录像文件
+type recFileInfo struct {
+	Name      string  `json:"name"`
+	Date      string  `json:"date"`
+	SizeMB    float64 `json:"sizeMB"`
+	Duration  float64 `json:"duration"`
+	StartTime string  `json:"startTime"`
+	URL       string  `json:"url"`
+	ThumbURL  string  `json:"thumbUrl"`
+	Dev       string  `json:"dev,omitempty"`
+}
+
+// listRecDevices 列出有录像的设备目录名。
+func listRecDevices(root string) []string {
+	ents, err := os.ReadDir(root)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, e := range ents {
+		if e.IsDir() && !strings.HasPrefix(e.Name(), ".") {
+			out = append(out, e.Name())
+		}
+	}
+	return out
+}
+
 func (s *Server) handleRecList(w http.ResponseWriter, r *http.Request) {
 	name := safeName(r.URL.Query().Get("name"))
 	date := safeName(r.URL.Query().Get("date"))
-	if name == "" {
-		writeErr(w, 400, "缺少 name");
-		return
-	}
 	root := s.recRoot()
 	loadRecMeta(root)
 
+	// name 为空 = 列出**所有设备**的录像。
+	//
+	// 前端首次进回放页时还不知道哪些设备有录像，
+	// 这里聚合返回，省一次往返。
+	if name == "" {
+		names := listRecDevices(root)
+		var all []recFileInfo
+		for _, n := range names {
+			all = append(all, s.collectRecFiles(root, n, date)...)
+		}
+		sort.Slice(all, func(i, j int) bool { return all[i].StartTime > all[j].StartTime })
+		var totalMB float64
+		for _, f := range all {
+			totalMB += f.SizeMB
+		}
+		writeJSON(w, 200, map[string]any{
+			"count": len(all), "date": date, "files": all,
+			"devs": names, "totalMB": totalMB,
+		})
+		return
+	}
+
+	out := s.collectRecFiles(root, name, date)
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	var totalMB float64
+	for _, f := range out {
+		totalMB += f.SizeMB
+	}
+	writeJSON(w, 200, map[string]any{
+		"name": name, "date": date, "files": out,
+		"count": len(out), "totalMB": totalMB,
+	})
+}
+
+// collectRecFiles 收集某设备（可带日期）下的录像文件。
+func (s *Server) collectRecFiles(root, name, date string) []recFileInfo {
 	dir := filepath.Join(root, name)
 	if date != "" {
 		dir = filepath.Join(dir, date)
 	}
 
-	type fileInfo struct {
-		Name      string  `json:"name"`
-		Date      string  `json:"date"`
-		SizeMB    float64 `json:"sizeMB"`
-		Duration  float64 `json:"duration"`
-		StartTime string  `json:"startTime"`
-		URL       string  `json:"url"`
-		ThumbURL  string  `json:"thumbUrl"`
-	}
-	var out []fileInfo
-
+	var out []recFileInfo
 	_ = filepath.Walk(dir, func(pth string, info os.FileInfo, err error) error {
 		if err != nil || info == nil || info.IsDir() {
 			return nil
@@ -265,11 +314,12 @@ func (s *Server) handleRecList(w http.ResponseWriter, r *http.Request) {
 		}
 		rel, _ := filepath.Rel(root, pth)
 		parts := strings.Split(rel, string(filepath.Separator))
-		fi := fileInfo{
-			Name:    info.Name(),
-			SizeMB:  float64(info.Size()) / (1 << 20),
-			Duration: func() float64 { _ = rel; return s.probeDuration(pth) }(),
+		fi := recFileInfo{
+			Name:      info.Name(),
+			SizeMB:    float64(info.Size()) / (1 << 20),
+			Duration:  s.probeDuration(pth),
 			StartTime: info.ModTime().Format("2006-01-02 15:04:05"),
+			Dev:       name,
 		}
 		if len(parts) >= 2 {
 			fi.Date = parts[len(parts)-2]
@@ -280,18 +330,7 @@ func (s *Server) handleRecList(w http.ResponseWriter, r *http.Request) {
 		out = append(out, fi)
 		return nil
 	})
-
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name });
-
-	var totalMB float64
-	for _, f := range out {
-		totalMB += f.SizeMB
-	}
-
-	writeJSON(w, 200, map[string]any{
-		"name": name, "date": date, "files": out,
-		"count": len(out), "totalMB": totalMB,
-	})
+	return out
 }
 
 func urlEncode(s string) string {

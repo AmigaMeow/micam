@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <title>小米摄像头</title>
-<meta name="micam-build" content="2026-09-16 11:38:25">
+<meta name="micam-build" content="2026-09-16 18:40:59">
 <!-- 样式内联：飞牛网关会剥前缀，相对路径不可靠（详见 build/assemble-web.js）-->
 <style>
 
@@ -2462,6 +2462,110 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; line-h
 }
 
 
+/* ==========================================================================
+   PLAYBACK — 回放（左日历 + 右播放器 + 时间轴 + 文件列表）
+   ========================================================================== */
+
+.pb-wrap {
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: var(--space-5);
+  align-items: start;
+}
+@media (max-width: 1000px) { .pb-wrap { grid-template-columns: 1fr; } }
+
+/* 左侧日历 */
+.pb-side {
+  display: flex; flex-direction: column; gap: var(--space-2);
+  max-height: calc(100vh - 240px); overflow-y: auto;
+}
+.pb-side__title {
+  display: flex; align-items: center; gap: 6px;
+  font-size: var(--text-base); color: var(--text-secondary);
+  padding: 0 var(--space-1) var(--space-2);
+}
+
+.pb-cal { display: flex; flex-direction: column; gap: var(--space-2); }
+.pb-cal__empty {
+  padding: var(--space-5); text-align: center;
+  font-size: var(--text-base); color: var(--text-muted);
+  border: 1px dashed var(--border); border-radius: var(--radius-lg);
+}
+
+.pb-day {
+  display: flex; flex-direction: column; gap: 3px;
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  text-align: left;
+  transition: border-color var(--duration-fast) var(--ease-out),
+              background var(--duration-fast) var(--ease-out);
+}
+.pb-day:hover { border-color: var(--border-strong); background: var(--surface-2); }
+.pb-day.is-active {
+  border-color: var(--accent);
+  background: color-mix(in oklab, var(--accent) 12%, var(--surface-1));
+}
+.pb-day__date { font-size: var(--text-base); font-weight: var(--weight-medium); color: var(--text); }
+.pb-day__meta { font-size: var(--text-sm); color: var(--text-muted); }
+
+.pb-rec-on, .pb-rec-off {
+  display: flex; align-items: center; gap: 6px;
+  margin-top: var(--space-2); padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-md); font-size: var(--text-sm);
+}
+.pb-rec-on  { color: var(--danger); background: rgba(239,68,68,.10); }
+.pb-rec-off { color: var(--text-muted); background: var(--surface-2); }
+
+/* 右侧主区 */
+.pb-main { min-width: 0; }
+.pb-main .player-wrap { max-height: calc(100vh - 380px); }
+
+/* 时间轴 */
+.pb-timeline {
+  margin-top: var(--space-3);
+  min-height: 0;
+}
+.pb-timeline:empty { display: none; }
+
+/* 文件列表（横向卡片） */
+.pb-files {
+  display: grid; gap: var(--space-3);
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  margin-top: var(--space-4);
+}
+
+.pb-file {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-2);
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  text-align: left;
+  transition: border-color var(--duration-fast) var(--ease-out),
+              background var(--duration-fast) var(--ease-out);
+}
+.pb-file:hover { border-color: var(--border-strong); background: var(--surface-2); }
+.pb-file.is-active { border-color: var(--accent); background: color-mix(in oklab, var(--accent) 10%, var(--surface-1)); }
+.pb-file > .icon { color: var(--text-muted); flex: 0 0 auto; }
+.pb-file.is-active > .icon { color: var(--accent); }
+
+.pb-file__thumb {
+  flex: 0 0 76px; width: 76px; aspect-ratio: 16/9;
+  border-radius: var(--radius-md); overflow: hidden;
+  background: #0a0d12; display: block;
+}
+.pb-file__thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+.pb-file__body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.pb-file__name {
+  font-size: var(--text-base); color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.pb-file__meta { font-size: var(--text-sm); color: var(--text-muted); }
+
+
 </style>
 </head>
 <body>
@@ -4874,6 +4978,278 @@ function accountSelectHTML(accIds, accMap){
     opts += "<option value='" + esc(id) + "'" + sel + ">" + esc(id) + suffix + "</option>";
   });
   return "<select class='btn btn--sm' id='selAccount' style='margin-left:auto;min-width:160px'>" + opts + "</select>";
+}
+
+// ===== 页面：回放 =====
+//
+// 对齐效果图：左侧日历 + 中间播放器 + 底部时间轴。
+// 功能保留自旧版：设备选择、日期筛选、在线播放、导出片段、下载、
+// 批量删除、清理过期、转码缓存、播放位置记忆。
+
+var recState = {
+  dev: '',
+  date: '',
+  file: null,
+  files: [],
+  dates: [],
+};
+
+function renderRecordings(c){
+  c.innerHTML = '<div class="page__inner">' + loading('加载录像…') + '</div>';
+
+  Promise.all([
+    api('/api/recordings'),
+    api('/api/recordings/dates'),
+    api('/api/recordings/list' + (recState.dev ? '?name=' + encodeURIComponent(recState.dev) : '')),
+    loadDevices()
+  ]).then(function(res){
+    var cfg   = res[0].config || {};
+    var dates = (res[1].dates) || [];
+    var files = (res[2].files) || [];
+    recState.dates = dates;
+    recState.files = files;
+
+    if(!recState.date && dates.length) recState.date = dates[0].date;
+    if(!recState.file && files.length) recState.file = files[0].name;
+
+    var devOpts = '<option value="">全部设备</option>' + (devices||[]).map(function(d){
+      var n = d.name;
+      return '<option value="' + esc(n) + '"' + (recState.dev === n ? ' selected' : '') + '>' + esc(n) + '</option>';
+    }).join('');
+
+    c.innerHTML = '<div class="page__inner">'
+
+      // 页头
+      + '<div class="list-head">'
+      +   '<div class="list-head__main">'
+      +     '<h1 class="list-head__title">回放</h1>'
+      +     '<div class="list-head__en">Playback</div>'
+      +   '</div>'
+      +   '<div class="list-head__acts">'
+      +     '<select class="input ev-sel" id="recDev">' + devOpts + '</select>'
+      +     '<button class="btn" id="btnClean">' + icon('trash',14) + '清理过期</button>'
+      +     '<button class="btn" id="btnExportMgr">' + icon('inbox',14) + '导出管理</button>'
+      +   '</div>'
+      + '</div>'
+
+      + '<div class="pb-wrap">'
+
+      // 左：日历
+      +   '<aside class="pb-side">'
+      +     '<div class="pb-side__title">' + icon('calendar',14) + '录像日历</div>'
+      +     '<div class="pb-cal" id="pbCal"></div>'
+      +     (cfg.Enabled
+              ? '<div class="pb-rec-on">' + icon('circle-dot',13) + '正在录制</div>'
+              : '<div class="pb-rec-off">' + icon('stop',13) + '未开启录制</div>')
+      +   '</aside>'
+
+      // 右：播放器 + 时间轴 + 文件列表
+      +   '<div class="pb-main">'
+      +     '<div class="player-wrap">'
+      +       '<video id="recVideo" controls playsinline></video>'
+      +       '<div class="player__top">'
+      +         '<div class="player__badges">'
+      +           '<span class="pb" id="pbTitle">' + icon('play',13) + '选择录像开始播放</span>'
+      +         '</div>'
+      +         '<div class="player__meta"><span class="pm__time" id="pbTime"></span></div>'
+      +       '</div>'
+      +       '<div class="player__bar">'
+      +         '<div class="player__bar-l">'
+      +           '<button class="pbar-btn" id="btnExportClip">' + icon('film',15) + '<span>导出片段</span></button>'
+      +           '<button class="pbar-btn" id="btnDownload">' + icon('download',15) + '<span>下载</span></button>'
+      +         '</div>'
+      +         '<div class="player__bar-r">'
+      +           '<label class="pbar-sel">' + icon('gauge',14)
+      +             '<select id="recSpeed"><option value="0.5">0.5x</option><option value="1" selected>1x</option>'
+      +             '<option value="2">2x</option><option value="4">4x</option></select></label>'
+      +           '<button class="pbar-btn" id="btnFull">' + icon('maximize',15) + '<span>全屏</span></button>'
+      +         '</div>'
+      +       '</div>'
+      +     '</div>'
+
+      // 时间轴（缩略图带）
+      +     '<div class="pb-timeline" id="pbTimeline"></div>'
+
+      // 文件列表
+      +     '<div class="pb-files" id="pbFiles"></div>'
+      +   '</div>'
+
+      + '</div>'
+      + '</div>';
+
+    paintCalendar(c);
+    paintFiles(c);
+    bindReplay(c);
+
+    // 自动播放第一个
+    if(recState.file) playRecFile(recState.file);
+  }).catch(function(e){
+    c.innerHTML = '<div class="page__inner">' + errorCard(e, function(){ renderRecordings(c); }) + '</div>';
+  });
+}
+
+// paintCalendar 左侧日历
+function paintCalendar(c){
+  var box = document.getElementById('pbCal');
+  if(!box) return;
+  if(!recState.dates.length){
+    box.innerHTML = '<div class="pb-cal__empty">暂无录像</div>';
+    return;
+  }
+  box.innerHTML = recState.dates.map(function(d){
+    var on = d.date === recState.date;
+    var parts = d.date.split('-');
+    return '<button class="pb-day' + (on ? ' is-active' : '') + '" data-date="' + esc(d.date) + '" type="button">'
+      + '<span class="pb-day__date">' + parts[1] + '月' + parts[2] + '日</span>'
+      + '<span class="pb-day__meta">' + d.count + ' 段 · ' + fmtSizeMB(d.sizeMB) + '</span>'
+      + '</button>';
+  }).join('');
+}
+
+// paintFiles 文件列表（按日期过滤）
+function paintFiles(c){
+  var box = document.getElementById('pbFiles');
+  if(!box) return;
+  var list = recState.files;
+  if(recState.date){
+    list = list.filter(function(f){ return f.date === recState.date; });
+  }
+  if(!list.length){
+    box.innerHTML = empty('film','这天没有录像','换个日期，或在「存储」页检查录像设置','');
+    return;
+  }
+  box.innerHTML = list.map(function(f){
+    var on = f.name === recState.file;
+    var hm = (f.startTime||'').slice(11,16);
+    var dur = Math.round(f.duration || 0);
+    return '<button class="pb-file' + (on ? ' is-active' : '') + '" data-file="' + esc(f.name) + '" type="button">'
+      + '<span class="pb-file__thumb">'
+      +   '<img loading="lazy" src="' + apiUrl(f.thumbUrl) + '" alt="">'
+      + '</span>'
+      + '<span class="pb-file__body">'
+      +   '<span class="pb-file__name">' + esc(hm) + ' · ' + esc(f.name.replace(/\.mkv$/,'')) + '</span>'
+      +   '<span class="pb-file__meta">' + fmtDur(dur) + ' · ' + fmtSizeMB(f.sizeMB) + '</span>'
+      + '</span>'
+      + icon('play', 15)
+      + '</button>';
+  }).join('');
+}
+
+// bindReplay 交互
+function bindReplay(c){
+  Array.prototype.forEach.call(c.querySelectorAll('[data-date]'), function(b){
+    b.onclick = function(){ recState.date = this.dataset.date; paintCalendar(c); paintFiles(c); };
+  });
+  Array.prototype.forEach.call(c.querySelectorAll('[data-file]'), function(b){
+    b.onclick = function(){
+      recState.file = this.dataset.file;
+      paintFiles(c);
+      playRecFile(recState.file);
+    };
+  });
+
+  var dv = document.getElementById('recDev');
+  if(dv) dv.onchange = function(){ recState.dev = this.value; recState.file = null; renderRecordings(c); };
+
+  var v = document.getElementById('recVideo');
+  if(v){
+    v.onloadedmetadata = function(){ restorePos(recState.file, v); };
+    v.ontimeupdate = function(){
+      var t = document.getElementById('pbTime');
+      if(t) t.textContent = fmtDur(v.currentTime) + ' / ' + fmtDur(v.duration || 0);
+    };
+    // 记忆播放位置
+    v.addEventListener('pause', function(){ if(recState.file) savePos(recState.file, v.currentTime); });
+    window.addEventListener('beforeunload', function(){ if(recState.file && v) savePos(recState.file, v.currentTime); });
+  }
+
+  var sp = document.getElementById('recSpeed');
+  if(sp) sp.onchange = function(){ if(v) v.playbackRate = parseFloat(this.value) || 1; };
+
+  var bd = document.getElementById('btnDownload');
+  if(bd) bd.onclick = function(){
+    var f = curRecFileObj();
+    if(!f){ toast('请先选择录像', 'warn'); return; }
+    window.open(apiUrl(f.url.replace('/play?', '/download?')), '_blank');
+  };
+
+  var be = document.getElementById('btnExportClip');
+  if(be) be.onclick = exportClip;
+
+  var bf = document.getElementById('btnFull');
+  if(bf) bf.onclick = function(){
+    var w = document.querySelector('.player-wrap');
+    if(!w) return;
+    if(document.fullscreenElement) document.exitFullscreen(); else w.requestFullscreen();
+  };
+
+  var bc = document.getElementById('btnClean');
+  if(bc) bc.onclick = cleanupRecordings;
+
+  var bm = document.getElementById('btnExportMgr');
+  if(bm) bm.onclick = showExportManager;
+}
+
+function curRecFileObj(){
+  return recState.files.filter(function(f){ return f.name === recState.file; })[0] || null;
+}
+var currentRecName = '';
+var currentRecFile = null;
+
+// playRecFile 播放指定录像
+function playRecFile(name){
+  var v = document.getElementById('recVideo');
+  var f = recState.files.filter(function(x){ return x.name === name; })[0];
+  if(!v || !f) return;
+  currentRecFile = f.name;
+  currentRecName = f.name;
+  v.src = apiUrl(f.url);
+  v.play().catch(function(){});
+  var t = document.getElementById('pbTitle');
+  if(t) t.innerHTML = icon('play',13) + (f.startTime || '') + ' · ' + (f.date || '');
+}
+
+// ---- 播放位置记忆 ----
+function posKey(f){ return 'micam.pos.' + f; }
+function savePos(f, t){
+  try { localStorage.setItem(posKey(f), String(Math.floor(t||0))); } catch(e){}
+}
+function restorePos(f, v){
+  try {
+    var t = parseInt(localStorage.getItem(posKey(f)) || '0', 10);
+    if(t > 3 && t < (v.duration || 1e9) - 3){
+      v.currentTime = t;
+      toast('已跳转到上次位置 ' + fmtDur(t), 'ok');
+    }
+  } catch(e){}
+}
+
+// ---- 清理 ----
+function cleanupRecordings(){
+  api('/api/recordings/cleanup-preview').then(function(d){
+    if(!d.fileCount){ toast('没有可清理的文件（保留 ' + d.keepDays + ' 天）', 'ok'); return; }
+    if(!confirm('将清理 ' + d.fileCount + ' 个文件，释放 ' + fmtSizeMB(d.totalMB) + '\n保留最近 ' + d.keepDays + ' 天\n\n确定？')) return;
+    api('/api/recordings/cleanup', { method:'POST' }).then(function(r){
+      toast('已清理 ' + (r.deleted||0) + ' 个，释放 ' + fmtSizeMB(r.freedMB||0), 'ok');
+      setTimeout(function(){ page='recordings'; render(); }, 1200);
+    }).catch(function(e){ toast('清理失败：' + e.message, 'err'); });
+  }).catch(function(e){ toast('查询失败：' + e.message, 'err'); });
+}
+
+// ---- 导出片段 ----
+function exportClip(){
+  var f = curRecFileObj();
+  var v = document.getElementById('recVideo');
+  if(!f || !v){ toast('请先选择录像', 'warn'); return; }
+  var from = prompt('从第几秒开始？（当前 ' + Math.floor(v.currentTime) + '）', String(Math.floor(v.currentTime)));
+  if(from === null) return;
+  var dur = prompt('持续多少秒？', '10');
+  if(dur === null) return;
+  api('/api/recordings/export', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ name: recState.dev || f.name, file: f.name, date: f.date, start: parseFloat(from), duration: parseFloat(dur) })
+  }).then(function(){ toast('已开始导出', 'ok'); showExportManager(); })
+    .catch(function(e){ toast('导出失败：' + e.message, 'err'); });
 }
 
 // ===== 页面：存储监控 =====
