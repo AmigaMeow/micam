@@ -13,7 +13,7 @@
 
 .topnav {
   height: var(--topbar-h); flex: 0 0 var(--topbar-h);
-  display: flex; align-items: center; gap: var(--space-5);
+  display: flex; align-items: stretch; gap: var(--space-5);
   padding: 0 var(--space-5);
   background: var(--bg);
   border-bottom: 1px solid var(--border-subtle);
@@ -21,7 +21,7 @@
 }
 
 .topnav__brand {
-  display: flex; align-items: center; gap: var(--space-2);
+  display: flex; align-items: center; gap: var(--space-2); align-self: center;
   font-size: var(--text-lg); font-weight: var(--weight-semibold);
   letter-spacing: -.01em; flex: 0 0 auto;
 }
@@ -37,7 +37,7 @@
 
 .topnav__right {
   display: flex; align-items: center; gap: var(--space-3);
-  flex: 0 0 auto;
+  flex: 0 0 auto; align-self: center;
 }
 .topnav__search { width: 260px; }
 @media (max-width: 1200px) { .topnav__search { display: none; } }
@@ -75,28 +75,44 @@
 /* ===== 顶部导航项 ===== */
 
 .tabnav {
-  display: inline-flex; align-items: center; gap: var(--space-1);
-  height: 36px; padding: 0 var(--space-4);
-  border-radius: var(--radius-md);
+  position: relative;
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 100%;                       /* 撑满顶栏（点击区域大） */
+  padding: 0 var(--space-4);
+  border-radius: 0;
   color: var(--text-secondary);
   font-size: var(--text-base); font-weight: var(--weight-medium);
   white-space: nowrap;
-  transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+  transition: color var(--duration-fast) var(--ease-out);
 }
-.tabnav:hover { color: var(--text); background: var(--surface-2); }
-.tabnav.is-active { color: var(--accent); background: transparent; }
+.tabnav .icon { flex: 0 0 auto; }
+.tabnav:hover { color: var(--text); }
+
+/* 内容层：下划线挂在它身上，紧贴文字下方
+   而不是挂在按钮上贴栏底 —— 那样线离文字 19px，看着是断开的 */
+.tabnav__c {
+  position: relative;
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  padding-bottom: 7px;
+}
+.tabnav__c::after {
+  content: ""; position: absolute; left: 0; right: 0; bottom: 0;
+  height: 2px; border-radius: 2px;
+  background: transparent;
+  transform: scaleX(.35); opacity: 0;
+  transition: transform var(--duration-normal) var(--ease-out),
+              opacity var(--duration-normal) var(--ease-out),
+              background var(--duration-fast) var(--ease-out);
+}
+.tabnav:hover .tabnav__c::after {
+  background: var(--border-strong); opacity: 1; transform: scaleX(.65);
+}
+.tabnav.is-active { color: var(--accent); }
 .tabnav.is-active .icon { color: var(--accent); }
-/* 效果图是「选中项蓝色下划线」，不是胶囊底色 */
-.topnav__menu { position: relative; }
-.tabnav { position: relative; border-radius: 0; height: 100%; }
-.tabnav::after {
-  content: ""; position: absolute; left: var(--space-4); right: var(--space-4); bottom: 0;
-  height: 2px; border-radius: 2px; background: transparent;
-  transition: background var(--duration-fast) var(--ease-out);
+.tabnav.is-active .tabnav__c::after {
+  background: var(--accent); opacity: 1; transform: scaleX(1);
 }
-.tabnav.is-active::after { background: var(--accent); }
-.tabnav:hover { background: transparent; color: var(--text); }
-.tabnav.is-active:hover { color: var(--accent); }
+
 .tabnav__badge {
   font-size: var(--text-xs); padding: 1px 6px; border-radius: 999px;
   background: var(--danger); color: #fff; margin-left: 2px;
