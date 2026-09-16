@@ -39,7 +39,7 @@ const appName = "micam"
 // appVersion 用 var 而非 const：
 // 允许构建时用 -ldflags "-X main.appVersion=x.y.z" 注入，
 // 确保二进制里的版本与 manifest 严格一致（构建脚本会校验）。
-var appVersion = "0.16.1"
+var appVersion = "0.17.0"
 
 func main() {
 	var (
@@ -140,6 +140,9 @@ func main() {
 
 	// 账号会话守护：提前续期 serviceToken（用户无感）
 	srv.startAccountKeeper()
+
+	// 缩略图预热 + 定时刷新（设备列表页秒开）
+	srv.startThumbWarmer()
 
 	// 设备在线状态守护：离线/上线发通知
 	srv.startDeviceWatcher()
@@ -429,6 +432,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/live/hls/info", s.handleHLSInfo) // HLS 能力信息
 	mux.HandleFunc("/api/live/mjpeg", s.handleMJPEG)      // MJPEG 流（<img> 直接显示）
 	mux.HandleFunc("/api/live/snapshot", s.handleSnap)
+	mux.HandleFunc("/api/live/thumb", s.handleLiveThumb)
 	mux.HandleFunc("/api/live/inject", s.handleInjectSource) // 单帧 JPEG
 
 	// 云台

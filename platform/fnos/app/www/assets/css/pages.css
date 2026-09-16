@@ -129,3 +129,60 @@
   white-space: pre-wrap;
   word-break: break-all;
 }
+
+
+/* ===== 摄像头列表视图 ===== */
+
+.camera-grid--list { grid-template-columns: 1fr; }
+.camera-grid--list .camera-card {
+  display: grid; grid-template-columns: 240px minmax(0, 1fr); align-items: stretch;
+}
+.camera-grid--list .camera-card__preview { aspect-ratio: auto; height: 100%; min-height: 96px; }
+.camera-grid--list .camera-card__foot { align-items: center; }
+@media (max-width: 640px) {
+  .camera-grid--list .camera-card { grid-template-columns: 1fr; }
+  .camera-grid--list .camera-card__preview { aspect-ratio: 16/9; }
+}
+
+/* ===== 顶栏右侧（搜索 / 通知 / 头像）===== */
+
+.topbar__search {
+  position: relative; width: 220px;
+}
+@media (max-width: 1100px) { .topbar__search { display: none; } }
+
+.topbar__icon-btn {
+  position: relative;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+}
+.topbar__icon-btn:hover { background: var(--surface-2); color: var(--text); }
+.topbar__icon-btn .topbar__dot {
+  position: absolute; top: 6px; right: 7px;
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--danger);
+  border: 1.5px solid var(--bg);
+}
+
+.topbar__user {
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: 3px 8px 3px 3px;
+  border-radius: 999px;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+.topbar__user:hover { background: var(--surface-2); }
+.topbar__avatar {
+  width: 28px; height: 28px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--accent); color: #fff;
+  font-size: var(--text-sm); font-weight: var(--weight-semibold);
+}
+.topbar__user-name { font-size: var(--text-base); line-height: 1.15; }
+.topbar__user-home { font-size: var(--text-xs); color: var(--text-muted); line-height: 1.15; }
+@media (max-width: 900px) { .topbar__user-name, .topbar__user-home { display: none; } }
+
+/* 卡片收藏按钮 */
+.camera-card__foot .icon-btn { flex: 0 0 auto; }
+.camera-card__foot .icon-btn.is-active { color: var(--warning); }

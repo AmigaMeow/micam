@@ -43,7 +43,25 @@
       </button>
       <h1 class="topbar__title" id="pageTitle">设备列表</h1>
       <div class="topbar__actions">
-        <span id="sysInfo" class="text-sm text-muted">—</span>
+        <div class="topbar__search">
+          <div class="search">
+            <svg class="icon icon-sm" aria-hidden="true"><use href="#i-search"/></svg>
+            <input class="input" id="globalSearch" type="search" placeholder="搜索摄像头…" autocomplete="off">
+          </div>
+        </div>
+
+        <button class="topbar__icon-btn" id="btnNotify" type="button" title="事件通知">
+          <svg class="icon" aria-hidden="true"><use href="#i-bell"/></svg>
+          <span class="topbar__dot" id="notifyDot" style="display:none"></span>
+        </button>
+
+        <button class="topbar__user" id="btnUser" type="button" title="账号">
+          <span class="topbar__avatar" id="userAvatar">家</span>
+          <span style="text-align:left">
+            <span class="topbar__user-name" id="userName">我的家</span><br>
+            <span class="topbar__user-home" id="userHome">—</span>
+          </span>
+        </button>
       </div>
     </header>
 

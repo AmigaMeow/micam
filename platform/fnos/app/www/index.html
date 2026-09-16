@@ -848,7 +848,9 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; line-h
 .camera-card__preview img,
 .camera-card__preview video {
   width: 100%; height: 100%; object-fit: cover; display: block;
+  opacity: 0; transition: opacity var(--duration-normal) var(--ease-out);
 }
+.camera-card__preview img.is-loaded { opacity: 1; }
 .camera-card__time {
   position: absolute; top: var(--space-3); right: var(--space-3);
   padding: 2px 7px; border-radius: var(--radius-sm);
@@ -1199,6 +1201,63 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; line-h
 }
 
 
+/* ===== 摄像头列表视图 ===== */
+
+.camera-grid--list { grid-template-columns: 1fr; }
+.camera-grid--list .camera-card {
+  display: grid; grid-template-columns: 240px minmax(0, 1fr); align-items: stretch;
+}
+.camera-grid--list .camera-card__preview { aspect-ratio: auto; height: 100%; min-height: 96px; }
+.camera-grid--list .camera-card__foot { align-items: center; }
+@media (max-width: 640px) {
+  .camera-grid--list .camera-card { grid-template-columns: 1fr; }
+  .camera-grid--list .camera-card__preview { aspect-ratio: 16/9; }
+}
+
+/* ===== 顶栏右侧（搜索 / 通知 / 头像）===== */
+
+.topbar__search {
+  position: relative; width: 220px;
+}
+@media (max-width: 1100px) { .topbar__search { display: none; } }
+
+.topbar__icon-btn {
+  position: relative;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+}
+.topbar__icon-btn:hover { background: var(--surface-2); color: var(--text); }
+.topbar__icon-btn .topbar__dot {
+  position: absolute; top: 6px; right: 7px;
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--danger);
+  border: 1.5px solid var(--bg);
+}
+
+.topbar__user {
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: 3px 8px 3px 3px;
+  border-radius: 999px;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+.topbar__user:hover { background: var(--surface-2); }
+.topbar__avatar {
+  width: 28px; height: 28px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--accent); color: #fff;
+  font-size: var(--text-sm); font-weight: var(--weight-semibold);
+}
+.topbar__user-name { font-size: var(--text-base); line-height: 1.15; }
+.topbar__user-home { font-size: var(--text-xs); color: var(--text-muted); line-height: 1.15; }
+@media (max-width: 900px) { .topbar__user-name, .topbar__user-home { display: none; } }
+
+/* 卡片收藏按钮 */
+.camera-card__foot .icon-btn { flex: 0 0 auto; }
+.camera-card__foot .icon-btn.is-active { color: var(--warning); }
+
+
 </style>
 </head>
 <body>
@@ -1437,7 +1496,25 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; line-h
       </button>
       <h1 class="topbar__title" id="pageTitle">设备列表</h1>
       <div class="topbar__actions">
-        <span id="sysInfo" class="text-sm text-muted">—</span>
+        <div class="topbar__search">
+          <div class="search">
+            <svg class="icon icon-sm" aria-hidden="true"><use href="#i-search"/></svg>
+            <input class="input" id="globalSearch" type="search" placeholder="搜索摄像头…" autocomplete="off">
+          </div>
+        </div>
+
+        <button class="topbar__icon-btn" id="btnNotify" type="button" title="事件通知">
+          <svg class="icon" aria-hidden="true"><use href="#i-bell"/></svg>
+          <span class="topbar__dot" id="notifyDot" style="display:none"></span>
+        </button>
+
+        <button class="topbar__user" id="btnUser" type="button" title="账号">
+          <span class="topbar__avatar" id="userAvatar">家</span>
+          <span style="text-align:left">
+            <span class="topbar__user-name" id="userName">我的家</span><br>
+            <span class="topbar__user-home" id="userHome">—</span>
+          </span>
+        </button>
       </div>
     </header>
 
@@ -1463,7 +1540,9 @@ var liveMode = "hls";   // hls / mjpeg
 var liveTimer = null;
 var APP_VER = "";        // 版本号（从 /api/health 拉取）
 var DEV_UNLOCKED = false; // 开发者模式是否解锁
-var devAccountFilter = 'all';  // 设备列表的账号筛选
+var devAccountFilter = 'all';
+var devFilter = 'all';      // all/online/offline/shared
+var devView = 'grid';       // grid/list  // 设备列表的账号筛选
 var DEV_TAP = 0;          // 本次点击计数
 
 // ===== 工具 =====
@@ -1703,77 +1782,186 @@ function render(){
 function renderDevices(c){
   c.innerHTML = loading();
   loadDevices().then(function(st){
-    if(st.needLogin){
-      c.innerHTML = "<div class=\"card\">" + empty("qr","还没有添加小米账号","请用米家 App 扫码登录",
-        "<button class=\"btn btn--primary\" id=\"btnQR\">"+icon("plus")+"扫码添加账号</button>") + "</div>";
-      $("#btnQR").onclick = showQR;
-      return;
+    var allDevices = devices;
+    var accMap = {};
+    (st.accounts || []).forEach(function(a){ accMap[a.userId] = a; });
+
+    var accIds = [];
+    allDevices.forEach(function(d){
+      if(d.accountId && accIds.indexOf(d.accountId) < 0) accIds.push(d.accountId);
+    });
+
+    if(devAccountFilter !== 'all'){
+      devices = allDevices.filter(function(d){ return d.accountId === devAccountFilter; });
+    } else {
+      devices = allDevices.slice();
     }
-    if(!devices.length){
-      c.innerHTML = "<div class=\"card\">" + empty("inbox","没有发现摄像头","","") + "</div>";
-      return;
-    }
-    // ===== 账号筛选 =====
-  //
-  // 多个小米账号时设备混在一起，按归属账号筛选。
-  var allDevices = devices;
-  var accMap = {};
-  (st.accounts || []).forEach(function(a){ accMap[a.userId] = a; });
 
-  var accIds = [];
-  allDevices.forEach(function(d){
-    if(d.accountId && accIds.indexOf(d.accountId) < 0) accIds.push(d.accountId);
-  });
+    var online = devices.filter(function(d){ return d.isOnline; }).length;
 
-  if(devAccountFilter !== 'all'){
-    devices = allDevices.filter(function(d){ return d.accountId === devAccountFilter; });
-  } else {
-    devices = allDevices.slice();
-  }
+    // ---- 页头 ----
+    var head = '<div class="page-head">'
+      + '<div class="page-head__info">'
+      +   '<div class="page-head__title">摄像头 <small>Cameras</small></div>'
+      +   '<div class="page-head__meta">'
+      +     '<span class="status-dot ' + (online ? 'is-online' : '') + '"></span>'
+      +     '<span><b>' + online + '</b> cameras online</span>'
+      +     (devices.length - online > 0 ? '<span class="text-muted">· ' + (devices.length - online) + ' 离线</span>' : '')
+      +   '</div>'
+      + '</div>'
+      + '<div class="page-head__actions">'
+      +   (accIds.length > 1 ? accountSelectHTML(accIds, accMap) : '')
+      +   '<button class="btn btn--sm" id="btnDeviceRefresh">' + icon('refresh',14) + '刷新</button>'
+      +   '<button class="btn btn--sm btn--primary" id="btnAddCam">' + icon('plus',14) + '添加</button>'
+      + '</div>'
+      + '</div>';
 
-  // 统计（含共享设备）
-  var onlineCount = devices.filter(function(d){ return d.isOnline; }).length;
-  var sharedCount = devices.filter(function(d){ return d.shared || d.shareFlag===1; }).length;
-  var summary = "<div class=\"card\" style=\"margin-bottom:12px\">"
-    + "<div style=\"padding:14px 20px;display:flex;gap:24px;flex-wrap:wrap;font-size:13px\">"
-    +   "<span>共 <b>" + devices.length + "</b> 台</span>"
-    +   "<span style=\"color:var(--success)\">在线 <b>" + onlineCount + "</b></span>"
-    +   (sharedCount ? "<span style=\"color:var(--primary)\">共享 <b>" + sharedCount + "</b></span>" : "")
-    +   (accIds.length > 1 ? accountSelectHTML(accIds, accMap) : "")
-    + "</div></div>";
+    // ---- 筛选胶囊 ----
+    var filters = '<div class="filters">'
+      + '<button class="chip is-active" data-f="all">全部</button>'
+      + '<button class="chip" data-f="online">在线</button>'
+      + '<button class="chip" data-f="offline">离线</button>'
+      + '<button class="chip" data-f="shared">共享</button>'
+      + '<span class="filters__spacer"></span>'
+      + '<div class="segmented">'
+      +   '<button class="segmented__btn is-active" data-view="grid" title="网格">' + icon('grid',14) + '</button>'
+      +   '<button class="segmented__btn" data-view="list" title="列表">' + icon('list',14) + '</button>'
+      + '</div>'
+      + '</div>';
 
-  var cards = devices.map(function(d){
-      var tags = d.isOnline
-        ? "<span class=\"badge badge--ok\">在线</span>"
-        : "<span class=\"badge\">离线</span>";
-      if(d.shared || d.shareFlag===1) tags += "<span class=\"badge badge--accent\">共享</span>";
-      return "<div class=\"device\">"
-        + "<div class=\"dev-preview\" data-did=\""+esc(d.did)+"\">"
-        +   "<div class=\"ph\">"+icon("play",32)+"<span>点击预览</span></div>"
-        +   "<div class=\"dev-badge\">"+tags+"</div>"
-        + "</div>"
-        + "<div class=\"dev-body\">"
-        +   "<div class=\"dev-name\" title=\""+esc(d.name)+"\">"+esc(d.name)+"</div>"
-        +   "<div class=\"dev-meta\">"
-        +     "<div><b>型号</b> "+esc(d.model||"—")+"</div>"
-        +     "<div><b>IP</b> "+esc(d.localip||"—")+"</div>"
-        +     "<div><b>DID</b> "+esc(d.did)+"</div>"
-        +   "</div>"
-        +   "<div class=\"dev-actions\">"
-        +     "<button class=\"btn btn--sm btn--primary\" data-act=\"live\" data-did=\""+esc(d.did)+"\">"+icon("play",12)+"预览</button>"
-        +     "<button class=\"btn btn--sm\" data-act=\"snap\" data-did=\""+esc(d.did)+"\">"+icon("snap",12)+"截图</button>"
-        +     "<button class=\"btn btn--sm\" data-act=\"rec\" data-did=\""+esc(d.did)+"\">"+icon("rec",12)+"录像</button>"
-        +   "</div>"
-        + "</div></div>";
-    }).join("");
-    c.innerHTML = summary + "<div class=\"camera-grid\">"+cards+"</div>";
+    // ---- 卡片 ----
+    var list = devices;
+    if(devFilter === 'online')  list = devices.filter(function(d){ return d.isOnline; });
+    if(devFilter === 'offline') list = devices.filter(function(d){ return !d.isOnline; });
+    if(devFilter === 'shared')  list = devices.filter(function(d){ return d.shared || d.shareFlag===1; });
 
-  var selAcc = $("#selAccount");
-  if(selAcc) selAcc.onchange = function(){
-    devAccountFilter = this.value;
-    renderDevices(c);
-  };
+    var cards = list.length ? list.map(function(d){
+      var on = d.isOnline;
+      var shared = d.shared || d.shareFlag === 1;
+      var dual = (d.lenses || 1) >= 2;
+
+      // 预览区：在线设备异步加载首帧
+      var preview = on
+        ? '<img data-snap="' + esc(d.did) + '" alt="" loading="lazy">'
+          + '<div class="camera-card__time" data-clock="' + esc(d.did) + '"></div>'
+        : '<div class="camera-card__placeholder">' + icon('cam-off',28) + '<span>离线</span></div>';
+
+      var badges = '<div class="camera-card__badges">'
+        + (shared ? '<span class="badge badge--accent">共享</span>' : '')
+        + (dual   ? '<span class="badge">双摄</span>' : '')
+        + '</div>';
+
+      return '<article class="camera-card' + (on ? '' : ' is-offline') + '" data-did="' + esc(d.did) + '">'
+        + '<div class="camera-card__preview">' + preview + badges + '</div>'
+        + '<footer class="camera-card__foot">'
+        +   '<div class="camera-card__info">'
+        +     '<div class="camera-card__name">'
+        +       '<span class="status-dot ' + (on ? 'is-online' : 'is-offline') + '"></span>'
+        +       '<span>' + esc(d.name) + '</span>'
+        +     '</div>'
+        +     '<div class="camera-card__meta">' + (on ? '点击预览' : '设备离线') + (dual ? ' · 双镜头' : '') + '</div>'
+        +   '</div>'
+        +   '<button class="icon-btn" data-act="fav" title="收藏">' + icon('star',15) + '</button>'
+        + '</footer>'
+        + '</article>';
+    }).join("") : empty('cam', '没有匹配的摄像头', '换个筛选条件试试', '');
+
+    var viewCls = devView === 'list' ? ' camera-grid--list' : '';
+    c.innerHTML = head + filters
+      + '<div class="camera-grid' + viewCls + '">' + cards + '</div>';
+
+    // ---- 交互 ----
+    var rf = $("#btnDeviceRefresh");
+    if(rf) rf.onclick = function(){ toast('正在刷新…'); loadDevices().then(function(){ render(); }); };
+    var ac = $("#btnAddCam");
+    if(ac) ac.onclick = showQR;
+
+    Array.prototype.forEach.call(c.querySelectorAll('[data-f]'), function(b){
+      b.onclick = function(){
+        devFilter = this.dataset.f;
+        Array.prototype.forEach.call(c.querySelectorAll('[data-f]'), function(x){ x.classList.remove('is-active'); });
+        this.classList.add('is-active');
+        renderDevices(c);
+      };
+    });
+    Array.prototype.forEach.call(c.querySelectorAll('[data-view]'), function(b){
+      b.onclick = function(){
+        devView = this.dataset.view;
+        Array.prototype.forEach.call(c.querySelectorAll('[data-view]'), function(x){ x.classList.remove('is-active'); });
+        this.classList.add('is-active');
+        renderDevices(c);
+      };
+    });
+
+    // 卡片点击 -> 实时预览
+    Array.prototype.forEach.call(c.querySelectorAll('.camera-card'), function(el){
+      el.onclick = function(ev){
+        if(ev.target.closest('[data-act]')) return;
+        if(!el.classList.contains('is-offline')){
+          gotoLive(el.dataset.did);
+        }
+      };
+    });
+
     bindDeviceActions();
+
+    // 异步加载每路首帧（比一直挂 MJPEG 省资源）
+    loadCameraSnaps(c);
+  }).catch(function(e){
+    c.innerHTML = '<div class="card">' + empty('close','加载失败', e.message, '') + '</div>';
+  });
+}
+
+// loadCameraSnaps 加载摄像头缩略图
+//
+// ===== 为什么不用实时快照 =====
+//
+// 抓一张快照要 3-9 秒（新建 ffmpeg + 等关键帧）。
+// 设备列表如果有 N 台，首屏要等 10-30 秒，而且 CPU 峰值很高。
+//
+// 服务端提供了 /api/live/thumb：
+//   - 有缓存 -> 立刻返回（后台自动刷新）
+//   - 无缓存 -> 202，我们稍后重试
+//
+// 所以这里：先并发请求，202 的排队重试。
+function loadCameraSnaps(root){
+  var imgs = Array.prototype.slice.call(root.querySelectorAll('img[data-snap]'));
+
+  var load = function(img, attempt){
+    if(!document.body.contains(img)) return;
+
+    // 用 fetch 而不是 img.src，这样能拿到状态码（区分 202 和 200）
+    fetch(apiUrl('/api/live/thumb?did=' + encodeURIComponent(img.dataset.snap) + '&w=640'), { cache: 'no-store' })
+      .then(function(r){
+        if(r.status === 202){
+          // 服务端还在生成，稍后重试（最多 10 次，约 30 秒）
+          if(attempt < 10) setTimeout(function(){ load(img, attempt + 1); }, 3000);
+          return null;
+        }
+        if(!r.ok) throw new Error('http ' + r.status);
+        return r.blob();
+      })
+      .then(function(b){
+        if(!b) return;
+        if(!document.body.contains(img)) return;
+        img.src = URL.createObjectURL(b);
+        img.classList.add('is-loaded');
+      })
+      .catch(function(){
+        var box = img.parentNode;
+        if(box && document.body.contains(box)){
+          box.innerHTML = '<div class="camera-card__placeholder">' + icon('cam-off',28) + '<span>暂无画面</span></div>';
+        }
+      });
+  };
+
+  // 并发请求（服务端有缓存，不会压满）
+  imgs.forEach(function(img, i){
+    setTimeout(function(){ load(img, 0); }, i * 150);
+
+    // 时间角标
+    var clk = root.querySelector('[data-clock="' + img.dataset.snap + '"]');
+    if(clk) clk.textContent = new Date().toLocaleTimeString('zh-CN', {hour:'2-digit', minute:'2-digit'});
   });
 }
 
@@ -3766,9 +3954,7 @@ function initSDK(){
         var el = document.getElementById("sysInfo");
         if(el) el.textContent = "系统 " + (c.systemVersion || "") + " · " + (c.language || "");
         if(app.isWeb === true && app.isStandaloneWeb === false){
-          app.$on("os/theme", function(t){
-            document.documentElement.classList.toggle("dark", t === "dark");
-          });
+          // 宿主主题变化不影响我们（保持 Haven 暗色）
         }
         return app.setTitle("小米摄像头");
       });

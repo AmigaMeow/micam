@@ -507,7 +507,9 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; line-h
 .camera-card__preview img,
 .camera-card__preview video {
   width: 100%; height: 100%; object-fit: cover; display: block;
+  opacity: 0; transition: opacity var(--duration-normal) var(--ease-out);
 }
+.camera-card__preview img.is-loaded { opacity: 1; }
 .camera-card__time {
   position: absolute; top: var(--space-3); right: var(--space-3);
   padding: 2px 7px; border-radius: var(--radius-sm);
