@@ -98,10 +98,22 @@ func (p *ptzSession) Close() {
 
 // send 发送云台命令并读响应。
 func (p *ptzSession) send(op int) (*ptzResp, error) {
+	return p.sendExtra(op, nil)
+}
+
+// sendExtra 发送命令，可带额外参数（如绝对定位的目标坐标）。
+//
+// 绝对定位（Mac 侧调研：operation=13）如果只传 operation 是不完整的，
+// 必须带目标角度/仰角，所以这里支持透传。
+func (p *ptzSession) sendExtra(op int, extra map[string]any) (*ptzResp, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	body, _ := json.Marshal(map[string]any{"operation": op})
+	payload := map[string]any{"operation": op}
+	for k, v := range extra {
+		payload[k] = v
+	}
+	body, _ := json.Marshal(payload)
 	buf := make([]byte, 4+len(body))
 	binary.BigEndian.PutUint32(buf, ptzCmdMotor)
 	copy(buf[4:], body)
@@ -198,6 +210,11 @@ func (s *Server) handlePTZMove(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Did       string `json:"did"`
 		Operation int    `json:"operation"`
+		// 绝对定位（operation=13）用的目标坐标；其他 operation 忽略
+		Angle     *int `json:"angle"`
+		Elevation *int `json:"elevation"`
+		// raw 原样透传（协议探测用，任何键值对）
+		Raw map[string]any `json:"raw"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeErr(w, 400, "参数错误")
@@ -229,7 +246,24 @@ func (s *Server) handlePTZMove(w http.ResponseWriter, r *http.Request) {
 	}
 	defer sess.Close()
 
-	resp, err := sess.send(req.Operation)
+	extra := map[string]any{}
+	if req.Angle != nil {
+		extra["angle"] = *req.Angle
+	}
+	if req.Elevation != nil {
+		extra["elevation"] = *req.Elevation
+	}
+	for k, v := range req.Raw {
+		if k == "operation" {
+			continue
+		}
+		extra[k] = v
+	}
+	if len(extra) == 0 {
+		extra = nil
+	}
+
+	resp, err := sess.sendExtra(req.Operation, extra)
 	if err != nil {
 		writeErr(w, 504, err.Error())
 		return
