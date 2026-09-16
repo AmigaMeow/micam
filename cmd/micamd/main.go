@@ -809,16 +809,42 @@ var _ = fmt.Sprintf
 // 为什么需要：前端原来只有 index.html，后来加了 hls.min.js。
 // 只复制 index.html 的话，播放库会 404 -> HLS 播放黑屏。
 func copyWebAssets(srcDir, dstDir string) {
-	entries, err := os.ReadDir(srcDir)
-	if err != nil {
-		return
+	// 递归复制（assets/ 子目录有 css/js/ui/vendor/img 多层）
+	n := copyTree(srcDir, dstDir, "")
+	if n > 0 {
+		log.Printf("已部署静态资源: %d 个文件", n)
 	}
+}
+
+// copyTree 递归复制目录，跳过 index.html（单独处理）。
+func copyTree(srcDir, dstDir, rel string) int {
+	src := filepath.Join(srcDir, rel)
+	dst := filepath.Join(dstDir, rel)
+
+	entries, err := os.ReadDir(src)
+	if err != nil {
+		return 0
+	}
+	if err := os.MkdirAll(dst, 0o755); err != nil {
+		return 0
+	}
+
+	var n int
 	for _, ent := range entries {
-		if ent.IsDir() || ent.Name() == "index.html" {
+		name := ent.Name()
+		childRel := filepath.Join(rel, name)
+
+		if ent.IsDir() {
+			n += copyTree(srcDir, dstDir, childRel)
 			continue
 		}
-		s := filepath.Join(srcDir, ent.Name())
-		d := filepath.Join(dstDir, ent.Name())
+		// index.html 由 deployWeb 单独写，且要经过 HTML 结构校验
+		if rel == "" && name == "index.html" {
+			continue
+		}
+
+		s := filepath.Join(srcDir, childRel)
+		d := filepath.Join(dstDir, childRel)
 
 		si, err := os.Stat(s)
 		if err != nil {
@@ -832,9 +858,10 @@ func copyWebAssets(srcDir, dstDir string) {
 			continue
 		}
 		if err := os.WriteFile(d, raw, 0o644); err != nil {
-			log.Printf("复制静态资源 %s 失败: %v", ent.Name(), err)
+			log.Printf("复制静态资源 %s 失败: %v", childRel, err)
 			continue
 		}
-		log.Printf("已部署静态资源: %s (%d 字节)", ent.Name(), len(raw))
+		n++
 	}
+	return n
 }

@@ -52,10 +52,11 @@ chown micam:micam /vol1/@appcenter/micam/server/micamd
 
 # 部署前端（很容易忘——忘了就是「改了界面但没生效」）
 mkdir -p /vol1/@appcenter/micam/www
-cp "$PLATFORM/app/www/"* /vol1/@appcenter/micam/www/ 2>/dev/null || true
+rm -rf /vol1/@appcenter/micam/www
+cp -r "$PLATFORM/app/www" /vol1/@appcenter/micam/www 2>/dev/null || true
 chown -R micam:micam /vol1/@appcenter/micam/www
 # 强制让服务重新部署 web（删除目标，触发 deployWeb 的 mtime 判断）
-rm -f /vol1/@appdata/micam/web/index.html
+rm -rf /vol1/@appdata/micam/web
 echo "    前端已同步"
 
 rm -f /vol1/@appcenter/micam/app.sock /vol1/@appdata/micam/app.pid

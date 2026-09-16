@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<title>小米摄像头</title>
+
+<!-- 加载顺序：Basecoat 基础 -> Haven 令牌 -> 基线 -> 组件 -> 页面
+     全部本地资源，不依赖任何 CDN（国内网络下 CDN 不可靠） -->
+<link rel="stylesheet" href="assets/ui/basecoat.css">
+<link rel="stylesheet" href="assets/css/tokens.css">
+<link rel="stylesheet" href="assets/css/base.css">
+<link rel="stylesheet" href="assets/css/components.css">
+<link rel="stylesheet" href="assets/css/pages.css">
+</head>
+<body>
+
+<!-- ===== 图标 sprite（Lucide 子集，构建时生成）===== -->
+<!--SPRITE-->
+
+<!-- ===== 应用外壳 ===== -->
+<div class="app">
+
+  <aside class="sider" id="sider">
+    <div class="sider__brand">
+      <svg class="sider__logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3Z"/>
+        <circle cx="12" cy="13" r="3"/>
+      </svg>
+      <span>小米摄像头</span>
+    </div>
+
+    <nav class="sider__nav" id="menu" aria-label="主导航"></nav>
+
+    <div class="sider__foot">
+      <span>MiCam</span>
+      <span class="sider__ver" id="appVer">v—</span>
+    </div>
+  </aside>
+
+  <div class="main">
+    <header class="topbar">
+      <button class="icon-btn" id="btnMenu" type="button" aria-label="打开菜单" style="display:none">
+        <svg class="icon" aria-hidden="true"><use href="#i-menu"/></svg>
+      </button>
+      <h1 class="topbar__title" id="pageTitle">设备列表</h1>
+      <div class="topbar__actions">
+        <span id="sysInfo" class="text-sm text-muted">—</span>
+      </div>
+    </header>
+
+    <main class="content" id="content" role="main"></main>
+  </div>
+
+</div>
+
+<div class="mask" id="siderMask" style="display:none"></div>
+<div class="toast-wrap" id="toastWrap"></div>
+
+<script>
+<!--APP_JS-->
+</script>
+
+</body>
+</html>
