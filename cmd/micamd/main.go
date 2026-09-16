@@ -43,7 +43,7 @@ const appName = "micam"
 // startedAt 进程启动时间（状态条显示「运行时间」用）
 var startedAt = time.Now()
 
-var appVersion = "0.25.0"
+var appVersion = "0.26.0"
 
 func main() {
 	var (
