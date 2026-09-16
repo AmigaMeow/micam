@@ -29,3 +29,7 @@ sources.json
 # 临时
 /tmp/
 *.log
+
+# Python
+__pycache__/
+*.pyc
