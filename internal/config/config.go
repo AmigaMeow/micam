@@ -28,6 +28,17 @@ type DevConfig struct {
 }
 
 // Config 应用配置。
+// AIConfig AI 推理配置
+type AIConfig struct {
+	Enabled       bool     `json:"enabled"`
+	Model         string   `json:"model"`
+	ConfThreshold float64  `json:"confThreshold"`
+	Classes       []string `json:"classes"`
+	MaxPerMinute  int      `json:"maxPerMinute"`
+	PythonPath    string   `json:"pythonPath"`
+	Threads       int      `json:"threads"`
+}
+
 type Config struct {
 	// 默认画质档位：2=标清, 3=2K（推荐）
 	Subtype string `json:"subtype"`
@@ -47,6 +58,8 @@ type Config struct {
 	NotifyEnabled bool     `json:"notifyEnabled"`
 	NotifyWebhook string   `json:"notifyWebhook"`
 	NotifyEvents  []string `json:"notifyEvents"`
+	// AI 推理（默认关闭；关闭后事件只依赖帧差侦测）
+	AI AIConfig `json:"ai"`
 	// 日志级别
 	LogLevel string `json:"logLevel"`
 	// 开放模式
@@ -66,6 +79,14 @@ func Default() *Config {
 		RecordMinFreeGB:  10,
 		TranscodeCacheGB: 5,
 		LogLevel:         "info",
+		AI: AIConfig{
+			Enabled:       false,
+			Model:         "yolov8n",
+			ConfThreshold: 0.45,
+			Classes:       []string{"person", "vehicle"},
+			MaxPerMinute:  12,
+			Threads:       4,
+		},
 		Dev: DevConfig{
 			AllowLAN:   true,
 			ExposeSpec: true,
@@ -169,6 +190,15 @@ func (c *Config) SetNotify(enabled *bool, webhook *string, events *[]string) err
 func (c *Config) SetRecordDir(dir string) error {
 	c.mu.Lock()
 	c.RecordDir = dir
+	c.mu.Unlock()
+	return c.SaveSelf()
+}
+
+
+// SetAI 更新 AI 配置并落盘。
+func (c *Config) SetAI(a AIConfig) error {
+	c.mu.Lock()
+	c.AI = a
 	c.mu.Unlock()
 	return c.SaveSelf()
 }

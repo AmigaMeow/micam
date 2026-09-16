@@ -43,7 +43,9 @@ type Event struct {
 	Thumb    string  `json:"thumb,omitempty"` // 缩略图文件名
 	Duration int     `json:"duration,omitempty"` // 持续秒数
 	Score    float64 `json:"score,omitempty"`    // 变化强度
-	Conf     float64 `json:"conf,omitempty"`     // 置信度（78~99，给 UI 用的强弱指示）
+	Conf     float64 `json:"conf,omitempty"`     // 置信度
+	AICls    string  `json:"aiCls,omitempty"`    // AI 识别的具体类名（person/car/...）
+	AIBox    []int   `json:"aiBox,omitempty"`    // AI 检测框 [x1,y1,x2,y2]
 	// 便于「点事件跳回放」
 	RecFile string  `json:"recFile,omitempty"`
 	RecOff  float64 `json:"recOff,omitempty"`

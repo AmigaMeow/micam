@@ -1147,3 +1147,75 @@
 
 /* 只有一台时铺满整块 */
 .ggrid--1 { grid-template-columns: 1fr; }
+
+
+/* ==========================================================================
+   AI 设置区（设置页）
+   ========================================================================== */
+
+.ai-warn {
+  display: flex; align-items: flex-start; gap: var(--space-3);
+  margin-top: var(--space-4);
+  padding: var(--space-4);
+  background: rgba(245,158,11,.10);
+  border: 1px solid rgba(245,158,11,.3);
+  border-radius: var(--radius-lg);
+  color: var(--warning);
+  font-size: var(--text-base);
+}
+.ai-warn .icon { flex: 0 0 auto; margin-top: 1px; }
+.ai-warn__sub { color: var(--text-muted); margin-top: 4px; font-size: var(--text-sm); line-height: 1.6; }
+
+.ai-grid {
+  margin-top: var(--space-5);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.ai-actions {
+  display: flex; align-items: center; gap: var(--space-3);
+  margin-top: var(--space-5);
+  flex-wrap: wrap;
+}
+.ai-result {
+  font-size: var(--text-base); color: var(--text-secondary);
+  min-width: 0;
+}
+
+.ai-models {
+  margin-top: var(--space-5);
+  padding: var(--space-4);
+  background: var(--surface-2);
+  border-radius: var(--radius-lg);
+}
+.ai-models__title {
+  font-size: var(--text-base); color: var(--text-secondary);
+  margin-bottom: var(--space-3);
+}
+.ai-model {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-2) 0;
+}
+.ai-model + .ai-model { border-top: 1px solid var(--border-subtle); }
+.ai-model__name { font-size: var(--text-base); min-width: 90px; }
+.ai-model__meta { font-size: var(--text-sm); color: var(--text-muted); flex: 1; }
+.ai-models__hint {
+  margin-top: var(--space-3); font-size: var(--text-xs); color: var(--text-muted);
+  font-family: var(--font-mono, monospace);
+}
+
+.ai-foot {
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+  font-size: var(--text-sm); color: var(--text-muted); line-height: 1.6;
+}
+.ai-foot b { color: var(--online); }
+
+/* AI 类名标签（事件卡片） */
+.ev-card__ai {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: var(--text-xs); color: var(--text-muted);
+  padding: 1px 6px; border-radius: var(--radius-sm);
+  background: var(--surface-3);
+}

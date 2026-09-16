@@ -43,7 +43,7 @@ const appName = "micam"
 // startedAt 进程启动时间（状态条显示「运行时间」用）
 var startedAt = time.Now()
 
-var appVersion = "0.24.0"
+var appVersion = "0.25.0"
 
 func main() {
 	var (
@@ -54,6 +54,7 @@ func main() {
 		devMode    = flag.Bool("dev", false, "开发模式：额外开放调试接口")
 		rtspPort   = flag.Int("rtsp", 18554, "内置 RTSP 中转端口（供 ffmpeg 使用）")
 		ffmpegPath = flag.String("ffmpeg", "ffmpeg", "ffmpeg 可执行文件路径")
+		appDest    = flag.String("appdest", os.Getenv("TRIM_APPDEST"), "应用安装目录（找 AI 脚本用）")
 		daemonMode = flag.Bool("daemon", false, "后台运行（自己 daemon 化）")
 	)
 	showVersion := flag.Bool("version", false, "打印版本后退出")
@@ -152,6 +153,18 @@ func main() {
 	srv.eventStore = event.NewStore(filepath.Join(*dataDir, "events"), 90)
 	srv.meta = newMetaStore(*dataDir)
 	srv.presets = newPresetStore(*dataDir)
+
+	// AI 推理客户端（默认关闭；开启且环境可用时才启动子进程）
+	aiScript := filepath.Join(*appDest, "ai", "infer.py")
+	if _, err := os.Stat(aiScript); err != nil {
+		aiScript = filepath.Join("platform", "fnos", "app", "ai", "infer.py")
+	}
+	srv.ai = newAIClient(*dataDir, aiScript)
+	if cfg.AI.Enabled {
+		if err := srv.ai.Start(aiConfigFromUser(cfg.AI)); err != nil {
+			logf("[ai] 启动失败（继续用帧差模式）: %v", err)
+		}
+	}
 
 	// 移动侦测（复用缩略图缓存，几乎零成本）
 	srv.startMotionDetector()
@@ -268,6 +281,7 @@ type Server struct {
 	eventStore *event.Store
 	meta       *metaStore
 	presets    *presetStore
+	ai         *aiClient
 }
 
 // ffmpegPath 返回 ffmpeg 路径。
@@ -446,6 +460,12 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/events/thumb", s.handleEventThumb)
 	mux.HandleFunc("/api/devices/meta", s.handleDevMeta)
 	mux.HandleFunc("/api/devices/hide", s.handleDevHide)
+
+	// AI 推理
+	mux.HandleFunc("/api/ai/config", s.handleAIConfig)
+	mux.HandleFunc("/api/ai/status", s.handleAIStatus)
+	mux.HandleFunc("/api/ai/model", s.handleAIModel)
+	mux.HandleFunc("/api/ai/test", s.handleAITest)
 
 	// 播放
 	mux.HandleFunc("/api/live/source-status", s.handleSourceStatus)

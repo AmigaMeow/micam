@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <title>小米摄像头</title>
-<meta name="micam-build" content="2026-09-16 09:43:06">
+<meta name="micam-build" content="2026-09-16 11:38:25">
 <!-- 样式内联：飞牛网关会剥前缀，相对路径不可靠（详见 build/assemble-web.js）-->
 <style>
 
@@ -2390,11 +2390,83 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; line-h
 .ggrid--1 { grid-template-columns: 1fr; }
 
 
+/* ==========================================================================
+   AI 设置区（设置页）
+   ========================================================================== */
+
+.ai-warn {
+  display: flex; align-items: flex-start; gap: var(--space-3);
+  margin-top: var(--space-4);
+  padding: var(--space-4);
+  background: rgba(245,158,11,.10);
+  border: 1px solid rgba(245,158,11,.3);
+  border-radius: var(--radius-lg);
+  color: var(--warning);
+  font-size: var(--text-base);
+}
+.ai-warn .icon { flex: 0 0 auto; margin-top: 1px; }
+.ai-warn__sub { color: var(--text-muted); margin-top: 4px; font-size: var(--text-sm); line-height: 1.6; }
+
+.ai-grid {
+  margin-top: var(--space-5);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.ai-actions {
+  display: flex; align-items: center; gap: var(--space-3);
+  margin-top: var(--space-5);
+  flex-wrap: wrap;
+}
+.ai-result {
+  font-size: var(--text-base); color: var(--text-secondary);
+  min-width: 0;
+}
+
+.ai-models {
+  margin-top: var(--space-5);
+  padding: var(--space-4);
+  background: var(--surface-2);
+  border-radius: var(--radius-lg);
+}
+.ai-models__title {
+  font-size: var(--text-base); color: var(--text-secondary);
+  margin-bottom: var(--space-3);
+}
+.ai-model {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-2) 0;
+}
+.ai-model + .ai-model { border-top: 1px solid var(--border-subtle); }
+.ai-model__name { font-size: var(--text-base); min-width: 90px; }
+.ai-model__meta { font-size: var(--text-sm); color: var(--text-muted); flex: 1; }
+.ai-models__hint {
+  margin-top: var(--space-3); font-size: var(--text-xs); color: var(--text-muted);
+  font-family: var(--font-mono, monospace);
+}
+
+.ai-foot {
+  margin-top: var(--space-4);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+  font-size: var(--text-sm); color: var(--text-muted); line-height: 1.6;
+}
+.ai-foot b { color: var(--online); }
+
+/* AI 类名标签（事件卡片） */
+.ev-card__ai {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: var(--text-xs); color: var(--text-muted);
+  padding: 1px 6px; border-radius: var(--radius-sm);
+  background: var(--surface-3);
+}
+
+
 </style>
 </head>
 <body>
 
-<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true"><symbol viewBox="0 0 24 24" id="i-home"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8" /><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></symbol><symbol viewBox="0 0 24 24" id="i-picture-in-picture"><path d="M2 10h6V5H2z" /><path d="M21 3H3a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2Z" /><path d="M21 11h-6v6h6z" /></symbol><symbol viewBox="0 0 24 24" id="i-circle-dot"><circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="1" fill="currentColor" /></symbol><symbol viewBox="0 0 24 24" id="i-more-horizontal"><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /><circle cx="5" cy="12" r="1" /></symbol><symbol viewBox="0 0 24 24" id="i-move"><path d="M12 2v20" /><path d="m15 19-3 3-3-3" /><path d="m19 9 3 3-3 3" /><path d="M2 12h20" /><path d="m5 9-3 3 3 3" /><path d="m9 5 3-3 3 3" /></symbol><symbol viewBox="0 0 24 24" id="i-cam"><path d="M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z" />
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true"><symbol viewBox="0 0 24 24" id="i-home"><path d="M15 21v-8a1 1 0 0 0-1-1h-4a1 1 0 0 0-1 1v8" /><path d="M3 10a2 2 0 0 1 .709-1.528l7-5.999a2 2 0 0 1 2.582 0l7 5.999A2 2 0 0 1 21 10v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" /></symbol><symbol viewBox="0 0 24 24" id="i-picture-in-picture"><path d="M2 10h6V5H2z" /><path d="M21 3H3a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h18a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2Z" /><path d="M21 11h-6v6h6z" /></symbol><symbol viewBox="0 0 24 24" id="i-circle-dot"><circle cx="12" cy="12" r="10" /><circle cx="12" cy="12" r="1" fill="currentColor" /></symbol><symbol viewBox="0 0 24 24" id="i-more-horizontal"><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /><circle cx="5" cy="12" r="1" /></symbol><symbol viewBox="0 0 24 24" id="i-move"><path d="M12 2v20" /><path d="m15 19-3 3-3-3" /><path d="m19 9 3 3-3 3" /><path d="M2 12h20" /><path d="m5 9-3 3 3 3" /><path d="m9 5 3-3 3 3" /></symbol><symbol viewBox="0 0 24 24" id="i-car"><path d="M19 17h2c.6 0 1-.4 1-1v-3c0-.9-.7-1.7-1.5-1.9C18.7 10.6 16 10 16 10s-1.3-1.4-2.2-2.3c-.5-.4-1.1-.7-1.8-.7H5c-.6 0-1.1.4-1.4.9l-1.4 2.9A3.7 3.7 0 0 0 2 12v4c0 .6.4 1 1 1h2"/><circle cx="7" cy="17" r="2"/><path d="M9 17h6"/><circle cx="17" cy="17" r="2"/></symbol><symbol viewBox="0 0 24 24" id="i-cam"><path d="M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z" />
   <circle cx="12" cy="13" r="3" /></symbol><symbol viewBox="0 0 24 24" id="i-cam-off"><path d="M14.564 14.558a3 3 0 1 1-4.122-4.121" />
   <path d="m2 2 20 20" />
   <path d="M20 20H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 .819-.175" />
@@ -3717,7 +3789,7 @@ function loadHomeStorage(){
 // 事件类型定义（图标 / 名称 / 英文 / 颜色）
 var EV_TYPES = {
   person:  { ic:'user',     name:'有人',  en:'Person',  cls:'is-person'  },
-  vehicle: { ic:'camera',   name:'车辆',  en:'Vehicle', cls:'is-vehicle' },
+  vehicle: { ic:'car',      name:'车辆',  en:'Vehicle', cls:'is-vehicle' },
   package: { ic:'inbox',    name:'包裹',  en:'Package', cls:'is-package' },
   motion:  { ic:'activity', name:'移动',  en:'Motion',  cls:'is-motion'  },
   online:  { ic:'power',    name:'上线',  en:'Online',  cls:'is-online'  },
@@ -3832,6 +3904,7 @@ function renderEvents(c){
         +     '<span class="ev-card__time">' + esc(hm) + '</span>'
         +     '<span class="ev-badge ' + t.cls + '">' + icon(t.ic,13) + t.name + '</span>'
         +     (conf ? '<span class="ev-card__conf">置信度 ' + conf + '%</span>' : '')
+        +     (e.aiCls && e.aiCls !== e.type ? '<span class="ev-card__ai">' + icon('cpu',12) + esc(e.aiCls) + '</span>' : '')
         +   '</div>'
         +   '<div class="ev-card__dev">' + esc(e.device || '') + '</div>'
         +   '<div class="ev-card__desc">' + esc(e.desc || t.en) + '</div>'
@@ -5982,6 +6055,11 @@ function renderSettings(c){
     + "<div style=\"padding:16px 24px\" id=\"notifyCfg\">" + loading("读取中…") + "</div>"
     + "</div>"
     + "<div class=\"card\">"
+    + "<div class=\"card__head\"><span class=\"card__title\">" + icon("cpu",15) + " AI 智能识别</span>"
+    +   "<span id=\"aiHeadStatus\" style=\"font-size:12px;color:var(--text-muted)\"></span></div>"
+    + "<div style=\"padding:16px 24px\" id=\"aiCfg\">" + loading("读取中…") + "</div>"
+    + "</div>"
+    + "<div class=\"card\">"
     + "<div class=\"card__head\"><span class=\"card__title\">诊断与反馈</span></div>"
     + "<div style=\"padding:20px 24px\">"
     +   "<p style=\"font-size:13px;color:var(--text-3);margin-bottom:16px\">"
@@ -6011,6 +6089,16 @@ function renderSettings(c){
     + "<tr><td style=\"color:var(--text-2)\">连接方式</td><td>小米云 P2P 直连</td></tr>"
     + "<tr><td style=\"color:var(--text-2)\">后端</td><td><span class=\"badge badge--ok\">运行中</span></td></tr>"
     + "</table></div>";
+
+  // ---- 加载异步区块 ----
+  //
+  // 诊断按钮（btnDiagBundle / btnDiagReport / btnShowLog）用**全局事件委托**绑定，
+  // 见文件下方 document.addEventListener("click")，这里不用重复绑。
+  var rw = document.getElementById('btnRerunWizard');
+  if(rw) rw.onclick = function(){ page = 'setup'; renderMenu(); render(); };
+
+  loadNotifyCfg();
+  loadAICfg();
 }
 
 // ===== 凭据状态提示 =====
@@ -6192,6 +6280,211 @@ function initSDK(){
 }
 
 // ===== 事件通知配置 =====
+// ===== AI 设置 =====
+//
+// 设计原则：**默认关闭**。
+// 开源后用户环境各异，环境不具备时给清晰提示，不报错。
+
+function loadAICfg(){
+  var box = document.getElementById('aiCfg');
+  if(!box) return;
+
+  api('/api/ai/status').then(function(st){
+    var s = st.status || {};
+    var env = st.env || {};
+    var models = st.models || [];
+    var cfg = {};
+
+    api('/api/ai/config').then(function(cr){
+      cfg = cr.config || {};
+      paintAI(box, cfg, s, env, models);
+    }).catch(function(){ paintAI(box, cfg, s, env, models); });
+  }).catch(function(e){
+    box.innerHTML = '<div class="text-sm text-muted">读取失败：' + esc(e.message) + '</div>';
+  });
+}
+
+function paintAI(box, cfg, status, env, models){
+  var on = !!cfg.enabled;
+  var ready = status.status === 'ready';
+  var envOk = !!env.available;
+
+  // 状态徽章
+  var badge = '';
+  if(!on)        badge = '<span class="chip"><span class="status-dot"></span>未启用</span>';
+  else if(ready) badge = '<span class="chip is-active"><span class="status-dot is-online"></span>运行中</span>';
+  else           badge = '<span class="chip" style="color:var(--warning)"><span class="status-dot" style="background:var(--warning)"></span>' + esc(status.status || '异常') + '</span>';
+
+  // 模型选项
+  var modelOpts = models.map(function(m){
+    return '<option value="' + esc(m.name) + '"' + (cfg.model === m.name ? ' selected' : '')
+      + (m.downloaded ? '' : ' disabled') + '>'
+      + esc(m.name) + (m.downloaded ? '（已下载 ' + (m.sizeMB||0).toFixed(1) + ' MB）' : '（未下载）')
+      + '</option>';
+  }).join('');
+
+  box.innerHTML = ''
+
+    + '<div class="switch-row">'
+    +   '<div class="switch-row__main">'
+    +     '<div class="switch-row__title">启用 AI 识别 ' + badge + '</div>'
+    +     '<div class="switch-row__hint">'
+    +       '把「有变化」升级为「有人 / 有车辆 / 有包裹」。'
+    +       '关闭时只用画面变化侦测，<b>不影响其它功能</b>。'
+    +     '</div>'
+    +   '</div>'
+    +   '<label class="switch"><input type="checkbox" id="aiOn"' + (on ? ' checked' : '')
+    +     (envOk ? '' : ' disabled') + '><span class="switch__track"></span></label>'
+    + '</div>'
+
+    // 环境不可用提示
+    + (!envOk
+        ? '<div class="ai-warn">' + icon('alert',15)
+          + '<div><b>当前环境不支持 AI</b><div class="ai-warn__sub">'
+          + esc(env.error || '未找到 onnxruntime')
+          + '<br>提示：在飞牛应用中心安装「AI」应用后重试。</div></div></div>'
+        : '')
+
+    // 详细设置（只在启用时展开）
+    + (on && envOk ? ''
+      + '<div class="ai-grid">'
+
+      +   '<div class="cfg-row">'
+      +     '<label class="cfg-row__label">识别模型</label>'
+      +     '<div class="cfg-row__control"><select class="input" id="aiModel">' + modelOpts + '</select></div>'
+      +     '<div class="cfg-row__hint">yolov8n 轻量（12MB，约 260ms）· yolov8s 更准（43MB，约 750ms）</div>'
+      +   '</div>'
+
+      +   '<div class="cfg-row">'
+      +     '<label class="cfg-row__label">置信度阈值</label>'
+      +     '<div class="cfg-row__control">'
+      +       '<input class="input cfg-row__num" type="number" id="aiConf" min="0.1" max="0.95" step="0.05" value="' + (cfg.confThreshold || 0.45) + '">'
+      +     '</div>'
+      +     '<div class="cfg-row__hint">越高越严格（漏报多），越低越灵敏（误报多）。建议 0.4 ~ 0.5</div>'
+      +   '</div>'
+
+      +   '<div class="cfg-row">'
+      +     '<label class="cfg-row__label">识别频率上限</label>'
+      +     '<div class="cfg-row__control">'
+      +       '<input class="input cfg-row__num" type="number" id="aiRate" min="1" max="120" value="' + (cfg.maxPerMinute || 12) + '">'
+      +       '<span class="cfg-row__unit">次 / 分钟</span>'
+      +     '</div>'
+      +     '<div class="cfg-row__hint">防止 CPU 被占满。画面一直有变化时按此限流</div>'
+      +   '</div>'
+
+      +   '<div class="cfg-row">'
+      +     '<label class="cfg-row__label">CPU 线程</label>'
+      +     '<div class="cfg-row__control">'
+      +       '<input class="input cfg-row__num" type="number" id="aiThreads" min="1" max="8" value="' + (cfg.threads || 4) + '">'
+      +     '</div>'
+      +     '<div class="cfg-row__hint">推理线程数。设太高会影响视频流</div>'
+      +   '</div>'
+
+      + '</div>'
+
+      + '<div class="ai-actions">'
+      +   '<button class="btn" id="aiTest">' + icon('cpu',14) + '测试识别</button>'
+      +   '<button class="btn" id="aiSave">' + icon('check',14) + '保存设置</button>'
+      +   '<span class="ai-result" id="aiResult"></span>'
+      + '</div>'
+
+      // 模型管理
+      + '<div class="ai-models">'
+      +   '<div class="ai-models__title">模型文件</div>'
+      +   models.map(function(m){
+            return '<div class="ai-model">'
+              + '<span class="ai-model__name">' + esc(m.name) + '</span>'
+              + '<span class="ai-model__meta">' + (m.downloaded ? (m.sizeMB||0).toFixed(1) + ' MB' : '未下载') + '</span>'
+              + (m.downloaded
+                  ? '<button class="btn btn--sm" data-ai-del="' + esc(m.name) + '">删除</button>'
+                  : '<button class="btn btn--sm btn--primary" data-ai-dl="' + esc(m.name) + '">下载</button>')
+              + '</div>';
+          }).join('')
+      +   '<div class="ai-models__hint">存放位置：' + esc('/vol1/@appdata/micam/models') + '</div>'
+      + '</div>'
+      : '')
+
+    + '<div class="ai-foot">'
+    +   'AI 在本机运行，<b>不上传任何画面</b>。'
+    +   '识别结果为「有人 / 车辆 / 包裹」，写入事件记录。'
+    + '</div>';
+
+  // ---- 绑定 ----
+  var sw = document.getElementById('aiOn');
+  if(sw) sw.onchange = function(){
+    aiSaveCfg({ enabled: this.checked }, function(){
+      if(!this.checked) return;
+      loadAICfg();
+    }.bind(this));
+  };
+
+  var sv = document.getElementById('aiSave');
+  if(sv) sv.onclick = function(){
+    aiSaveCfg({
+      enabled: true,
+      model: (document.getElementById('aiModel')||{}).value,
+      confThreshold: parseFloat((document.getElementById('aiConf')||{}).value) || 0.45,
+      maxPerMinute: parseInt((document.getElementById('aiRate')||{}).value, 10) || 12,
+      threads: parseInt((document.getElementById('aiThreads')||{}).value, 10) || 4,
+    });
+  };
+
+  var ts = document.getElementById('aiTest');
+  if(ts) ts.onclick = function(){
+    var r = document.getElementById('aiResult');
+    if(r) r.textContent = '识别中…';
+    api('/api/ai/test').then(function(d){
+      var objs = d.objects || [];
+      if(!objs.length){
+        if(r) r.textContent = '✅ 未检出目标（' + d.ms + 'ms）';
+      } else {
+        if(r) r.textContent = '✅ ' + objs.map(function(o){ return o.cls + ' ' + Math.round(o.conf*100) + '%'; }).join('、')
+          + '（' + d.ms + 'ms）';
+      }
+    }).catch(function(e){
+      if(r) r.textContent = '❌ ' + e.message;
+    });
+  };
+
+  Array.prototype.forEach.call(box.querySelectorAll('[data-ai-dl]'), function(b){
+    b.onclick = function(){
+      b.disabled = true; b.textContent = '下载中…';
+      api('/api/ai/model', { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ action:'download', name: b.dataset.aiDl }) })
+        .then(function(){
+          toast('开始下载，稍后刷新查看', 'ok');
+          var t = setInterval(function(){
+            api('/api/ai/status').then(function(st){
+              var m = (st.models||[]).filter(function(x){ return x.name === b.dataset.aiDl; })[0];
+              if(m && m.downloaded){ clearInterval(t); loadAICfg(); }
+            }).catch(function(){});
+          }, 3000);
+          setTimeout(function(){ clearInterval(t); loadAICfg(); }, 180000);
+        }).catch(function(e){ toast('下载失败：' + e.message, 'err'); b.disabled = false; b.textContent = '下载'; });
+    };
+  });
+  Array.prototype.forEach.call(box.querySelectorAll('[data-ai-del]'), function(b){
+    b.onclick = function(){
+      if(!confirm('删除模型 ' + b.dataset.aiDel + '？')) return;
+      api('/api/ai/model', { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ action:'delete', name: b.dataset.aiDel }) })
+        .then(function(){ toast('已删除', 'ok'); loadAICfg(); })
+        .catch(function(e){ toast('删除失败：' + e.message, 'err'); });
+    };
+  });
+}
+
+function aiSaveCfg(patch, done){
+  api('/api/ai/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(patch) })
+    .then(function(r){
+      if(r.warn){ toast(r.warn, 'warn'); } else { toast('已保存', 'ok'); }
+      var hs = document.getElementById('aiHeadStatus');
+      loadAICfg();
+      if(done) done();
+    })
+    .catch(function(e){ toast('保存失败：' + e.message, 'err'); });
+}
+
 function loadNotifyCfg(){
   var box = $("#notifyCfg");
   if(!box) return;

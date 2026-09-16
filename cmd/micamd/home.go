@@ -19,6 +19,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -188,17 +189,56 @@ func (s *Server) detectOnce() {
 			conf = 99
 		}
 
+		// ---- AI 分类（可选）----
+		//
+		// 帧差只能告诉我们「有变化」，AI 告诉我们「是什么」。
+		// AI 未启用/不可用时静默跳过，保持 motion 类型 —— 不阻塞、不报错。
+		evType := event.TypeMotion
+		evDesc := "检测到画面变化"
+		evConf := conf
+		var aiBox []int
+		var aiCls string
+
+		if s.ai != nil && s.ai.IsReady() {
+			if res, err := s.ai.Detect(data); err == nil && res != nil {
+				for _, o := range res.Objects {
+					if o.Type == "person" {
+						evType, evDesc, evConf = "person", "检测到有人", o.Conf*100
+						aiBox, aiCls = o.Box, o.Cls
+						break
+					}
+					if o.Type == "vehicle" && evType != "person" {
+						evType, evDesc, evConf = "vehicle", "检测到车辆", o.Conf*100
+						aiBox, aiCls = o.Box, o.Cls
+					}
+					if o.Type == "package" && evType == event.TypeMotion {
+						evType, evDesc, evConf = "package", "检测到包裹", o.Conf*100
+						aiBox, aiCls = o.Box, o.Cls
+					}
+				}
+				if aiCls != "" {
+					logf("[ai] %s 识别为 %s (%.0f%%, %dms)", d.Name, aiCls, evConf, res.MS)
+				}
+			} else if err != nil {
+				if !strings.Contains(err.Error(), "限流") {
+					logf("[ai] %s 推理失败: %v", d.Name, err)
+				}
+			}
+		}
+
 		s.eventStore.Add(event.Event{
 			Did:      d.Did,
 			Device:   name,
-			Type:     event.TypeMotion,
-			Desc:     "检测到画面变化",
+			Type:     evType,
+			Desc:     evDesc,
 			Thumb:    thumbName,
 			Score:    score,
 			Duration: int(motionInterval / time.Second), // 初值，后续延续会累加
-			Conf:     conf,
+			Conf:     evConf,
+			AICls:    aiCls,
+			AIBox:    aiBox,
 		});
-		logf("[motion] %s 检测到移动 (score=%.1f)", d.Name, score);
+		logf("[motion] %s %s (score=%.1f)", d.Name, evDesc, score);
 	}
 }
 
