@@ -40,6 +40,7 @@ import (
 	gxiaomi "github.com/AlexxIT/go2rtc/pkg/xiaomi"
 	"github.com/micam/micam/internal/stream"
 	"github.com/micam/micam/internal/xiaomi"
+	"strconv"
 )
 
 // camConn 一台摄像头的共享连接。
@@ -87,6 +88,11 @@ func (s *Server) allCameras() []*xiaomi.Device {
 			seen[devs[i].Did] = true
 			d := devs[i]
 			d.AccountID = sess.UserID
+			if stream.HasSecondLens(d.Model) {
+				d.Lenses = 2
+			} else {
+				d.Lenses = 1
+			}
 			vals = append(vals, d)
 			out = append(out, &d)
 		}
@@ -204,11 +210,19 @@ func getConn(did string) *camConn {
 //
 // 返回的 release 必须在用完时调用（建议 defer）。
 // release 只释放本次的 consumer，连接本身会在空闲后回收。
+// useConn 取第一镜头的连接（最常用）。
 func (s *Server) useConn(dev *xiaomi.Device) (*camConn, *mpegtsConsumer, func(), error) {
+	return s.useConnKey(dev, 1)
+}
+
+// useConnKey 按「设备+镜头」取连接。
+func (s *Server) useConnKey(dev *xiaomi.Device, lens int) (*camConn, *mpegtsConsumer, func(), error) {
+	key := connKey(dev.Did, lens)
+	_ = key
 	tAll := time.Now()
 
 	// 快路径：复用已有连接（无需加锁，瞬间完成）
-	if c := getConn(dev.Did); c != nil {
+	if c := getConn(key); c != nil {
 		mc, err := newConsumerFor(c.prod)
 		if err == nil {
 			c.addRef()
@@ -224,14 +238,14 @@ func (s *Server) useConn(dev *xiaomi.Device) (*camConn, *mpegtsConsumer, func(),
 	}
 
 	// 慢路径：建新连接
-	lock := didLock(dev.Did)
+	lock := didLock(key)
 	tLock := time.Now()
 	lock.Lock()
 	defer lock.Unlock()
 	logf("⏱ [1] 等建连锁 %v", time.Since(tLock).Round(time.Millisecond))
 
 	// 双重检查：等锁期间可能已有人建好
-	if c := getConn(dev.Did); c != nil {
+	if c := getConn(key); c != nil {
 		mc, err := newConsumerFor(c.prod)
 		if err == nil {
 			c.addRef()
@@ -244,7 +258,7 @@ func (s *Server) useConn(dev *xiaomi.Device) (*camConn, *mpegtsConsumer, func(),
 	}
 
 	// 清理残留
-	if c := getConn(dev.Did); c != nil {
+	if c := getConn(key); c != nil {
 		logf("[%s] 清理残留连接", dev.Did)
 		c.stop()
 	}
@@ -272,7 +286,7 @@ func (s *Server) useConn(dev *xiaomi.Device) (*camConn, *mpegtsConsumer, func(),
 	tDial := time.Now()
 
 	for idx, c := range sets {
-		p, e := gxiaomi.Dial(c.Src)
+		p, e := gxiaomi.Dial(sourceForLens(c.Src, lens))
 		if e == nil {
 			prod = p
 			credFailReset(c.Src)
@@ -323,7 +337,7 @@ func (s *Server) useConn(dev *xiaomi.Device) (*camConn, *mpegtsConsumer, func(),
 			return nil, nil, nil, fmt.Errorf("向小米云申请凭据失败: %w", e2)
 		}
 
-		p, e3 := gxiaomi.Dial(newSrc)
+		p, e3 := gxiaomi.Dial(sourceForLens(newSrc, lens))
 		if e3 != nil {
 			s.markRefreshResult(dev.Did, false)
 			return nil, nil, nil, fmt.Errorf("新凭据连接失败: %w", e3)
@@ -339,7 +353,7 @@ func (s *Server) useConn(dev *xiaomi.Device) (*camConn, *mpegtsConsumer, func(),
 	logf("⏱ [3] CS2 握手 %v", time.Since(tDial).Round(time.Millisecond))
 
 	c := &camConn{
-		did:       dev.Did,
+		did:       key,
 		prod:      prod,
 		createdAt: time.Now(),
 		lastUsed:  time.Now(),
@@ -402,6 +416,46 @@ func credFailReset(src string) {
 	credFailMu.Lock()
 	defer credFailMu.Unlock()
 	delete(credFails, src)
+}
+
+// ===== 多镜头支持 =====
+//
+// 双摄摄像头（如 CW500 双摄版）在小米云里只有**一个** did，
+// 第二镜头靠 P2P 命令参数区分：
+//
+//   channel 为空 -> 第一镜头
+//   channel=2    -> 第二镜头（videoquality2）
+//
+// 所以连接缓存必须按「设备+镜头」分键，否则两路会互相顶掉。
+
+// connKey 生成连接缓存键。
+func connKey(did string, lens int) string {
+	if lens >= 2 {
+		return did + "#" + strconv.Itoa(lens)
+	}
+	return did
+}
+
+// sourceForLens 给源地址加上镜头参数。
+func sourceForLens(src string, lens int) string {
+	if lens < 2 {
+		return src
+	}
+	// 已经有 channel 就先去掉，避免重复
+	if i := strings.Index(src, "&channel="); i >= 0 {
+		rest := src[i+1:]
+		if j := strings.Index(rest, "&"); j >= 0 {
+			src = src[:i] + rest[j:]
+		} else {
+			src = src[:i]
+		}
+	}
+	return src + "&channel=2"
+}
+
+// useConnLens 按镜头取连接。
+func (s *Server) useConnLens(dev *xiaomi.Device, lens int) (*camConn, *mpegtsConsumer, func(), error) {
+	return s.useConnKey(dev, lens)
 }
 
 // ===== 凭据刷新冷却：指数退避 =====

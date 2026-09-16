@@ -17,11 +17,11 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"strings"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"syscall"
 	"time"
 
@@ -29,6 +29,7 @@ import (
 	"github.com/micam/micam/internal/notify"
 	"github.com/micam/micam/internal/record"
 	"github.com/micam/micam/internal/store"
+	"github.com/micam/micam/internal/stream"
 	"github.com/micam/micam/internal/trimapi"
 	"github.com/micam/micam/internal/xiaomi"
 )
@@ -38,7 +39,7 @@ const appName = "micam"
 // appVersion 用 var 而非 const：
 // 允许构建时用 -ldflags "-X main.appVersion=x.y.z" 注入，
 // 确保二进制里的版本与 manifest 严格一致（构建脚本会校验）。
-var appVersion = "0.14.0"
+var appVersion = "0.15.0"
 
 func main() {
 	var (
@@ -405,8 +406,8 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/platform", s.handlePlatform)
 
 	// 小米账号
-	mux.HandleFunc("/api/accounts", s.handleAccounts)          // GET 列表 / POST 添加
-	mux.HandleFunc("/api/accounts/qr", s.handleQRStart)        // POST 发起扫码
+	mux.HandleFunc("/api/accounts", s.handleAccounts)           // GET 列表 / POST 添加
+	mux.HandleFunc("/api/accounts/qr", s.handleQRStart)         // POST 发起扫码
 	mux.HandleFunc("/api/accounts/qr/status", s.handleQRStatus) // GET 轮询扫码状态
 
 	// 凭据备份 / 恢复 / 状态
@@ -424,9 +425,9 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/live/source-status", s.handleSourceStatus)
 	mux.HandleFunc("/api/live/cred-status", s.handleCredStatus)
 	mux.HandleFunc("/api/live/renew", s.handleCredRenew)
-	mux.HandleFunc("/api/live/hls", s.handleHLS)       // HLS 播放（2K 流畅）
+	mux.HandleFunc("/api/live/hls", s.handleHLS)          // HLS 播放（2K 流畅）
 	mux.HandleFunc("/api/live/hls/info", s.handleHLSInfo) // HLS 能力信息
-	mux.HandleFunc("/api/live/mjpeg", s.handleMJPEG)   // MJPEG 流（<img> 直接显示）
+	mux.HandleFunc("/api/live/mjpeg", s.handleMJPEG)      // MJPEG 流（<img> 直接显示）
 	mux.HandleFunc("/api/live/snapshot", s.handleSnap)
 	mux.HandleFunc("/api/live/inject", s.handleInjectSource) // 单帧 JPEG
 
@@ -464,9 +465,9 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/storage", s.handleStorage)
 	mux.HandleFunc("/api/storage/cleanup-preview", s.handleCleanupPreview)
 
-	mux.HandleFunc("/api/recordings", s.handleRecordings)       // GET 列表 / POST 开始
-	mux.HandleFunc("/api/recordings/stop", s.handleRecordStop)  // POST 停止
-	mux.HandleFunc("/api/recordings/files", s.handleRecordFiles) // GET 文件列表
+	mux.HandleFunc("/api/recordings", s.handleRecordings)            // GET 列表 / POST 开始
+	mux.HandleFunc("/api/recordings/stop", s.handleRecordStop)       // POST 停止
+	mux.HandleFunc("/api/recordings/files", s.handleRecordFiles)     // GET 文件列表
 	mux.HandleFunc("/api/recordings/cleanup", s.handleRecordCleanup) // POST 清理
 
 	// 录像回放
@@ -563,10 +564,10 @@ func (s *Server) handleQRStart(w http.ResponseWriter, r *http.Request) {
 	_ = s.store.SaveQRImage(id, img)
 
 	writeJSON(w, 200, map[string]any{
-		"id":        id,
-		"qrBase64":  "data:image/png;base64," + base64Encode(img),
-		"timeout":   qr.Timeout,
-		"loginUrl":  qr.LoginURL,
+		"id":       id,
+		"qrBase64": "data:image/png;base64," + base64Encode(img),
+		"timeout":  qr.Timeout,
+		"loginUrl": qr.LoginURL,
 	})
 }
 
@@ -622,6 +623,11 @@ func (s *Server) handleDevices(w http.ResponseWriter, r *http.Request) {
 			seen[d.Did] = true
 			// 标记归属账号（前端可按账号筛选）
 			d.AccountID = sess.UserID
+			if stream.HasSecondLens(d.Model) {
+				d.Lenses = 2
+			} else {
+				d.Lenses = 1
+			}
 			all = append(all, d)
 		}
 	}

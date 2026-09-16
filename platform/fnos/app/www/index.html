@@ -722,6 +722,17 @@ function gotoLive(did){
 }
 
 // ===== 页面：实时预览 =====
+// curDevLenses 当前选中设备的镜头数
+function curDevLenses(){
+  var d = devices.filter(function(x){ return x.did === currentDid; })[0];
+  return (d && d.lenses) || 1;
+}
+
+// lensParam 生成镜头查询参数（第一镜头省略，保持 URL 简洁）
+function lensParam(){
+  return currentLens >= 2 ? "&channel=" + currentLens : "";
+}
+
 function renderLive(c){
   c.innerHTML = loading();
   loadDevices().then(function(st){
@@ -753,6 +764,12 @@ function renderLive(c){
       +       "<option value=\"hls\">流畅模式 (HLS)</option>"
       +       "<option value=\"mjpeg\">兼容模式 (MJPEG)</option>"
       +     "</select>"
+      +     (curDevLenses() >= 2
+              ? "<select class=\"btn\" id=\"selLens\" style=\"min-width:110px\">"
+                + "<option value=\"1\"" + (currentLens===1?" selected":"") + ">主镜头</option>"
+                + "<option value=\"2\"" + (currentLens===2?" selected":"") + ">第二镜头</option>"
+                + "</select>"
+              : "")
       +     "<select class=\"btn\" id=\"selQuality\" style=\"min-width:110px\">"
       +       "<option value=\"0\">2K 原画</option>"
       +       "<option value=\"1280\">高清 1280</option>"
@@ -787,7 +804,7 @@ function renderLive(c){
       +   "</div>"
       + "</div></div>";
     Array.prototype.forEach.call(document.querySelectorAll("[data-tab]"), function(b){
-      b.onclick = function(){ currentDid = b.dataset.tab; stopLive(); render(); };
+      b.onclick = function(){ currentDid = b.dataset.tab; currentLens = 1; stopLive(); render(); };
     });
     $("#btnStop").onclick = stopLive;
     loadCredBar();
@@ -936,7 +953,7 @@ function startLiveHLS(did){
   // 实测热连接下 HLS 只要 0.01s，冷连接 5s。
   // 抓拍占位反而会多一次请求，可能和 HLS 抢连接（旧架构下会等 60 秒）。
 
-  var src = apiUrl("/api/live/hls?did="+encodeURIComponent(did)+"&fps=15&w="+liveWidth);
+  var src = apiUrl("/api/live/hls?did="+encodeURIComponent(did)+"&fps=15&w="+liveWidth+lensParam());
   var started = false;
   var hlsObj = null;
 
@@ -1085,7 +1102,7 @@ function startLiveMJPEG(did){
   };
   // 画质参数：w=0 表示不缩放（保持源分辨率 2K = 2560x1440）
   // 需要降低带宽时可以改成 w=1280 或 w=640
-  img.src = apiUrl("/api/live/mjpeg?did="+encodeURIComponent(did)+"&fps=12&w="+liveWidth+"&t="+Date.now());
+  img.src = apiUrl("/api/live/mjpeg?did="+encodeURIComponent(did)+"&fps=12&w="+liveWidth+"&t="+Date.now()+lensParam());
 
   // 关键：不能清空后再放 img，否则加载层被删掉（黑屏无转圈）。
   // 顺序：清空 -> img（底层）-> overlay（上层）
@@ -2579,7 +2596,7 @@ function setPtzFlip(axis, on){
 // ===== 动作 =====
 function snap(did){
   toast("正在抓图…");
-  fetch(apiUrl("/api/live/snapshot?did="+encodeURIComponent(did)+"&w=0"))
+  fetch(apiUrl("/api/live/snapshot?did="+encodeURIComponent(did)+"&w=0"+lensParam()))
     .then(function(r){ if(!r.ok) throw new Error("HTTP "+r.status); return r.blob(); })
     .then(function(b){
       var a = document.createElement("a");

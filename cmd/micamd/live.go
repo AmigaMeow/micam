@@ -29,6 +29,31 @@ import (
 // 为什么：cs2 凭据的实际有效期不确定（实测 8 小时还能用于部分设备），
 // 而小米云的 miss_get_vendor 有严格限流。
 // 所以策略是「先用缓存，真失败才刷新」。
+// lensFromRequest 从请求里取镜头号（1=主，2=第二镜头）。
+//
+// 参数名用 channel，兼容常见习惯：
+//   ?channel=2  第二镜头
+//   缺省或 1    第一镜头
+func lensFromRequest(r *http.Request) int {
+	v := r.URL.Query().Get("channel")
+	if v == "" {
+		v = r.URL.Query().Get("lens")
+	}
+	n, _ := strconv.Atoi(v)
+	if n >= 2 {
+		return 2
+	}
+	return 1
+}
+
+// lensSuffix 生成流名后缀（区分不同镜头的 HLS/MJPEG 缓存）。
+func lensSuffix(lens int) string {
+	if lens >= 2 {
+		return "@2"
+	}
+	return ""
+}
+
 func (s *Server) resolveSource(dev *xiaomi.Device) (string, error) {
 	if v, ok := s.store.Source(dev.Did); ok {
 		return v, nil
@@ -92,8 +117,8 @@ func (s *Server) ensureDevice(did string) (*xiaomi.Device, error) {
 // runFFmpeg 独占连接 + 转码。
 //
 // 返回的 cleanup 必须调用（建议 defer），否则连接不会释放。
-func (s *Server) runFFmpeg(ctx context.Context, dev *xiaomi.Device, args []string) (*exec.Cmd, io.ReadCloser, *bytes.Buffer, func(), error) {
-	_, mc, release, err := s.useConn(dev)
+func (s *Server) runFFmpeg(ctx context.Context, dev *xiaomi.Device, lens int, args []string) (*exec.Cmd, io.ReadCloser, *bytes.Buffer, func(), error) {
+	_, mc, release, err := s.useConnKey(dev, lens)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
@@ -206,8 +231,8 @@ func vfScale(fps, width int) string {
 // 为什么 HLS 不能丢数据：
 //   bufferedPipe 超限时从中间截断，会破坏 TS 包的 188 字节对齐，
 //   导致 ffmpeg 无法解析，表现为「收到数据但不出分片」。
-func (s *Server) runFFmpegBlocking(dev *xiaomi.Device, args []string) (*exec.Cmd, io.ReadCloser, *bytes.Buffer, func(), error) {
-	_, mc, release, err := s.useConn(dev)
+func (s *Server) runFFmpegBlocking(dev *xiaomi.Device, lens int, args []string) (*exec.Cmd, io.ReadCloser, *bytes.Buffer, func(), error) {
+	_, mc, release, err := s.useConnKey(dev, lens)
 	if err != nil {
 		return nil, nil, nil, nil, err
 	}
@@ -283,8 +308,8 @@ func (s *Server) runFFmpegBlocking(dev *xiaomi.Device, args []string) (*exec.Cmd
 }
 
 // runFFmpegWithArgs 用给定参数启动 ffmpeg（HLS 等场景用）。
-func (s *Server) runFFmpegWithArgs(dev *xiaomi.Device, args []string) (*exec.Cmd, io.ReadCloser, *bytes.Buffer, func(), error) {
-	return s.runFFmpegBlocking(dev, args)
+func (s *Server) runFFmpegWithArgs(dev *xiaomi.Device, lens int, args []string) (*exec.Cmd, io.ReadCloser, *bytes.Buffer, func(), error) {
+	return s.runFFmpegBlocking(dev, lens, args)
 }
 
 // ---- 快照 ----
@@ -297,6 +322,7 @@ func (s *Server) handleSnap(w http.ResponseWriter, r *http.Request) {
 	}
 	width, _ := strconv.Atoi(r.URL.Query().Get("w"))
 	// width=0 表示不缩放（保持 2K）
+	lens := lensFromRequest(r)
 
 	dev, err := s.ensureDevice(did)
 	if err != nil {
@@ -336,7 +362,7 @@ func (s *Server) handleSnap(w http.ResponseWriter, r *http.Request) {
 	tStart := time.Now()
 	logf("[snap] 开始 did=%s w=%d", did, width)
 
-	cmd, stdout, errBuf, cleanup, err := s.runFFmpeg(ctx, dev, args)
+	cmd, stdout, errBuf, cleanup, err := s.runFFmpeg(ctx, dev, lens, args)
 	if err != nil {
 		logf("[snap] runFFmpeg 失败: %v", err)
 		writeErr(w, 502, "连接摄像头失败: "+err.Error())
@@ -394,6 +420,7 @@ func (s *Server) handleMJPEG(w http.ResponseWriter, r *http.Request) {
 	if width > 2560 {
 		width = 2560
 	}
+	lens := lensFromRequest(r)
 
 	logf("[mjpeg] 请求 did=%s fps=%d w=%d", did, fps, width)
 
@@ -427,7 +454,7 @@ func (s *Server) handleMJPEG(w http.ResponseWriter, r *http.Request) {
 		"-f", "image2pipe",
 		"pipe:1",
 	}
-	cmd, stdout, errBuf, cleanup, err := s.runFFmpeg(r.Context(), dev, args)
+	cmd, stdout, errBuf, cleanup, err := s.runFFmpeg(r.Context(), dev, lens, args)
 	if err != nil {
 		logf("[mjpeg] runFFmpeg 失败: %v", err)
 		writeErr(w, 502, "连接摄像头失败: "+err.Error())

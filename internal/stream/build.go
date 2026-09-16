@@ -58,3 +58,37 @@ func BuildSource(s *xiaomi.Session, d *xiaomi.Device, region string, extra ...st
 	}
 	return base + "&" + q.Encode(), nil
 }
+
+// BuildSourceChannel 构造指定镜头的源地址。
+//
+// ===== 双摄摄像头（如 CW500 双摄版）=====
+//
+// 小米云 API 只返回**一个**设备，第二镜头靠 P2P 命令区分：
+//
+//   channel 为空   -> {"videoquality": 3}                        第一镜头
+//   channel 非空   -> {"videoquality": -1, "videoquality2": 3}   第二镜头
+//
+// 注意 channel 的值本身不重要（go2rtc 只判断是否为空），
+// 但为了可读性我们约定 channel=2 表示第二镜头。
+//
+// 这个机制是读 go2rtc 的 StartMedia 源码确认的。
+func BuildSourceChannel(s *xiaomi.Session, d *xiaomi.Device, region string, channel int) (string, error) {
+	var extra []string
+	if channel >= 2 {
+		extra = append(extra, "channel=2")
+	}
+	return BuildSource(s, d, region, extra...)
+}
+
+// HasSecondLens 判断设备是否有第二镜头。
+//
+// 目前按型号白名单。已知双摄：
+//   isa.camera.hlmax  CW500 双摄版
+// 其他型号如果用户反馈，再加。
+func HasSecondLens(model string) bool {
+	switch model {
+	case "isa.camera.hlmax":
+		return true
+	}
+	return false
+}

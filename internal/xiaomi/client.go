@@ -58,6 +58,8 @@ type Device struct {
 	Shared    bool   `json:"shared"`     // 来自共享家庭
 	// AccountID 哪个登录账号能访问这台设备（不来自小米 API，由我们填充）
 	AccountID string `json:"accountId,omitempty"`
+	// Lenses 镜头数量（1=单摄，2=双摄；不来自小米云 API，由我们判断）
+	Lenses int `json:"lenses,omitempty"`
 	Permit    int    `json:"permitLevel"`
 	ParentID  string `json:"parent_id"`
 	Token     string `json:"token"`

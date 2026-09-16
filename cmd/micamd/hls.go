@@ -44,8 +44,13 @@ var (
 )
 
 // hlsDir 返回某设备的 HLS 目录。
-func (s *Server) hlsDir(did string) string {
-	return filepath.Join(s.dataDir, "hls", did)
+func (s *Server) hlsDir(did string, lens int) string {
+	// 双摄要分目录，否则两路会互相覆盖分片
+	name := did
+	if lens >= 2 {
+		name = did + "@2"
+	}
+	return filepath.Join(s.dataDir, "hls", name)
 }
 
 // handleHLS 提供 HLS 播放列表和分片。
@@ -59,6 +64,7 @@ func (s *Server) handleHLS(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, "缺少 did")
 		return
 	}
+	lens := lensFromRequest(r)
 
 	// 分片请求
 	if seg := r.URL.Query().Get("seg"); seg != "" {
@@ -80,7 +86,7 @@ func (s *Server) handleHLS(w http.ResponseWriter, r *http.Request) {
 	width, _ := strconv.Atoi(r.URL.Query().Get("w"))
 
 	// 确保转码在跑
-	if err := s.ensureHLS(dev, fps, width); err != nil {
+	if err := s.ensureHLS(dev, lens, fps, width); err != nil {
 		writeErr(w, 502, err.Error())
 		return
 	}
@@ -89,7 +95,7 @@ func (s *Server) handleHLS(w http.ResponseWriter, r *http.Request) {
 	// 等 m3u8 生成
 	//
 	// 实测正常 4-5 秒出 m3u8。20 秒还没出就放弃（前端会降级 MJPEG）。
-	playlist := filepath.Join(s.hlsDir(did), "index.m3u8")
+	playlist := filepath.Join(s.hlsDir(did, lens), "index.m3u8")
 	for i := 0; i < 300; i++ {
 		if fi, err := os.Stat(playlist); err == nil && fi.Size() > 0 {
 			break
@@ -125,13 +131,14 @@ func (s *Server) handleHLS(w http.ResponseWriter, r *http.Request) {
 
 // serveHLSSegment 提供分片文件。
 func (s *Server) serveHLSSegment(w http.ResponseWriter, r *http.Request, did, seg string) {
+	lens := lensFromRequest(r)
 	// 安全检查：防止路径穿越
 	if strings.Contains(seg, "..") || strings.Contains(seg, "/") {
 		writeErr(w, 400, "非法文件名")
 		return
 	}
 
-	path := filepath.Join(s.hlsDir(did), seg)
+	path := filepath.Join(s.hlsDir(did, lens), seg)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		writeErr(w, 404, "分片不存在")
@@ -144,16 +151,22 @@ func (s *Server) serveHLSSegment(w http.ResponseWriter, r *http.Request, did, se
 }
 
 // ensureHLS 确保 HLS 转码在运行。
-func (s *Server) ensureHLS(dev *xiaomi.Device, fps, width int) error {
+func (s *Server) ensureHLS(dev *xiaomi.Device, lens, fps, width int) error {
+	// 会话键必须带镜头维度
+	//
+	// 之前只用 dev.Did，导致请求第二镜头时发现「已有会话」直接返回，
+	// 但那个会话在转第一镜头 -> 第二镜头的播放列表永远不生成 -> 504。
+	key := connKey(dev.Did, lens)
+
 	hlsMu.Lock()
-	if sess, ok := hlsSessions[dev.Did]; ok {
+	if sess, ok := hlsSessions[key]; ok {
 		sess.LastUsed = time.Now()
 		hlsMu.Unlock()
 		return nil
 	}
 	hlsMu.Unlock()
 
-	dir := s.hlsDir(dev.Did)
+	dir := s.hlsDir(dev.Did, lens)
 	_ = os.RemoveAll(dir)
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("创建 HLS 目录失败: %w", err)
@@ -238,7 +251,7 @@ func (s *Server) ensureHLS(dev *xiaomi.Device, fps, width int) error {
 		filepath.Join(dir, "index.m3u8"),
 	)
 
-	cmd, _, errBuf, cleanup, err := s.runFFmpegWithArgs(dev, args)
+	cmd, _, errBuf, cleanup, err := s.runFFmpegWithArgs(dev, lens, args)
 	if err != nil {
 		return fmt.Errorf("启动 HLS 转码失败: %w", err)
 	}
@@ -283,14 +296,14 @@ func (s *Server) ensureHLS(dev *xiaomi.Device, fps, width int) error {
 	}
 
 	hlsMu.Lock()
-	hlsSessions[dev.Did] = sess
+	hlsSessions[key] = sess
 	hlsMu.Unlock()
 
 	logf("HLS 转码已启动: %s (编码器=%s 硬件=%v)", dev.Name, cap.Preferred, isHW)
 	_ = cmd
 
 	// 空闲回收
-	go s.hlsReaper(dev.Did)
+	go s.hlsReaper(key)
 	return nil
 }
 
@@ -307,12 +320,12 @@ func (s *Server) cleanHLSOnStart() {
 }
 
 // hlsReaper 回收空闲的 HLS 会话。
-func (s *Server) hlsReaper(did string) {
+func (s *Server) hlsReaper(key string) {
 	t := time.NewTicker(30 * time.Second)
 	defer t.Stop()
 	for range t.C {
 		hlsMu.Lock()
-		sess, ok := hlsSessions[did]
+		sess, ok := hlsSessions[key]
 		if !ok {
 			hlsMu.Unlock()
 			return
@@ -322,12 +335,12 @@ func (s *Server) hlsReaper(did string) {
 
 		if idle > 60*time.Second {
 			hlsMu.Lock()
-			delete(hlsSessions, did)
+			delete(hlsSessions, key)
 			hlsMu.Unlock()
 			if sess.cleanup != nil {
 				sess.cleanup()
 			}
-			logf("HLS 转码已回收: %s（空闲 %v）", did, idle.Round(time.Second))
+			logf("HLS 转码已回收: %s（空闲 %v）", key, idle.Round(time.Second))
 			return
 		}
 	}
