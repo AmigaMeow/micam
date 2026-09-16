@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <title>小米摄像头</title>
-<meta name="micam-build" content="2026-09-16 06:26:16">
+<meta name="micam-build" content="2026-09-16 06:33:23">
 <!-- 样式内联：飞牛网关会剥前缀，相对路径不可靠（详见 build/assemble-web.js）-->
 <style>
 
@@ -597,12 +597,19 @@ code, pre, kbd {
 /* 纯净版（用于筛选条） */
 .chip-row { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .chip {
+  /* 必须是 inline-flex：否则图标和文字会各自换行
+     （共享/收藏带图标时表现最明显） */
+  display: inline-flex; align-items: center; gap: 6px;
   height: 32px; padding: 0 var(--space-4);
   border: 1px solid var(--border); border-radius: 999px;
   background: transparent; color: var(--text-secondary);
-  font-size: var(--text-base);
-  transition: all var(--duration-fast) var(--ease-out);
+  font-size: var(--text-base); white-space: nowrap;
+  transition: background var(--duration-fast) var(--ease-out),
+              border-color var(--duration-fast) var(--ease-out),
+              color var(--duration-fast) var(--ease-out);
 }
+.chip .icon { flex: 0 0 auto; }
+.chip .status-dot { flex: 0 0 auto; }
 .chip:hover { border-color: var(--border-strong); color: var(--text); }
 .chip.is-active { background: var(--accent); border-color: var(--accent); color: #fff; }
 
@@ -2415,56 +2422,94 @@ function favKey(did){ return 'micam.fav.' + did; }
 function getFav(did){ try { return localStorage.getItem(favKey(did)) === '1'; } catch(e){ return false; } }
 function setFav(did, on){ try { on ? localStorage.setItem(favKey(did),'1') : localStorage.removeItem(favKey(did)); } catch(e){} }
 
+// isShared 是否来自共享家庭
+function isShared(d){ return d.shared || d.shareFlag === 1; }
+
+// camCardHTML 生成一张摄像头卡片
+function camCardHTML(d){
+  var on = d.isOnline;
+  var shared = isShared(d);
+  var dual = (d.lenses || 1) >= 2;
+  var fav = isFav(d.did);
+  var cname = d.alias || d.name;
+  var cen = d.aliasEn || '';
+
+  var preview, offBlock = '';
+  if (on) {
+    preview = '<img data-snap="' + esc(d.did) + '" alt="">'
+      + '<div class="cam-card__time"><span class="rec-dot"></span>'
+      + '<span data-clock="' + esc(d.did) + '">' + clockNow() + '</span></div>';
+  } else {
+    offBlock = '<div class="cam-card__off">'
+      +   icon('video-off', 40)
+      +   '<div class="cam-card__off-title">摄像头离线</div>'
+      +   (d.lastActivity ? '<div class="cam-card__off-sub">上次在线：' + esc(fmtAgo(d.lastActivity)) + '</div>' : '')
+      + '</div>';
+    preview = '<img data-snap="' + esc(d.did) + '" alt="" style="filter:grayscale(1) brightness(.35)">'
+      + offBlock
+      + '<div class="cam-card__time">'
+      + (d.lastActivity ? esc(d.lastActivity.slice(11,19)) : '--:--') + '</div>';
+  }
+
+  var badges = '<div class="cam-card__badges">'
+    + (dual ? '<span class="badge badge--accent">' + icon('grid',12) + '双摄</span>' : '')
+    + (shared ? '<span class="badge">共享</span>' : '')
+    + '</div>';
+
+  var metaLine = on
+    ? ('最后活动 ' + (d.lastActivity ? fmtAgo(d.lastActivity) : '刚刚'))
+    : ('最后在线 ' + (d.lastActivity ? fmtAgo(d.lastActivity) : '未知'));
+
+  var starPath = 'M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z';
+
+  return '<article class="cam-card' + (on ? '' : ' is-offline') + '" data-did="' + esc(d.did) + '">'
+    + '<div class="cam-card__preview">' + preview + badges + '</div>'
+    + '<footer class="cam-card__foot">'
+    +   '<div class="cam-card__info">'
+    +     '<div class="cam-card__row">'
+    +       '<span class="status-dot ' + (on ? 'is-online' : 'is-offline') + '"></span>'
+    +       '<span class="cam-card__name">' + esc(cname) + '</span>'
+    +       (cen ? '<span class="cam-card__en">' + esc(cen) + '</span>' : '')
+    +     '</div>'
+    +     '<div class="cam-card__meta">' + metaLine + '</div>'
+    +   '</div>'
+    +   '<button class="icon-btn cam-card__fav' + (fav ? ' is-active' : '') + '" data-fav="' + esc(d.did) + '" title="收藏">'
+    +     '<svg class="icon" viewBox="0 0 24 24" fill="' + (fav ? 'currentColor' : 'none') + '" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="' + starPath + '"/></svg>'
+    +   '</button>'
+    + '</footer>'
+    + '</article>';
+}
+
 function renderDevices(c){
   c.innerHTML = '<div class="page__inner">' + loading() + '</div>';
 
   loadDevices().then(function(st){
     var all = devices || [];
-    var accMap = {};
-    (st.accounts || []).forEach(function(a){ accMap[a.userId] = a; });
-
-    // ---- 统计 ----
-    function isShared(d){ return d.shared || d.shareFlag === 1; }
-    var nOnline  = all.filter(function(d){ return d.isOnline; }).length;
-    var nOffline = all.length - nOnline;
-    var nShared  = all.filter(isShared).length;
-    var nFav     = all.filter(function(d){ return isFav(d.did) || d.favorite; }).length;
-
-    // ---- 筛选 ----
-    var list = all.slice();
-    if(devFilter === 'online')  list = all.filter(function(d){ return d.isOnline; });
-    if(devFilter === 'offline') list = all.filter(function(d){ return !d.isOnline; });
-    if(devFilter === 'shared')  list = all.filter(isShared);
-    if(devFilter === 'fav')     list = all.filter(function(d){ return isFav(d.did) || d.favorite; });
-
-    // 搜索（顶栏或本页搜索框）
-    var q = (devSearch || '').trim().toLowerCase();
-    if(q){
-      list = list.filter(function(d){
-        var s2 = ((d.alias||'') + ' ' + (d.aliasEn||'') + ' ' + d.name).toLowerCase();
-        return s2.indexOf(q) >= 0;
-      });
-    }
 
     var now = new Date();
     var week = ['星期日','星期一','星期二','星期三','星期四','星期五','星期六'];
     var dateStr = now.getFullYear() + '年' + (now.getMonth()+1) + '月' + now.getDate() + '日 '
       + week[now.getDay()] + ' ' + pad2(now.getHours()) + ':' + pad2(now.getMinutes());
 
-    // ---- 页头 ----
-    var head = '<div class="list-head">'
-      + '<div class="list-head__main">'
-      +   '<h1 class="list-head__title">摄像头列表</h1>'
-      +   '<div class="list-head__en">Cameras</div>'
-      + '</div>'
-      + '<div class="list-head__date">' + esc(dateStr) + '</div>'
-      + '</div>'
-      + '<div class="list-stat">'
-      +   '<span class="status-dot ' + (nOnline ? 'is-online' : 'is-offline') + '"></span>'
-      +   '<span>' + all.length + ' 台设备，' + nOnline + ' 台在线</span>'
-      + '</div>';
+    function nOnline(){ return all.filter(function(d){ return d.isOnline; }).length; }
+    function nShared(){ return all.filter(isShared).length; }
+    function nFav(){ return all.filter(function(d){ return isFav(d.did); }).length; }
 
-    // ---- 筛选行 ----
+    function filtered(){
+      var l = all.slice();
+      if(devFilter === 'online')  l = all.filter(function(d){ return d.isOnline; });
+      if(devFilter === 'offline') l = all.filter(function(d){ return !d.isOnline; });
+      if(devFilter === 'shared')  l = all.filter(isShared);
+      if(devFilter === 'fav')     l = all.filter(function(d){ return isFav(d.did); });
+      var q = (devSearch || '').trim().toLowerCase();
+      if(q){
+        l = l.filter(function(d){
+          return ((d.alias||'')+' '+(d.aliasEn||'')+' '+d.name).toLowerCase().indexOf(q) >= 0;
+        });
+      }
+      return l;
+    }
+
     function chip(k, label, count, dot, ic){
       var on = devFilter === k;
       return '<button class="chip' + (on ? ' is-active' : '') + '" data-f="' + k + '" type="button">'
@@ -2474,130 +2519,160 @@ function renderDevices(c){
         + '</button>';
     }
 
-    var filters = '<div class="filters filters--rich">'
-      + chip('all',     '全部', all.length, '', '')
-      + chip('online',  '在线', nOnline, 'is-online', '')
-      + chip('offline', '离线', nOffline, 'is-offline', '')
-      + chip('shared',  '共享', nShared, '', 'users')
-      + chip('fav',     '收藏', nFav, '', 'star')
-      + '<span class="filters__spacer"></span>'
-      + '<div class="segmented">'
-      +   '<button class="segmented__btn' + (devView==='grid'?' is-active':'') + '" data-view="grid" title="网格">' + icon('grid',15) + '</button>'
-      +   '<button class="segmented__btn' + (devView==='list'?' is-active':'') + '" data-view="list" title="列表">' + icon('list',15) + '</button>'
-      + '</div>'
-      + '<div class="search filters__search">'
-      +   icon('search',15)
-      +   '<input class="input" id="devSearchBox" type="search" placeholder="搜索摄像头…" value="' + esc(devSearch || '') + '">'
-      + '</div>'
-      + '</div>';
-
-    // ---- 卡片 ----
-    var cards = list.length ? list.map(function(d){
-      var on = d.isOnline;
-      var shared = isShared(d);
-      var dual = (d.lenses || 1) >= 2;
-      var fav = isFav(d.did) || d.favorite;
-      var cname = d.alias || d.name;
-      var cen = d.aliasEn || '';
-
-      var preview = on
-        ? '<img data-snap="' + esc(d.did) + '" alt="">'
-          + '<div class="cam-card__time"><span class="rec-dot"></span>' + clockNow() + '</div>'
-        : '<img data-snap="' + esc(d.did) + '" alt="" style="filter:grayscale(1) brightness(.4)">'
-          + '<div class="cam-card__off">'
-          +   icon('video-off', 40)
-          +   '<div class="cam-card__off-title">摄像头离线</div>'
-          +   (d.lastActivity ? '<div class="cam-card__off-sub">上次在线：' + esc(fmtAgo(d.lastActivity)) + '</div>' : '')
-          + '</div>'
-          + '<div class="cam-card__time">' + (d.lastActivity ? (d.lastActivity.slice(11,19)) : '') + '</div>';
-
-      var badges = '<div class="cam-card__badges">'
-        + (dual ? '<span class="badge badge--accent">' + icon('grid',12) + '双摄</span>' : '')
-        + (shared ? '<span class="badge">共享</span>' : '')
-        + '</div>';
-
-      var metaLine = on
-        ? ('最后活动 ' + (d.lastActivity ? fmtAgo(d.lastActivity) : '刚刚'))
-        : ('最后在线 ' + (d.lastActivity ? fmtAgo(d.lastActivity) : '未知'));
-
-      return '<article class="cam-card' + (on ? '' : ' is-offline') + '" data-did="' + esc(d.did) + '">'
-        + '<div class="cam-card__preview">' + preview + badges + '</div>'
-        + '<footer class="cam-card__foot">'
-        +   '<div class="cam-card__info">'
-        +     '<div class="cam-card__row">'
-        +       '<span class="status-dot ' + (on ? 'is-online' : 'is-offline') + '"></span>'
-        +       '<span class="cam-card__name">' + esc(cname) + '</span>'
-        +       (cen ? '<span class="cam-card__en">' + esc(cen) + '</span>' : '')
-        +     '</div>'
-        +     '<div class="cam-card__meta">' + metaLine + '</div>'
-        +   '</div>'
-        +   '<button class="icon-btn cam-card__fav' + (fav ? ' is-active' : '') + '" data-fav="' + esc(d.did) + '" title="收藏">'
-        +     '<svg class="icon" viewBox="0 0 24 24" fill="' + (fav ? 'currentColor' : 'none') + '" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/></svg>'
-        +   '</button>'
-        + '</footer>'
-        + '</article>';
-    }).join("") : empty('cam', '没有匹配的摄像头', '换个筛选条件或清空搜索试试', '');
-
     c.innerHTML = '<div class="page__inner">'
-      + head + filters
-      + '<div class="cam-grid' + (devView==='list' ? ' cam-grid--list' : '') + '">' + cards + '</div>'
+
+      + '<div class="list-head">'
+      +   '<div class="list-head__main">'
+      +     '<h1 class="list-head__title">摄像头列表</h1>'
+      +     '<div class="list-head__en">Cameras</div>'
+      +   '</div>'
+      +   '<div class="list-head__date">' + esc(dateStr) + '</div>'
+      + '</div>'
+
+      + '<div class="list-stat">'
+      +   '<span class="status-dot ' + (nOnline() ? 'is-online' : 'is-offline') + '"></span>'
+      +   '<span>' + all.length + ' 台设备，' + nOnline() + ' 台在线</span>'
+      + '</div>'
+
+      + '<div class="filters filters--rich">'
+      +   chip('all',     '全部', all.length, '', '')
+      +   chip('online',  '在线', nOnline(), 'is-online', '')
+      +   chip('offline', '离线', all.length - nOnline(), 'is-offline', '')
+      +   chip('shared',  '共享', nShared(), '', 'users')
+      +   chip('fav',     '收藏', nFav(), '', 'star')
+      +   '<span class="filters__spacer"></span>'
+      +   '<div class="segmented">'
+      +     '<button class="segmented__btn' + (devView==='grid'?' is-active':'') + '" data-view="grid" title="网格">' + icon('grid',15) + '</button>'
+      +     '<button class="segmented__btn' + (devView==='list'?' is-active':'') + '" data-view="list" title="列表">' + icon('list',15) + '</button>'
+      +   '</div>'
+      +   '<div class="search filters__search">'
+      +     icon('search',15)
+      +     '<input class="input" id="devSearchBox" type="search" placeholder="搜索摄像头…" value="' + esc(devSearch || '') + '">'
+      +   '</div>'
+      + '</div>'
+
+      + '<div class="cam-grid' + (devView==='list' ? ' cam-grid--list' : '') + '"></div>'
       + '</div>';
 
-    // ---- 交互 ----
+    // ---- 只重建网格（无痕切换）----
+    // applyList 原地更新网格。
+    //
+    // 关键：**复用已有的卡片节点**，只增删差异部分。
+    // 直接 grid.innerHTML = ... 会让 <img> 重新加载，
+    // 表现为切换筛选时画面闪一下（无痕加载的反面）。
+    function applyList(){
+      var grid = c.querySelector('.cam-grid');
+      if(!grid) return;
+      var list = filtered();
+      grid.className = 'cam-grid' + (devView==='list' ? ' cam-grid--list' : '');
+
+      if(!list.length){
+        grid.innerHTML = empty('cam','没有匹配的摄像头','换个筛选条件或清空搜索试试','');
+        return;
+      }
+
+      // 空状态占位要清掉
+      var ph = grid.querySelector('.empty');
+      if(ph) ph.remove();
+
+      var existing = {};
+      Array.prototype.forEach.call(grid.querySelectorAll('.cam-card'), function(el){
+        existing[el.dataset.did] = el;
+      });
+
+      var wanted = {};
+      list.forEach(function(d){
+        wanted[d.did] = true;
+        var el = existing[d.did];
+        if(!el){
+          // 新出现的：插入
+          var tmp = document.createElement('div');
+          tmp.innerHTML = camCardHTML(d);
+          el = tmp.firstElementChild;
+          grid.appendChild(el);
+          loadCameraSnapsFor(el, d.did);
+        }
+        // 保证顺序正确（已存在且位置对时不移动 DOM，避免图片重载）
+        if(grid.children[list.indexOf(d)] !== el && el.parentNode === grid){
+          grid.insertBefore(el, grid.children[list.indexOf(d)] || null);
+        }
+      });
+
+      // 移除不再需要的
+      Array.prototype.forEach.call(grid.querySelectorAll('.cam-card'), function(el){
+        if(!wanted[el.dataset.did]) el.remove();
+      });
+
+      bindCards();
+    }
+
+    function bindCards(){
+      Array.prototype.forEach.call(c.querySelectorAll('.cam-card'), function(el){
+        el.onclick = function(ev){
+          if(ev.target.closest('[data-fav]')) return;
+          var d = all.filter(function(x){ return x.did === el.dataset.did; })[0];
+          if(!d) return;
+          if(d.isOnline) gotoLive(d.did);
+          else showRenameDialog(d.did, d);
+        };
+        el.oncontextmenu = function(ev){
+          ev.preventDefault();
+          var d = all.filter(function(x){ return x.did === el.dataset.did; })[0];
+          if(d) showRenameDialog(d.did, d);
+        };
+      });
+      Array.prototype.forEach.call(c.querySelectorAll('[data-fav]'), function(b){
+        b.onclick = function(ev){
+          ev.stopPropagation();
+          var did = b.dataset.fav;
+          var nv = !isFav(did);
+          setFav(did, nv);
+          var dev = all.filter(function(x){ return x.did === did; })[0];
+          if(dev) dev.favorite = nv;
+          api('/api/devices/meta', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ did: did, favorite: nv })
+          }).catch(function(){});
+          // 原地更新这一张卡片的状态，不重建列表
+          b.classList.toggle('is-active', nv);
+          b.querySelector('svg').setAttribute('fill', nv ? 'currentColor' : 'none');
+          var fn = c.querySelector('[data-f="fav"] .chip__n');
+          if(fn) fn.textContent = nFav();
+        };
+      });
+    }
+
+    // ---- 筛选 / 视图（无痕）----
     Array.prototype.forEach.call(c.querySelectorAll('[data-f]'), function(b){
-      b.onclick = function(){ devFilter = this.dataset.f; renderDevices(c); };
+      b.onclick = function(){
+        devFilter = this.dataset.f;
+        Array.prototype.forEach.call(c.querySelectorAll('[data-f]'), function(x){
+          x.classList.toggle('is-active', x.dataset.f === devFilter);
+        });
+        applyList();
+      };
     });
     Array.prototype.forEach.call(c.querySelectorAll('[data-view]'), function(b){
-      b.onclick = function(){ devView = this.dataset.view; renderDevices(c); };
+      b.onclick = function(){
+        devView = this.dataset.view;
+        Array.prototype.forEach.call(c.querySelectorAll('[data-view]'), function(x){
+          x.classList.toggle('is-active', x.dataset.view === devView);
+        });
+        applyList();
+      };
     });
 
     var sb = document.getElementById('devSearchBox');
     if(sb){
+      var deb = null;
       sb.oninput = function(){
         devSearch = this.value;
-        var v = this.value;
-        // 轻量过滤，不重建 DOM（保持焦点）
-        Array.prototype.forEach.call(c.querySelectorAll('.cam-card'), function(el){
-          var did = el.dataset.did;
-          var d = all.filter(function(x){ return x.did === did; })[0] || {};
-          var s2 = ((d.alias||'') + ' ' + (d.aliasEn||'') + ' ' + d.name).toLowerCase();
-          el.style.display = (!v || s2.indexOf(v.toLowerCase()) >= 0) ? '' : 'none';
-        });
+        if(deb) clearTimeout(deb);
+        deb = setTimeout(applyList, 180);
       };
-      sb.oninput();
     }
 
-    Array.prototype.forEach.call(c.querySelectorAll('[data-fav]'), function(b){
-      b.onclick = function(ev){
-        ev.stopPropagation();
-        var did = b.dataset.fav;
-        var now2 = !(isFav(did) || false);
-        setFav(did, now2);
-        // 同步到服务端（持久化 + Mac 端可见）
-        api('/api/devices/meta', {
-          method:'POST', headers:{'Content-Type':'application/json'},
-          body: JSON.stringify({ did: did, favorite: now2 })
-        }).catch(function(){});
-        renderDevices(c);
-      };
-    });
-
-    // 长按/右键重命名
-    Array.prototype.forEach.call(c.querySelectorAll('.cam-card'), function(el){
-      el.onclick = function(ev){
-        if(ev.target.closest('[data-fav]')) return;
-        var d = all.filter(function(x){ return x.did === el.dataset.did; })[0];
-        if(d && d.isOnline) gotoLive(d.did);
-        else if(d) showRenameDialog(d.did, d);
-      };
-      el.oncontextmenu = function(ev){
-        ev.preventDefault();
-        var d = all.filter(function(x){ return x.did === el.dataset.did; })[0];
-        if(d) showRenameDialog(d.did, d);
-      };
-    });
-
-    loadCameraSnaps(c);
+    applyList();
   }).catch(function(err){
     c.innerHTML = '<div class="page__inner"><div class="card">'
       + empty('close','加载失败', err.message, '') + '</div></div>';
@@ -2892,6 +2967,30 @@ function eventItem(e){
     + '</span>'
     + '<span class="event-item__chev">' + icon('chevron-right', 15) + '</span>'
     + '</button>';
+}
+
+// loadCameraSnapsFor 给单张卡片加载缩略图
+function loadCameraSnapsFor(el, did){
+  var img = el.querySelector('img[data-snap]');
+  if(!img) return;
+  var load = function(attempt){
+    if(!document.body.contains(img)) return;
+    fetch(apiUrl('/api/live/thumb?did=' + encodeURIComponent(did) + '&w=640'), { cache:'no-store' })
+      .then(function(r){
+        if(r.status === 202){ if(attempt < 12) setTimeout(function(){ load(attempt+1); }, 2500); return null; }
+        if(!r.ok) throw new Error('http ' + r.status);
+        return r.blob();
+      })
+      .then(function(b){
+        if(!b || !document.body.contains(img)) return;
+        if(img.src && img.src.indexOf('blob:') === 0) URL.revokeObjectURL(img.src);
+        img.src = URL.createObjectURL(b);
+        var clk = el.querySelector('[data-clock]');
+        if(clk) clk.textContent = clockNow();
+      })
+      .catch(function(){});
+  };
+  load(0);
 }
 
 // loadHomeThumbs 首页摄像头缩略图（走缓存接口，秒开）

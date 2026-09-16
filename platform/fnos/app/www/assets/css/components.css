@@ -256,12 +256,19 @@
 /* 纯净版（用于筛选条） */
 .chip-row { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
 .chip {
+  /* 必须是 inline-flex：否则图标和文字会各自换行
+     （共享/收藏带图标时表现最明显） */
+  display: inline-flex; align-items: center; gap: 6px;
   height: 32px; padding: 0 var(--space-4);
   border: 1px solid var(--border); border-radius: 999px;
   background: transparent; color: var(--text-secondary);
-  font-size: var(--text-base);
-  transition: all var(--duration-fast) var(--ease-out);
+  font-size: var(--text-base); white-space: nowrap;
+  transition: background var(--duration-fast) var(--ease-out),
+              border-color var(--duration-fast) var(--ease-out),
+              color var(--duration-fast) var(--ease-out);
 }
+.chip .icon { flex: 0 0 auto; }
+.chip .status-dot { flex: 0 0 auto; }
 .chip:hover { border-color: var(--border-strong); color: var(--text); }
 .chip.is-active { background: var(--accent); border-color: var(--accent); color: #fff; }
 
