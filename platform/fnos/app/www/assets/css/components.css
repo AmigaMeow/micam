@@ -118,22 +118,30 @@
 
 /* ===== Tabs（顶部分段控件）===== */
 
-.tabs {
-  display: inline-flex; align-items: center; gap: var(--space-1);
-  padding: 3px;
-  background: var(--surface-2);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-lg);
+/* 注意：不要叫 .tabs —— Basecoat 也有 .tabs（flex-direction: column），会冲突 */
+.pill-tabs {
+  display: flex; flex-direction: row; flex-wrap: wrap;
+  align-items: center; gap: var(--space-2);
+  margin-bottom: var(--space-4);
 }
-.tab {
-  height: 30px; padding: 0 var(--space-4);
-  border-radius: var(--radius-md);
-  color: var(--text-secondary); font-size: var(--text-base); font-weight: var(--weight-medium);
+.pill {
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  height: 32px; padding: 0 var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-secondary);
+  font-size: var(--text-base); font-weight: var(--weight-medium);
+  white-space: nowrap;
   transition: background var(--duration-fast) var(--ease-out),
+              border-color var(--duration-fast) var(--ease-out),
               color var(--duration-fast) var(--ease-out);
 }
-.tab:hover { color: var(--text); }
-.tab.is-active { background: var(--surface-3); color: var(--text); }
+.pill:hover { border-color: var(--border-strong); color: var(--text); }
+.pill.is-active {
+  background: var(--accent); border-color: var(--accent); color: #fff;
+}
+.pill.is-off { opacity: .55; }
 
 /* 纯净版（用于筛选条） */
 .chip-row { display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap; }
@@ -171,7 +179,7 @@
 }
 .card__head {
   display: flex; align-items: center; gap: var(--space-3);
-  padding: var(--space-5) var(--space-6);
+  padding: var(--space-4) var(--space-5);
   border-bottom: 1px solid var(--border-subtle);
 }
 .card__title {
@@ -180,7 +188,7 @@
 }
 .card__title .icon { color: var(--text-secondary); }
 .card__actions { margin-left: auto; display: flex; align-items: center; gap: var(--space-2); }
-.card__body { padding: var(--space-6); }
+.card__body { padding: var(--space-5); }
 .card + .card { margin-top: var(--space-5); }
 
 /* ===== Badge / Tag ===== */
@@ -296,7 +304,7 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; line-h
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
 }
 .stat {
-  padding: var(--space-4) var(--space-5);
+  padding: var(--space-4);
   background: var(--surface-2);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
@@ -418,11 +426,11 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; line-h
 .empty {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: var(--space-3);
-  padding: var(--space-8) var(--space-5);
+  padding: var(--space-6) var(--space-5);
   text-align: center; color: var(--text-muted);
 }
 .empty__icon {
-  width: 44px; height: 44px; border-radius: 50%;
+  width: 40px; height: 40px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
   background: var(--surface-2); color: var(--text-muted);
 }
@@ -557,6 +565,13 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; line-h
 .camera-tile:hover { border-color: var(--border-strong); }
 .camera-tile__preview { position: relative; aspect-ratio: 16/9; background: #0a0d12; }
 .camera-tile__preview img { width: 100%; height: 100%; object-fit: contain; }
+.camera-tile__placeholder {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: var(--space-2);
+  color: var(--text-muted); font-size: var(--text-base);
+}
+.camera-tile.is-offline .camera-tile__name { color: var(--text-muted); }
 .camera-tile__foot {
   display: flex; align-items: center; gap: var(--space-2);
   padding: var(--space-2) var(--space-3); font-size: var(--text-sm);
@@ -568,6 +583,10 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; line-h
 .player {
   position: relative;
   aspect-ratio: 16 / 9;
+  /* 按可用高度收缩，保证下方工具栏始终可见
+     （900px 窗口下 16:9 会占满整屏，工具栏被挤出屏幕） */
+  max-height: calc(100vh - 340px);
+  margin: 0 auto;
   background: #000;
   border-radius: var(--radius-lg);
   overflow: hidden;
@@ -584,6 +603,7 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; line-h
 }
 .player__overlay .spinner { width: 26px; height: 26px; border-width: 2.5px; }
 .player__pct { font-size: var(--text-sm); color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.player__step { font-size: var(--text-base); color: var(--text-secondary); text-align: center; }
 .player__progress { width: 200px; }
 
 .player__toolbar {

@@ -179,10 +179,87 @@
   background: var(--accent); color: #fff;
   font-size: var(--text-sm); font-weight: var(--weight-semibold);
 }
-.topbar__user-name { font-size: var(--text-base); line-height: 1.15; }
-.topbar__user-home { font-size: var(--text-xs); color: var(--text-muted); line-height: 1.15; }
-@media (max-width: 900px) { .topbar__user-name, .topbar__user-home { display: none; } }
+.topbar__user-text {
+  display: flex; flex-direction: column; align-items: flex-start;
+  gap: 1px; line-height: 1.2; text-align: left;
+}
+.topbar__user-name { font-size: var(--text-base); font-weight: var(--weight-medium); }
+.topbar__user-home { font-size: var(--text-xs); color: var(--text-muted); }
+@media (max-width: 1000px) { .topbar__user-text { display: none; } }
 
 /* 卡片收藏按钮 */
 .camera-card__foot .icon-btn { flex: 0 0 auto; }
 .camera-card__foot .icon-btn.is-active { color: var(--warning); }
+
+
+/* ===== 安装向导 ===== */
+
+.wizard__hero {
+  display: flex; flex-direction: column; align-items: center; gap: var(--space-3);
+  padding: var(--space-8) var(--space-5) var(--space-6);
+  text-align: center;
+}
+.wizard__logo {
+  width: 56px; height: 56px; border-radius: var(--radius-xl);
+  display: flex; align-items: center; justify-content: center;
+  background: var(--accent-soft); color: var(--accent);
+}
+.wizard__hero h2 { font-size: var(--text-xl); }
+.wizard__hero p { font-size: var(--text-base); color: var(--text-secondary); max-width: 420px; }
+
+.wizard__steps {
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: 0 var(--space-6) var(--space-5);
+}
+.wizard-step {
+  display: flex; align-items: center; gap: var(--space-2);
+  font-size: var(--text-sm); color: var(--text-muted);
+}
+.wizard-step__num {
+  width: 24px; height: 24px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--surface-3); font-size: var(--text-sm);
+  flex: 0 0 24px;
+}
+.wizard-step__label { white-space: nowrap; }
+.wizard-step.active { color: var(--text); }
+.wizard-step.active .wizard-step__num { background: var(--accent); color: #fff; }
+.wizard-step.done { color: var(--online); }
+.wizard-step.done .wizard-step__num { background: color-mix(in srgb, var(--online) 18%, transparent); color: var(--online); }
+.wizard__actions {
+  display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;
+  padding: var(--space-5) var(--space-6);
+  border-top: 1px solid var(--border-subtle);
+}
+.check-list { padding: var(--space-2) var(--space-6) var(--space-5); }
+
+/* ===== 播放器占位（连接中 / 离线 / 失败）===== */
+
+.player__ph {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: var(--space-3);
+  color: var(--text-muted); font-size: var(--text-base);
+  background: #0a0d12;
+}
+.player__ph .icon { color: var(--text-muted); }
+
+/* 录像卡片补充：播放遮罩 / 删除按钮 */
+.rec-item__play {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,.28); color: #fff;
+  opacity: 0; transition: opacity var(--duration-fast) var(--ease-out);
+}
+.rec-item:hover .rec-item__play { opacity: 1; }
+.rec-item__del {
+  position: absolute; top: var(--space-2); right: var(--space-2);
+  width: 26px; height: 26px; border-radius: var(--radius-sm);
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0,0,0,.6); color: #fff;
+  opacity: 0; transition: opacity var(--duration-fast) var(--ease-out);
+}
+.rec-item:hover .rec-item__del { opacity: 1; }
+.rec-item__del:hover { background: var(--danger); }
+.rec-item__sub { font-size: var(--text-xs); color: var(--text-muted); }
+.rec-item__meta { font-size: var(--text-xs); color: var(--text-muted); }
