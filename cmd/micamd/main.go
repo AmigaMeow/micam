@@ -46,7 +46,7 @@ var appDestDir string
 // startedAt 进程启动时间（状态条显示「运行时间」用）
 var startedAt = time.Now()
 
-var appVersion = "0.28.0"
+var appVersion = "0.29.0"
 
 func main() {
 	var (
@@ -158,6 +158,7 @@ func main() {
 	srv.eventStore = event.NewStore(filepath.Join(*dataDir, "events"), 90)
 	srv.meta = newMetaStore(*dataDir)
 	srv.presets = newPresetStore(*dataDir)
+	srv.marks = newMarkStore(*dataDir)
 
 	// AI 推理客户端（默认关闭；开启且环境可用时才启动子进程）
 	aiScript := filepath.Join(*appDest, "ai", "infer.py")
@@ -286,6 +287,7 @@ type Server struct {
 	eventStore *event.Store
 	meta       *metaStore
 	presets    *presetStore
+	marks      *markStore
 	ai         *aiClient
 }
 
@@ -463,6 +465,8 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/home", s.handleHome)
 	mux.HandleFunc("/api/events", s.handleEvents)
 	mux.HandleFunc("/api/events/thumb", s.handleEventThumb)
+	mux.HandleFunc("/api/events/marks", s.handleEventMarks)
+	mux.HandleFunc("/api/events/bulk", s.handleEventBulk)
 	mux.HandleFunc("/api/devices/meta", s.handleDevMeta)
 	mux.HandleFunc("/api/devices/hide", s.handleDevHide)
 

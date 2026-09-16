@@ -374,7 +374,15 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		Limit: limit,
 	}
 	list := s.eventStore.Query(q)
-	writeJSON(w, 200, map[string]any{"events": list, "today": s.eventStore.CountToday()})
+
+	// 附上用户标记（书签/需关注/标签）—— 前端一次拿到，避免 N+1
+	marks := s.marks.list()
+
+	writeJSON(w, 200, map[string]any{
+		"events": list,
+		"today":  s.eventStore.CountToday(),
+		"marks":  marks,
+	})
 }
 
 // handleEventThumb 事件缩略图。

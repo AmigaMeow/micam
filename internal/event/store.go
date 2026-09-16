@@ -247,3 +247,68 @@ func (s *Store) Days(limit int) []string {
 	}
 	return out
 }
+
+
+// DeleteEvents 从事件库里删除若干事件（按 id）。
+//
+// 实现：读当天文件 -> 过滤 -> 原子重写。
+// 事件文件本来就不大（一天几百条），整体重写没问题。
+func (s *Store) DeleteEvents(ids []string) (int, error) {
+	want := map[string]bool{}
+	for _, id := range ids {
+		want[id] = true
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	ents, err := os.ReadDir(s.dir)
+	if err != nil {
+		return 0, err
+	}
+
+	total := 0
+	for _, ent := range ents {
+		if ent.IsDir() || !strings.HasSuffix(ent.Name(), ".jsonl") {
+			continue
+		}
+		p := filepath.Join(s.dir, ent.Name())
+		raw, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+
+		var kept []string
+		changed := false
+		for _, line := range strings.Split(string(raw), "\n") {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			var ev Event
+			if json.Unmarshal([]byte(line), &ev) == nil && want[ev.ID] {
+				changed = true
+				total++
+				// 顺便删缩略图
+				if ev.Thumb != "" {
+					_ = os.Remove(s.ThumbPath(ev.Thumb))
+				}
+				continue
+			}
+			kept = append(kept, line)
+		}
+
+		if changed {
+			tmp := p + ".tmp"
+			content := ""
+			if len(kept) > 0 {
+				content = strings.Join(kept, "\n") + "\n"
+			}
+			if err := os.WriteFile(tmp, []byte(content), 0o644); err != nil {
+				continue
+			}
+			_ = os.Rename(tmp, p)
+		}
+	}
+	return total, nil
+}

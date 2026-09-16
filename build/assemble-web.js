@@ -24,8 +24,17 @@ const W = ROOT + '/www';
 const SKEL = ROOT + '/shell.html';
 const JS = '/tmp/final-js.txt';
 
+// 注意：**不再引入 Basecoat CSS**（2026-09-17）
+//
+// 原因：Basecoat 是 Tailwind 编译产物，包含 .btn/.card/.dialog/.tabs/.badge/
+// .input/.table/.progress 等**与我们同名**的组件类，导致持续冲突：
+//   · .tabs { flex-direction: column }  -> 我们的胶囊竖排
+//   · .dialog { opacity: 0 }            -> 弹窗透明不可见
+//   · .badge { width: ... !important }  -> 徽章被压小
+//
+// 审计确认：我们**零依赖** Basecoat 的类（JS 里用到且自己没定义的类都不是它的）。
+// 所以直接移除，消灭这一整类问题。
 const CSS_FILES = [
-  'assets/ui/basecoat.css',
   'assets/css/tokens.css',
   'assets/css/base.css',
   'assets/css/components.css',

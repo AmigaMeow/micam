@@ -536,6 +536,7 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; line-h
 /* ===== Modal / Dialog ===== */
 
 .mask { display: none; }
+
 .mask.is-open { display: flex; }
 
 .mask {
@@ -549,6 +550,9 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; line-h
 @keyframes mask-in { from { opacity: 0; } to { opacity: 1; } }
 
 .dialog {
+  /* 必须显式写 opacity：Basecoat 也定义了 .dialog { opacity: 0 }（入场动画用），
+     我们不使用它的动画机制，所以要覆盖回来 */
+  opacity: 1;
   width: 100%; max-width: 560px; max-height: 86vh;
   display: flex; flex-direction: column;
   background: var(--surface-1);
