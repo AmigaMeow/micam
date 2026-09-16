@@ -31,8 +31,9 @@ fi
 
 echo
 echo "== 关键渲染要素 =="
-for k in 'class="app"' 'class="sider' 'id="menu"' 'id="content"' 'id="i-camera"' '--bg:'; do
-  N=$(grep -c -- "$k" /tmp/_v.html 2>/dev/null || echo 0)
+for k in 'class="app' 'topnav' 'id="menu"' 'id="content"' 'id="i-camera"' '--bg:'; do
+  N=$(grep -c -- "$k" /tmp/_v.html 2>/dev/null | head -1)
+  N=${N:-0}
   if [ "$N" -gt 0 ]; then printf "  ✅ %-34s %s 处\n" "$k" "$N"
   else printf "  ❌ %-34s 缺失\n" "$k"; FAIL=1; fi
 done

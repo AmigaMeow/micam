@@ -5,8 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <title>小米摄像头</title>
-<meta name="micam-build" content="2026-09-16 05:37:21">
-
+<meta name="micam-build" content="2026-09-16 06:00:40">
 <!-- 样式内联：飞牛网关会剥前缀，相对路径不可靠（详见 build/assemble-web.js）-->
 <style>
 
@@ -349,7 +348,108 @@ code, pre, kbd {
 
 /* ===== App Shell ===== */
 
-.app { display: flex; height: 100vh; overflow: hidden; }
+.app { display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+
+/* ===== 顶栏导航 ===== */
+
+.topnav {
+  height: var(--topbar-h); flex: 0 0 var(--topbar-h);
+  display: flex; align-items: center; gap: var(--space-5);
+  padding: 0 var(--space-5);
+  background: var(--bg);
+  border-bottom: 1px solid var(--border-subtle);
+  position: relative; z-index: 20;
+}
+
+.topnav__brand {
+  display: flex; align-items: center; gap: var(--space-2);
+  font-size: var(--text-lg); font-weight: var(--weight-semibold);
+  letter-spacing: -.01em; flex: 0 0 auto;
+}
+.topnav__logo { width: 22px; height: 22px; color: var(--accent); }
+.topnav__name { color: var(--text); }
+
+.topnav__menu {
+  display: flex; align-items: center; gap: 2px;
+  flex: 1; min-width: 0; overflow-x: auto;
+  scrollbar-width: none;
+}
+.topnav__menu::-webkit-scrollbar { display: none; }
+
+.topnav__right {
+  display: flex; align-items: center; gap: var(--space-3);
+  flex: 0 0 auto;
+}
+.topnav__search { width: 260px; }
+@media (max-width: 1200px) { .topnav__search { display: none; } }
+
+.topnav__icon-btn {
+  position: relative;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 34px; height: 34px; border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+}
+.topnav__icon-btn:hover { background: var(--surface-2); color: var(--text); }
+.topnav__dot {
+  position: absolute; top: 6px; right: 7px;
+  width: 7px; height: 7px; border-radius: 50%;
+  background: var(--danger); border: 1.5px solid var(--bg);
+}
+
+.topnav__user {
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  padding: 3px 8px 3px 3px; border-radius: 999px;
+  color: var(--text); transition: background var(--duration-fast) var(--ease-out);
+}
+.topnav__user:hover { background: var(--surface-2); }
+.topnav__avatar {
+  width: 28px; height: 28px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--accent); color: #fff;
+  font-size: var(--text-sm); font-weight: var(--weight-semibold);
+}
+.topnav__user-name { font-size: var(--text-base); }
+.topnav__user .icon { color: var(--text-muted); }
+@media (max-width: 900px) { .topnav__user-name { display: none; } }
+
+/* ===== 顶部导航项 ===== */
+
+.tabnav {
+  display: inline-flex; align-items: center; gap: var(--space-1);
+  height: 36px; padding: 0 var(--space-4);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: var(--text-base); font-weight: var(--weight-medium);
+  white-space: nowrap;
+  transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+}
+.tabnav:hover { color: var(--text); background: var(--surface-2); }
+.tabnav.is-active {
+  color: var(--text); background: var(--surface-3);
+}
+.tabnav.is-active .icon { color: var(--accent); }
+.tabnav__badge {
+  font-size: var(--text-xs); padding: 1px 6px; border-radius: 999px;
+  background: var(--danger); color: #fff; margin-left: 2px;
+}
+
+/* ===== 页面容器 ===== */
+
+.page {
+  flex: 1; overflow-y: auto;
+  padding: var(--space-6) var(--space-6) var(--space-8);
+}
+.page__inner { max-width: var(--content-max); margin: 0 auto; }
+
+.fab-menu {
+  position: fixed; left: var(--space-4); bottom: var(--space-4); z-index: 30;
+  width: 44px; height: 44px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--surface-3); color: var(--text);
+  box-shadow: var(--shadow-lg);
+}
+@media (min-width: 901px) { .fab-menu { display: none !important; } }
 
 .sider {
   width: var(--sider-w); flex: 0 0 var(--sider-w);
@@ -890,6 +990,9 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; line-h
 .camera-card__name .status-dot { flex: 0 0 auto; }
 .camera-card__name span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .camera-card__meta { font-size: var(--text-sm); color: var(--text-muted); }
+.camera-card__en { font-size: var(--text-xs); color: var(--text-muted); }
+.camera-card__name .icon-btn { width: 22px; height: 22px; margin-left: 2px; opacity: 0; transition: opacity var(--duration-fast); }
+.camera-card:hover .camera-card__name .icon-btn { opacity: 1; }
 
 /* ===== Camera tile（多路预览，更紧凑）===== */
 
@@ -1068,8 +1171,19 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; line-h
 /* ===== 响应式 ===== */
 
 @media (max-width: 900px) {
-  .sider { position: fixed; z-index: 40; height: 100%; transform: translateX(-100%); transition: transform var(--duration-normal) var(--ease-out); }
-  .sider.is-open { transform: none; }
+  .topnav { padding: 0 var(--space-4); gap: var(--space-3); }
+  .topnav__brand { display: none; }
+  .topnav__menu { display: none; }
+  .topnav__menu.is-open {
+    display: flex; flex-direction: column; align-items: stretch;
+    position: fixed; top: var(--topbar-h); left: 0; right: 0; z-index: 25;
+    padding: var(--space-3);
+    background: var(--surface-1);
+    border-bottom: 1px solid var(--border);
+    box-shadow: var(--shadow-lg);
+    overflow: visible;
+  }
+  .topnav__menu.is-open .tabnav { height: 44px; }
   .mask { backdrop-filter: none; }
   .camera-grid { grid-template-columns: 1fr; }
 }
@@ -1360,11 +1474,228 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; line-h
 .rec-item__meta { font-size: var(--text-xs); color: var(--text-muted); }
 
 
+/* ==========================================================================
+   HOME — 首页 / 家庭概览
+   ========================================================================== */
+
+/* 页头：标题 + 副标题 + 右侧日期 */
+.home-head {
+  display: flex; align-items: flex-start; gap: var(--space-4);
+  margin-bottom: var(--space-6);
+}
+.home-head__main { flex: 1; min-width: 0; }
+.home-head__title {
+  font-size: var(--text-title); font-weight: var(--weight-semibold);
+  letter-spacing: -.02em; line-height: 1.15;
+}
+.home-head__sub {
+  margin-top: 6px; font-size: var(--text-base); color: var(--text-secondary);
+}
+.home-head__date {
+  font-size: var(--text-base); color: var(--text-secondary);
+  white-space: nowrap; padding-top: 6px;
+}
+
+/* 三张概览卡 */
+.stat-cards {
+  display: grid; gap: var(--space-4);
+  grid-template-columns: repeat(3, 1fr);
+  margin-bottom: var(--space-6);
+}
+@media (max-width: 900px) { .stat-cards { grid-template-columns: 1fr; } }
+
+.stat-card {
+  display: flex; align-items: center; gap: var(--space-4);
+  padding: var(--space-5) var(--space-5);
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  cursor: pointer; text-align: left; width: 100%;
+  transition: border-color var(--duration-fast) var(--ease-out),
+              background var(--duration-fast) var(--ease-out);
+}
+.stat-card:hover { border-color: var(--border-strong); background: var(--surface-2); }
+
+.stat-card__icon {
+  width: 42px; height: 42px; flex: 0 0 42px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--surface-3); color: var(--text-secondary);
+}
+.stat-card__body { flex: 1; min-width: 0; }
+.stat-card__label { font-size: var(--text-base); color: var(--text-secondary); }
+.stat-card__value {
+  font-size: var(--text-title); font-weight: var(--weight-semibold);
+  line-height: 1.1; letter-spacing: -.02em; margin-top: 2px;
+}
+.stat-card__value small { font-size: var(--text-lg); font-weight: var(--weight-normal); color: var(--text-secondary); }
+.stat-card__chev { color: var(--text-muted); flex: 0 0 auto; }
+
+/* 区块头（摄像头 / 最近事件 / 存储） */
+.sec-head {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-5) var(--space-5) var(--space-4);
+}
+.sec-head__title {
+  display: flex; align-items: baseline; gap: var(--space-2);
+  font-size: var(--text-lg); font-weight: var(--weight-semibold);
+}
+.sec-head__en { font-size: var(--text-base); font-weight: var(--weight-normal); color: var(--text-muted); }
+.sec-head__more {
+  margin-left: auto; display: inline-flex; align-items: center; gap: 4px;
+  font-size: var(--text-base); color: var(--text-secondary);
+}
+.sec-head__more:hover { color: var(--accent); }
+
+/* 摄像头横排（首页版：底部叠加名称+时间） */
+.cam-row {
+  display: grid; gap: var(--space-4);
+  grid-template-columns: repeat(3, 1fr);
+  padding: 0 var(--space-5) var(--space-5);
+}
+@media (max-width: 1100px) { .cam-row { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 700px)  { .cam-row { grid-template-columns: 1fr; } }
+
+.cam-tile {
+  position: relative; display: block; width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: var(--radius-lg);
+  overflow: hidden; background: #0a0d12;
+  cursor: pointer;
+  transition: transform var(--duration-normal) var(--ease-out),
+              box-shadow var(--duration-normal) var(--ease-out);
+}
+.cam-tile:hover { transform: translateY(-2px); box-shadow: var(--shadow-md); }
+.cam-tile.is-offline { cursor: default; }
+.cam-tile.is-offline:hover { transform: none; box-shadow: none; }
+
+.cam-tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.cam-tile.is-offline img { filter: grayscale(1) brightness(.45); }
+
+.cam-tile__badge {
+  position: absolute; top: var(--space-3); left: var(--space-3);
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 24px; padding: 0 10px; border-radius: 999px;
+  background: rgba(0,0,0,.55); backdrop-filter: blur(6px);
+  font-size: var(--text-sm); color: #fff;
+}
+.cam-tile__badge .status-dot { width: 6px; height: 6px; }
+
+.cam-tile__foot {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  display: flex; align-items: baseline; gap: var(--space-2);
+  padding: var(--space-5) var(--space-4) var(--space-3);
+  background: linear-gradient(to top, rgba(0,0,0,.78), rgba(0,0,0,0));
+  color: #fff;
+}
+.cam-tile__name {
+  font-size: var(--text-base); font-weight: var(--weight-medium);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  min-width: 0;
+}
+.cam-tile__en {
+  font-size: var(--text-sm); color: rgba(255,255,255,.65);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 0 0 auto;
+}
+.cam-tile__foot { min-width: 0; }
+.cam-tile__time { margin-left: auto; font-size: var(--text-sm); color: rgba(255,255,255,.75); font-variant-numeric: tabular-nums; }
+
+.cam-tile__off {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: var(--space-2); color: var(--text-secondary); text-align: center;
+}
+.cam-tile__off .icon { color: var(--text-muted); }
+.cam-tile__off-title { font-size: var(--text-base); }
+.cam-tile__off-sub { font-size: var(--text-sm); color: var(--text-muted); }
+
+/* 底部两栏：事件 + 存储 */
+.home-cols {
+  display: grid; gap: var(--space-5);
+  grid-template-columns: minmax(0, 1.65fr) minmax(0, 1fr);
+  align-items: start;
+}
+@media (max-width: 1100px) { .home-cols { grid-template-columns: 1fr; } }
+
+/* 事件列表 */
+.event-list { padding: 0 var(--space-3) var(--space-3); }
+.event-item {
+  display: flex; align-items: center; gap: var(--space-4);
+  width: 100%; padding: var(--space-3);
+  border-radius: var(--radius-md);
+  border-bottom: 1px solid var(--border-subtle);
+  text-align: left;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+.event-item:last-child { border-bottom: 0; }
+.event-item:hover { background: var(--surface-2); }
+
+.event-item__thumb {
+  width: 62px; height: 42px; flex: 0 0 62px;
+  border-radius: var(--radius-sm); overflow: hidden; background: #0a0d12;
+}
+.event-item__thumb img { width: 100%; height: 100%; object-fit: cover; }
+
+.event-item__time {
+  flex: 0 0 52px; font-size: var(--text-base); color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+.event-item__where {
+  flex: 0 0 76px; font-size: var(--text-base); color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.event-item__type {
+  flex: 0 0 34px; display: flex; align-items: center; justify-content: center;
+  color: var(--text-secondary);
+}
+.event-item__body { flex: 1; min-width: 0; }
+.event-item__name { font-size: var(--text-base); }
+.event-item__body { min-width: 0; }
+.event-item__name, .event-item__desc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+.event-item__desc { font-size: var(--text-sm); color: var(--text-muted); margin-top: 1px; }
+.event-item__chev { color: var(--text-muted); flex: 0 0 auto; }
+
+/* 存储卡 */
+.storage-body { padding: 0 var(--space-5) var(--space-5); }
+.storage-row {
+  display: flex; align-items: baseline; gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.storage-pct {
+  font-size: var(--text-title); font-weight: var(--weight-semibold);
+  letter-spacing: -.02em;
+}
+.storage-used { font-size: var(--text-base); color: var(--text-secondary); }
+.storage-total { margin-left: auto; font-size: var(--text-base); color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+
+.storage-meta {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-top: var(--space-3); font-size: var(--text-sm); color: var(--text-secondary);
+}
+.storage-hint { display: inline-flex; align-items: center; gap: 4px; color: var(--text-muted); }
+
+.storage-health {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-4);
+  margin-top: var(--space-4);
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
+.storage-health__dot { width: 9px; height: 9px; border-radius: 50%; background: var(--online); flex: 0 0 auto; }
+.storage-health__body { flex: 1; min-width: 0; }
+.storage-health__title { font-size: var(--text-base); }
+.storage-health__title b { color: var(--online); font-weight: var(--weight-medium); margin-left: 4px; }
+.storage-health__desc { font-size: var(--text-sm); color: var(--text-muted); margin-top: 2px; }
+.storage-health__right { text-align: right; font-size: var(--text-sm); color: var(--text-muted); line-height: 1.6; }
+
+.storage-actions { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); margin-top: var(--space-4); }
+
+
 </style>
 </head>
 <body>
 
-<!-- ===== 图标 sprite（Lucide 子集，构建时生成）===== -->
 <svg xmlns="http://www.w3.org/2000/svg" style="display:none" aria-hidden="true"><symbol viewBox="0 0 24 24" id="i-cam"><path d="M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z" />
   <circle cx="12" cy="13" r="3" /></symbol><symbol viewBox="0 0 24 24" id="i-cam-off"><path d="M14.564 14.558a3 3 0 1 1-4.122-4.121" />
   <path d="m2 2 20 20" />
@@ -1571,58 +1902,46 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; line-h
   <path d="M20 20H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 .819-.175" />
   <path d="M9.695 4.024A2 2 0 0 1 10.004 4h3.993a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v7.344" /></symbol></svg>
 
-<!-- ===== 应用外壳 ===== -->
-<div class="app">
+<!-- ===== 应用外壳（顶栏导航）===== -->
+<div class="app app--top">
 
-  <aside class="sider" id="sider">
-    <div class="sider__brand">
-      <svg class="sider__logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+  <header class="topnav">
+    <div class="topnav__brand">
+      <svg class="topnav__logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3Z"/>
         <circle cx="12" cy="13" r="3"/>
       </svg>
-      <span>小米摄像头</span>
+      <span class="topnav__name">MiCam</span>
     </div>
 
-    <nav class="sider__nav" id="menu" aria-label="主导航"></nav>
+    <nav class="topnav__menu" id="menu" aria-label="主导航"></nav>
 
-    <div class="sider__foot">
-      <span>MiCam</span>
-      <span class="sider__ver" id="appVer">v—</span>
-    </div>
-  </aside>
-
-  <div class="main">
-    <header class="topbar">
-      <button class="icon-btn" id="btnMenu" type="button" aria-label="打开菜单" style="display:none">
-        <svg class="icon" aria-hidden="true"><use href="#i-menu"/></svg>
-      </button>
-      <h1 class="topbar__title" id="pageTitle">设备列表</h1>
-      <div class="topbar__actions">
-        <div class="topbar__search">
-          <div class="search">
-            <svg class="icon icon-sm" aria-hidden="true"><use href="#i-search"/></svg>
-            <input class="input" id="globalSearch" type="search" placeholder="搜索摄像头…" autocomplete="off">
-          </div>
+    <div class="topnav__right">
+      <div class="topnav__search">
+        <div class="search">
+          <svg class="icon icon-sm" aria-hidden="true"><use href="#i-search"/></svg>
+          <input class="input" id="globalSearch" type="search" placeholder="搜索摄像头、事件或人员…" autocomplete="off">
         </div>
-
-        <button class="topbar__icon-btn" id="btnNotify" type="button" title="事件通知">
-          <svg class="icon" aria-hidden="true"><use href="#i-bell"/></svg>
-          <span class="topbar__dot" id="notifyDot" style="display:none"></span>
-        </button>
-
-        <button class="topbar__user" id="btnUser" type="button" title="账号">
-          <span class="topbar__avatar" id="userAvatar">家</span>
-          <span class="topbar__user-text">
-            <span class="topbar__user-name" id="userName">我的家</span>
-            <span class="topbar__user-home" id="userHome">读取中…</span>
-          </span>
-        </button>
       </div>
-    </header>
 
-    <main class="content" id="content" role="main"></main>
-  </div>
+      <button class="topnav__icon-btn" id="btnNotify" type="button" title="事件通知">
+        <svg class="icon" aria-hidden="true"><use href="#i-bell"/></svg>
+        <span class="topnav__dot" id="notifyDot" style="display:none"></span>
+      </button>
 
+      <button class="topnav__user" id="btnUser" type="button" title="账号">
+        <span class="topnav__avatar" id="userAvatar">家</span>
+        <span class="topnav__user-name" id="userName">我的家</span>
+        <svg class="icon icon-sm" aria-hidden="true"><use href="#i-chevron-down"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main class="page" id="content" role="main"></main>
+
+  <button class="fab-menu" id="btnMenu" type="button" aria-label="菜单" style="display:none">
+    <svg class="icon" aria-hidden="true"><use href="#i-menu"/></svg>
+  </button>
 </div>
 
 <div class="mask" id="siderMask" style="display:none"></div>
@@ -1635,7 +1954,7 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; line-h
 
 // ===== 状态 =====
 var devices = [];
-var page = "devices";
+var page = "home";
 var currentDid = null;
 var liveWidth = 0;      // 0 = 2K 原画
 var liveMode = "hls";   // hls / mjpeg
@@ -1646,6 +1965,7 @@ var devAccountFilter = 'all';
 var currentLens = 1;        // 当前镜头（双摄才有 2）
 var devFilter = 'all';      // all/online/offline/shared
 var devView = 'grid';       // grid/list
+var TODAY_EVENTS = 0;       // 今日事件数（顶栏角标）
 var devFilter = 'all';      // all/online/offline/shared
 var devView = 'grid';       // grid/list  // 设备列表的账号筛选
 var DEV_TAP = 0;          // 本次点击计数
@@ -1776,28 +2096,29 @@ function isMobile(){
 
 // ===== 菜单 =====
 var MENU = [
-  {k:"devices",   t:"设备列表", i:"device"},
-  {k:"live",      t:"实时预览", i:"play"},
-  {k:"grid",      t:"多路预览", i:"cam"},
-  {k:"storage",   t:"存储监控", i:"inbox"},
-  {k:"recordings",t:"录像管理", i:"rec"},
-  {k:"accounts",  t:"账号管理", i:"user"},
-  {k:"settings",  t:"系统设置", i:"set"},
-  {k:"dev",       t:"开发者",   i:"code", dev:true}
+  {k:"home",      t:"首页",   i:"home"},
+  {k:"devices",   t:"摄像头", i:"camera"},
+  {k:"events",    t:"事件",   i:"bell"},
+  {k:"recordings",t:"回放",   i:"play"},
+  {k:"ai",        t:"AI 智能", i:"zap"},
+  {k:"storage",   t:"存储",   i:"hard-drive"},
+  {k:"settings",  t:"设置",   i:"settings"},
+  {k:"accounts",  t:"账号",   i:"user"},
+  {k:"dev",       t:"开发者", i:"code", dev:true}
 ];
 
 function renderMenu(){
   var nav = document.getElementById("menu");
   if(!nav) return;
   nav.innerHTML = MENU.filter(function(m){ return !m.dev || DEV_UNLOCKED; }).map(function(m){
-    return '<button class="nav-item'+(m.k===page?' is-active':'')+'" data-k="'+m.k+'" type="button">'
-      + icon(m.i, 16)
-      + '<span class="nav-item__label">'+esc(m.t)+'</span>'
-      + (m.tag ? '<span class="nav-item__badge">'+esc(m.tag)+'</span>' : '')
+    return '<button class="tabnav'+(m.k===page?' is-active':'')+'" data-k="'+m.k+'" type="button">'
+      + icon(m.i, 15)
+      + '<span>'+esc(m.t)+'</span>'
+      + (m.k==='events' && TODAY_EVENTS > 0 ? '<span class="tabnav__badge">'+TODAY_EVENTS+'</span>' : '')
       + '</button>';
   }).join("");
 
-  Array.prototype.forEach.call(nav.querySelectorAll(".nav-item"), function(el){
+  Array.prototype.forEach.call(nav.querySelectorAll(".tabnav"), function(el){
     el.onclick = function(){
       page = el.dataset.k;
       var m = MENU.filter(function(x){ return x.k===page; })[0];
@@ -1807,11 +2128,19 @@ function renderMenu(){
       stopGrid();
       renderMenu();
       render();
-      if(isMobile()) closeSider();
       var ct = document.getElementById("content");
       if(ct) ct.scrollTop = 0;
+      nav.classList.remove("is-open");
+      var mk = document.getElementById("siderMask");
+      if(mk) mk.classList.remove("is-open");
     };
   });
+}
+
+// 页面标题（顶栏只显示导航，标题在页面内）
+function pageTitleOf(k){
+  var m = MENU.filter(function(x){ return x.k===k; })[0];
+  return m ? m.t : "";
 }
 
 // ===== 绑定移动端交互 =====
@@ -1872,7 +2201,10 @@ function loadDevices(){
 
 function render(){
   var c = $("#content");
-  if(page==="devices") return renderDevices(c);
+  if(page==="home")     return renderHome(c);
+  if(page==="events")   return renderEvents(c);
+  if(page==="ai")       return renderAI(c);
+  if(page==="devices")  return renderDevices(c);
   if(page==="grid") return renderGrid(c);
   if(page==="live") return renderLive(c);
   if(page==="storage") return renderStorage(c);
@@ -1884,6 +2216,49 @@ function render(){
 }
 
 // ===== 页面：设备列表 =====
+// 重命名弹窗（中文别名 + 英文名）
+function showRenameDialog(did, dev){
+  api("/api/devices/meta?did=" + encodeURIComponent(did)).then(function(m){
+    var html = '<div class="field" style="margin-bottom:14px">'
+      + '<label class="field__label">中文别名</label>'
+      + '<input class="input" id="rnAlias" placeholder="例如：门口" value="' + esc(m.alias || '') + '">'
+      + '<div class="field__hint">显示在卡片主标题。留空则用设备原名。</div>'
+      + '</div>'
+      + '<div class="field">'
+      + '<label class="field__label">英文名</label>'
+      + '<input class="input" id="rnAliasEn" placeholder="例如：Front Door" value="' + esc(m.aliasEn || '') + '">'
+      + '<div class="field__hint">显示在中文名旁边，可留空。</div>'
+      + '</div>'
+      + '<div style="margin-top:16px;font-size:12px;color:var(--text-muted)">'
+      + '设备原名：' + esc(dev.name || '') + '</div>';
+
+    openModal('重命名「' + (dev.alias || dev.name || '') + '」', html, function(root){
+      var btn = document.createElement('div');
+      btn.className = 'dialog__foot';
+      btn.innerHTML = '<button class="btn" id="rnCancel">取消</button>'
+        + '<button class="btn btn--primary" id="rnSave">保存</button>';
+      root.querySelector('.dialog').appendChild(btn);
+
+      root.querySelector('#rnCancel').onclick = closeModal;
+      root.querySelector('#rnSave').onclick = function(){
+        var body = {
+          did: did,
+          alias: root.querySelector('#rnAlias').value.trim(),
+          aliasEn: root.querySelector('#rnAliasEn').value.trim()
+        };
+        api("/api/devices/meta", {
+          method: 'POST', headers: {'Content-Type':'application/json'},
+          body: JSON.stringify(body)
+        }).then(function(){
+          closeModal();
+          toast('已保存', 'ok');
+          render();
+        }).catch(function(e){ toast('保存失败：' + e.message, 'err'); });
+      };
+    });
+  }).catch(function(e){ toast('读取失败：' + e.message, 'err'); });
+}
+
 // 收藏（本地，存在浏览器）
 function favKey(did){ return 'micam.fav.' + did; }
 function getFav(did){ try { return localStorage.getItem(favKey(did)) === '1'; } catch(e){ return false; } }
@@ -1967,7 +2342,9 @@ function renderDevices(c){
         +   '<div class="camera-card__info">'
         +     '<div class="camera-card__name">'
         +       '<span class="status-dot ' + (on ? 'is-online' : 'is-offline') + '"></span>'
-        +       '<span>' + esc(d.name) + '</span>'
+        +       '<span>' + esc(d.alias || d.name) + '</span>'
+        +       (d.aliasEn ? '<span class="camera-card__en">' + esc(d.aliasEn) + '</span>' : '')
+        +       '<button class="icon-btn" data-rename="' + esc(d.did) + '" title="重命名">' + icon('pencil',13) + '</button>'
         +     '</div>'
         +     '<div class="camera-card__meta">' + (on ? '点击预览' : '设备离线') + (dual ? ' · 双镜头' : '') + '</div>'
         +   '</div>'
@@ -2010,6 +2387,16 @@ function renderDevices(c){
         if(!el.classList.contains('is-offline')){
           gotoLive(el.dataset.did);
         }
+      };
+    });
+
+    // 重命名（存本地 devices.json）
+    Array.prototype.forEach.call(c.querySelectorAll('[data-rename]'), function(b){
+      b.onclick = function(ev){
+        ev.stopPropagation();
+        var did = b.dataset.rename;
+        var dev = devices.filter(function(x){ return x.did === did; })[0] || {};
+        showRenameDialog(did, dev);
       };
     });
 
@@ -2110,6 +2497,310 @@ function gotoLive(did){
   $("#pageTitle").textContent = "实时预览";
   renderMenu();
   render();
+}
+
+// ===== 页面：首页 / 家庭概览 =====
+//
+// 一次请求 /api/home 拿齐所有数据，减少往返。
+function renderHome(c){
+  c.innerHTML = '<div class="page__inner">' + loading('加载中…') + '</div>';
+
+  api("/api/home").then(function(h){
+    TODAY_EVENTS = h.todayEvents || 0;
+    renderMenu();
+
+    var now = new Date(h.now ? h.now.replace(' ', 'T') : Date.now());
+    var week = ['星期日','星期一','星期二','星期三','星期四','星期五','星期六'];
+    var dateStr = now.getFullYear() + '年' + (now.getMonth()+1) + '月' + now.getDate() + '日 '
+      + week[now.getDay()] + ' ' + pad2(now.getHours()) + ':' + pad2(now.getMinutes());
+
+    var online = h.online || 0;
+    var total  = h.total || 0;
+
+    c.innerHTML = '<div class="page__inner">'
+
+      // ---- 页头 ----
+      + '<div class="home-head">'
+      +   '<div class="home-head__main">'
+      +     '<div class="home-head__title">家庭概览</div>'
+      +     '<div class="home-head__sub">' + esc(h.statusText || '') + '</div>'
+      +   '</div>'
+      +   '<div class="home-head__date">' + esc(dateStr) + '</div>'
+      + '</div>'
+
+      // ---- 三张概览卡 ----
+      + '<div class="stat-cards">'
+      +   statCard('camera', '在线摄像头', online + ' <small>/ ' + total + '</small>', 'devices')
+      +   statCard('calendar', '今日事件', String(h.todayEvents || 0), 'events')
+      +   statCard('hard-drive', '存储', (h.storagePct || 0).toFixed(1) + '<small>%</small>', 'storage')
+      + '</div>'
+
+      // ---- 摄像头 ----
+      + '<section class="card" style="margin-bottom:var(--space-5)">'
+      +   '<div class="sec-head">'
+      +     '<span class="sec-head__title">摄像头 <span class="sec-head__en">Cameras</span></span>'
+      +     '<a class="sec-head__more" href="javascript:;" data-go="devices">查看全部 ' + icon('chevron-right',14) + '</a>'
+      +   '</div>'
+      +   '<div class="cam-row">' + (h.cameras || []).map(camTile).join('') + '</div>'
+      + '</section>'
+
+      // ---- 底部两栏 ----
+      + '<div class="home-cols">'
+      +   '<section class="card">'
+      +     '<div class="sec-head">'
+      +       '<span class="sec-head__title">最近事件 <span class="sec-head__en">Recent Events</span></span>'
+      +       '<a class="sec-head__more" href="javascript:;" data-go="events">查看全部 ' + icon('chevron-right',14) + '</a>'
+      +     '</div>'
+      +     '<div class="event-list">' + ((h.events||[]).length
+              ? h.events.map(eventItem).join('')
+              : empty('bell','暂无事件','检测到画面变化时会出现在这里','')) + '</div>'
+      +   '</section>'
+      +   '<section class="card">'
+      +     '<div class="sec-head">'
+      +       '<span class="sec-head__title">' + icon('hard-drive',15) + ' 存储 <span class="sec-head__en">Storage</span></span>'
+      +     '</div>'
+      +     '<div class="storage-body" id="homeStorage">' + loading('读取中…') + '</div>'
+      +   '</section>'
+      + '</div>'
+
+      + '</div>';
+
+    // 存储详情单独取（数据量大）
+    loadHomeStorage();
+
+    // 摄像头缩略图
+    loadHomeThumbs(c);
+
+    // 「查看全部」跳转
+    Array.prototype.forEach.call(c.querySelectorAll('[data-go]'), function(a){
+      a.onclick = function(){
+        page = a.dataset.go;
+        renderMenu(); render();
+        var ct = document.getElementById('content');
+        if(ct) ct.scrollTop = 0;
+      };
+    });
+  }).catch(function(e){
+    c.innerHTML = '<div class="page__inner"><div class="card">'
+      + empty('close','加载失败', e.message, '') + '</div></div>';
+  });
+}
+
+function pad2(n){ return n < 10 ? '0'+n : ''+n; }
+
+// statCard 概览卡
+function statCard(ic, label, value, go){
+  return '<button class="stat-card" data-go="' + go + '" type="button">'
+    + '<span class="stat-card__icon">' + icon(ic, 20) + '</span>'
+    + '<span class="stat-card__body">'
+    +   '<span class="stat-card__label">' + esc(label) + '</span>'
+    +   '<span class="stat-card__value">' + value + '</span>'
+    + '</span>'
+    + '<span class="stat-card__chev">' + icon('chevron-right', 16) + '</span>'
+    + '</button>';
+}
+
+// camTile 首页的摄像头图块（名称+英文名+时间叠加在底部）
+function camTile(d){
+  var on = d.online;
+  var name = d.alias || d.name;
+  var en = d.aliasEn || '';
+  var badge = '<span class="cam-tile__badge">'
+    + '<span class="status-dot ' + (on ? 'is-online' : 'is-offline') + '"></span>'
+    + (on ? '在线' : '离线') + '</span>';
+
+  if (!on) {
+    return '<div class="cam-tile is-offline" data-did="' + esc(d.did) + '">'
+      + badge
+      + '<div class="cam-tile__off">'
+      +   icon('cam-off', 30)
+      +   '<div class="cam-tile__off-title">摄像头离线</div>'
+      +   (d.lastSeen ? '<div class="cam-tile__off-sub">上次在线：' + esc(fmtAgo(d.lastSeen)) + '</div>' : '')
+      + '</div>'
+      + '<div class="cam-tile__foot">'
+      +   '<span class="cam-tile__name">' + esc(name) + '</span>'
+      +   (en ? '<span class="cam-tile__en">' + esc(en) + '</span>' : '')
+      +   '<span class="cam-tile__time">--:--</span>'
+      + '</div>'
+      + '</div>';
+  }
+
+  return '<div class="cam-tile" data-did="' + esc(d.did) + '">'
+    + badge
+    + '<img data-home-thumb="' + esc(d.did) + '" alt="">'
+    + '<div class="cam-tile__foot">'
+    +   '<span class="cam-tile__name">' + esc(name) + '</span>'
+    +   (en ? '<span class="cam-tile__en">' + esc(en) + '</span>' : '')
+    +   '<span class="cam-tile__time" data-home-time="' + esc(d.did) + '">'
+    +     (d.thumbAt ? fmtClock(d.thumbAt) : '刚刚') + '</span>'
+    + '</div>'
+    + '</div>';
+}
+
+function fmtClock(ts){
+  var d = new Date(ts * 1000);
+  return pad2(d.getHours()) + ':' + pad2(d.getMinutes());
+}
+
+// fmtAgo 相对时间（今天 09:14 / 3 天前）
+function fmtAgo(s){
+  if (!s) return '';
+  var t = new Date(s.replace(' ', 'T'));
+  if (isNaN(t)) return s;
+  var now = new Date();
+  var sameDay = t.toDateString() === now.toDateString();
+  if (sameDay) return '今天 ' + pad2(t.getHours()) + ':' + pad2(t.getMinutes());
+  var y = new Date(now.getTime() - 86400000);
+  if (t.toDateString() === y.toDateString()) return '昨天 ' + pad2(t.getHours()) + ':' + pad2(t.getMinutes());
+  var days = Math.floor((now - t) / 86400000);
+  return days + ' 天前';
+}
+
+// eventItem 事件行
+var EVENT_META = {
+  motion:  { ic: 'activity',   name: '移动', desc: '检测到画面变化' },
+  person:  { ic: 'user',       name: '有人', desc: '检测到人物活动' },
+  vehicle: { ic: 'camera',     name: '车辆', desc: '检测到车辆' },
+  package: { ic: 'inbox',      name: '包裹', desc: '检测到包裹' },
+  online:  { ic: 'power',      name: '上线', desc: '摄像头已重新在线' },
+  offline: { ic: 'wifi-off',   name: '离线', desc: '摄像头已离线' }
+};
+
+function eventItem(e){
+  var m = EVENT_META[e.type] || EVENT_META.motion;
+  var t = (e.time || '').slice(11, 16);
+  return '<button class="event-item" data-ev="' + esc(e.did) + '" data-evt="' + esc(e.time) + '" type="button">'
+    + '<span class="event-item__thumb">'
+    +   (e.thumb ? '<img loading="lazy" src="' + apiUrl('/api/events/thumb?f=' + encodeURIComponent(e.thumb)) + '" alt="">' : '')
+    + '</span>'
+    + '<span class="event-item__time">' + esc(t) + '</span>'
+    + '<span class="event-item__where">' + esc(e.device || '') + '</span>'
+    + '<span class="event-item__type">' + icon(m.ic, 17) + '</span>'
+    + '<span class="event-item__body">'
+    +   '<span class="event-item__name">' + m.name + '</span>'
+    +   '<span class="event-item__desc">' + esc(e.desc || m.desc) + '</span>'
+    + '</span>'
+    + '<span class="event-item__chev">' + icon('chevron-right', 15) + '</span>'
+    + '</button>';
+}
+
+// loadHomeThumbs 首页摄像头缩略图（走缓存接口，秒开）
+function loadHomeThumbs(root){
+  Array.prototype.forEach.call(root.querySelectorAll('img[data-home-thumb]'), function(img, i){
+    var did = img.dataset.homeThumb;
+    var load = function(attempt){
+      if(!document.body.contains(img)) return;
+      fetch(apiUrl('/api/live/thumb?did=' + encodeURIComponent(did) + '&w=640'), { cache:'no-store' })
+        .then(function(r){
+          if(r.status === 202){ if(attempt < 10) setTimeout(function(){ load(attempt+1); }, 3000); return null; }
+          if(!r.ok) throw new Error('http ' + r.status);
+          return r.blob();
+        })
+        .then(function(b){
+          if(!b || !document.body.contains(img)) return;
+          img.src = URL.createObjectURL(b);
+          var t = document.querySelector('[data-home-time="' + did + '"]');
+          if(t) t.textContent = fmtClock(Date.now()/1000);
+        })
+        .catch(function(){});
+    };
+    setTimeout(function(){ load(0); }, i * 150);
+  });
+}
+
+// loadHomeStorage 首页存储卡片
+function loadHomeStorage(){
+  var box = document.getElementById('homeStorage');
+  if(!box) return;
+
+  api("/api/storage").then(function(s){
+    var d = s.disk || {};
+    var r = s.recordings || {};
+    var pct = d.usedPercent || 0;
+    var freeGB = d.freeGB || 0;
+    var usedGB = d.usedGB || 0;
+    var totalGB = d.totalGB || 0;
+
+    // 按当前码率估算可录天数（假设 2 路 2K 约 1.2 MB/s 总码率）
+    var hoursLeft = Math.round(freeGB * 1024 / 3600 / 1.2 * 60 / 60 * 60 / 60);
+    hoursLeft = Math.round(freeGB / 0.9); // 约 0.9 GB/小时（2 路实测）
+
+    var policyDays = r.keepDays || 7;
+
+    box.innerHTML = ''
+      + '<div class="storage-row">'
+      +   '<span class="storage-pct">' + pct.toFixed(1) + '%</span>'
+      +   '<span class="storage-used">已使用</span>'
+      +   '<span class="storage-total">' + usedGB.toFixed(0) + ' GB / ' + totalGB.toFixed(0) + ' GB</span>'
+      + '</div>'
+      + '<div class="progress"><div class="progress__bar' + (pct > 90 ? ' is-danger' : pct > 75 ? ' is-warn' : '') + '" style="width:' + Math.min(100, pct) + '%"></div></div>'
+      + '<div class="storage-meta">'
+      +   '<span>已用 ' + usedGB.toFixed(0) + ' GB</span>'
+      +   '<span class="storage-hint">预计可用 约 ' + hoursLeft + ' 小时</span>'
+      + '</div>'
+      + '<div class="storage-meta" style="margin-top:6px">'
+      +   '<span>可录约 ' + hoursLeft + ' 小时</span>'
+      + '</div>'
+      + '<div class="storage-health">'
+      +   '<span class="storage-health__dot"></span>'
+      +   '<span class="storage-health__body">'
+      +     '<span class="storage-health__title">存储健康 <b>正常</b></span>'
+      +     '<span class="storage-health__desc">运行正常，正在按计划录制</span>'
+      +   '</span>'
+      +   '<span class="storage-health__right">保留策略：' + policyDays + ' 天<br>循环录制旧的影像</span>'
+      + '</div>'
+      + '<div class="storage-actions">'
+      +   '<button class="btn" id="homeCleanBtn">' + icon('trash',14) + '清理</button>'
+      +   '<button class="btn" id="homeSetBtn">' + icon('settings',14) + '设置</button>'
+      + '</div>';
+
+    var cb = document.getElementById('homeCleanBtn');
+    if(cb) cb.onclick = function(){ page='storage'; renderMenu(); render(); };
+    var sb = document.getElementById('homeSetBtn');
+    if(sb) sb.onclick = function(){ page='storage'; renderMenu(); render(); };
+  }).catch(function(e){
+    box.innerHTML = '<div class="text-sm text-muted">' + esc(e.message) + '</div>';
+  });
+}
+
+// ===== 页面：事件中心 =====
+function renderEvents(c){
+  c.innerHTML = '<div class="page__inner">' + loading('加载事件…') + '</div>';
+  api("/api/events?days=7&limit=200").then(function(r){
+    var list = r.events || [];
+    TODAY_EVENTS = r.today || 0;
+    renderMenu();
+
+    var body = list.length
+      ? '<div class="event-list">' + list.map(eventItem).join('') + '</div>'
+      : empty('bell','最近 7 天没有事件','检测到画面变化时会自动记录','');
+
+    c.innerHTML = '<div class="page__inner">'
+      + '<div class="page-head">'
+      +   '<div class="page-head__info">'
+      +     '<div class="page-head__title">事件 <small>Events</small></div>'
+      +     '<div class="page-head__meta">最近 7 天 · 共 ' + list.length + ' 条</div>'
+      +   '</div>'
+      + '</div>'
+      + '<div class="card">' + body + '</div>'
+      + '</div>';
+  }).catch(function(e){
+    c.innerHTML = '<div class="page__inner"><div class="card">' + empty('close','加载失败', e.message, '') + '</div></div>';
+  });
+}
+
+// ===== 页面：AI 智能（占位） =====
+function renderAI(c){
+  c.innerHTML = '<div class="page__inner">'
+    + '<div class="page-head">'
+    +   '<div class="page-head__info">'
+    +     '<div class="page-head__title">AI 智能 <small>AI</small></div>'
+    +     '<div class="page-head__meta">用自然语言查询录像</div>'
+    +   '</div>'
+    + '</div>'
+    + '<div class="card">' + empty('zap','AI 智能待接入',
+        '先用「事件」页面查看已记录的动静。AI 调查会基于事件库做自然语言检索。','') + '</div>'
+    + '</div>';
 }
 
 // ===== 页面：实时预览 =====

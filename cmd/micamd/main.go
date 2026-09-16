@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/micam/micam/internal/config"
+	"github.com/micam/micam/internal/event"
 	"github.com/micam/micam/internal/notify"
 	"github.com/micam/micam/internal/record"
 	"github.com/micam/micam/internal/store"
@@ -39,7 +40,7 @@ const appName = "micam"
 // appVersion 用 var 而非 const：
 // 允许构建时用 -ldflags "-X main.appVersion=x.y.z" 注入，
 // 确保二进制里的版本与 manifest 严格一致（构建脚本会校验）。
-var appVersion = "0.18.1"
+var appVersion = "0.19.0"
 
 func main() {
 	var (
@@ -143,6 +144,13 @@ func main() {
 
 	// 缩略图预热 + 定时刷新（设备列表页秒开）
 	srv.startThumbWarmer()
+
+	// 事件库 + 设备别名
+	srv.eventStore = event.NewStore(filepath.Join(*dataDir, "events"), 90)
+	srv.meta = newMetaStore(*dataDir)
+
+	// 移动侦测（复用缩略图缓存，几乎零成本）
+	srv.startMotionDetector()
 
 	// 设备在线状态守护：离线/上线发通知
 	srv.startDeviceWatcher()
@@ -252,6 +260,9 @@ type Server struct {
 	ffm      string
 	rec      *record.Manager
 	notify   *notify.Manager
+
+	eventStore *event.Store
+	meta       *metaStore
 }
 
 // ffmpegPath 返回 ffmpeg 路径。
@@ -423,6 +434,12 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/devices", s.handleDevices)
 	mux.HandleFunc("/api/devices/all", s.handleAllDevices)
 	mux.HandleFunc("/api/homes", s.handleHomes)
+
+	// 首页聚合 / 事件 / 设备别名
+	mux.HandleFunc("/api/home", s.handleHome)
+	mux.HandleFunc("/api/events", s.handleEvents)
+	mux.HandleFunc("/api/events/thumb", s.handleEventThumb)
+	mux.HandleFunc("/api/devices/meta", s.handleDevMeta)
 
 	// 播放
 	mux.HandleFunc("/api/live/source-status", s.handleSourceStatus)
