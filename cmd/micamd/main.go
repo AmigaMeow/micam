@@ -40,7 +40,7 @@ const appName = "micam"
 // appVersion 用 var 而非 const：
 // 允许构建时用 -ldflags "-X main.appVersion=x.y.z" 注入，
 // 确保二进制里的版本与 manifest 严格一致（构建脚本会校验）。
-var appVersion = "0.19.0"
+var appVersion = "0.20.0"
 
 func main() {
 	var (
@@ -649,6 +649,12 @@ func (s *Server) handleDevices(w http.ResponseWriter, r *http.Request) {
 			} else {
 				d.Lenses = 1
 			}
+			// 别名 + 最后活动（前端卡片要用）
+			meta := s.meta.Get(d.Did)
+			d.Alias = meta.Alias
+			d.AliasEn = meta.AliasEn
+			d.Favorite = meta.Favorite
+			d.LastActivity = s.lastSeen(d.Did)
 			all = append(all, d)
 		}
 	}

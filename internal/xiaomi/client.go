@@ -60,6 +60,11 @@ type Device struct {
 	AccountID string `json:"accountId,omitempty"`
 	// Lenses 镜头数量（1=单摄，2=双摄；不来自小米云 API，由我们判断）
 	Lenses int `json:"lenses,omitempty"`
+	// 以下字段不来自小米 API，由我们填充
+	Alias        string `json:"alias,omitempty"`        // 中文别名
+	AliasEn      string `json:"aliasEn,omitempty"`      // 英文名
+	Favorite     bool   `json:"favorite,omitempty"`     // 收藏
+	LastActivity string `json:"lastActivity,omitempty"` // 最后活动时间
 	Permit    int    `json:"permitLevel"`
 	ParentID  string `json:"parent_id"`
 	Token     string `json:"token"`

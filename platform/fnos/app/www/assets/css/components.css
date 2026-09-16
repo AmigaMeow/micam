@@ -84,10 +84,19 @@
   transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
 }
 .tabnav:hover { color: var(--text); background: var(--surface-2); }
-.tabnav.is-active {
-  color: var(--text); background: var(--surface-3);
-}
+.tabnav.is-active { color: var(--accent); background: transparent; }
 .tabnav.is-active .icon { color: var(--accent); }
+/* 效果图是「选中项蓝色下划线」，不是胶囊底色 */
+.topnav__menu { position: relative; }
+.tabnav { position: relative; border-radius: 0; height: 100%; }
+.tabnav::after {
+  content: ""; position: absolute; left: var(--space-4); right: var(--space-4); bottom: 0;
+  height: 2px; border-radius: 2px; background: transparent;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+.tabnav.is-active::after { background: var(--accent); }
+.tabnav:hover { background: transparent; color: var(--text); }
+.tabnav.is-active:hover { color: var(--accent); }
 .tabnav__badge {
   font-size: var(--text-xs); padding: 1px 6px; border-radius: 999px;
   background: var(--danger); color: #fff; margin-left: 2px;

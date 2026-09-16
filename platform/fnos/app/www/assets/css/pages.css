@@ -481,3 +481,144 @@
 .storage-health__right { text-align: right; font-size: var(--text-sm); color: var(--text-muted); line-height: 1.6; }
 
 .storage-actions { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); margin-top: var(--space-4); }
+
+
+/* ==========================================================================
+   CAMERAS LIST — 摄像头列表（对齐效果图）
+   ========================================================================== */
+
+.list-head {
+  display: flex; align-items: flex-start; gap: var(--space-4);
+  margin-bottom: var(--space-2);
+}
+.list-head__main { flex: 1; min-width: 0; }
+.list-head__title {
+  font-size: var(--text-title); font-weight: var(--weight-semibold);
+  letter-spacing: -.02em; line-height: 1.15;
+}
+.list-head__en {
+  font-size: var(--text-lg); color: var(--text-secondary); margin-top: 2px;
+}
+.list-head__date {
+  font-size: var(--text-base); color: var(--text-secondary);
+  white-space: nowrap; padding-top: 8px;
+}
+@media (max-width: 700px) { .list-head__date { display: none; } }
+
+.list-stat {
+  display: flex; align-items: center; gap: var(--space-2);
+  font-size: var(--text-base); color: var(--text-secondary);
+  margin-bottom: var(--space-5);
+}
+
+/* 富筛选行：胶囊带数量 + 视图切换 + 搜索 */
+.filters--rich { gap: var(--space-3); margin-bottom: var(--space-5); }
+
+.chip__n {
+  min-width: 20px; padding: 0 5px; margin-left: 2px;
+  border-radius: 999px; font-size: var(--text-xs);
+  background: var(--surface-3); color: var(--text-secondary);
+  text-align: center;
+}
+.chip.is-active .chip__n { background: rgba(255,255,255,.22); color: #fff; }
+
+.filters__search { width: 240px; }
+@media (max-width: 900px) { .filters__search { width: 100%; } }
+
+/* 摄像头网格 */
+.cam-grid {
+  display: grid; gap: var(--space-4);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+@media (max-width: 1200px) { .cam-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 700px)  { .cam-grid { grid-template-columns: 1fr; } }
+
+.cam-grid--list { grid-template-columns: 1fr; }
+.cam-grid--list .cam-card { display: grid; grid-template-columns: 260px minmax(0,1fr); }
+.cam-grid--list .cam-card__preview { aspect-ratio: auto; height: 100%; min-height: 120px; }
+.cam-grid--list .cam-card__foot { align-items: center; }
+@media (max-width: 700px) {
+  .cam-grid--list .cam-card { grid-template-columns: 1fr; }
+  .cam-grid--list .cam-card__preview { aspect-ratio: 16/9; }
+}
+
+/* 摄像头卡片 */
+.cam-card {
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-xl);
+  overflow: hidden; cursor: pointer;
+  transition: border-color var(--duration-normal) var(--ease-out),
+              transform var(--duration-normal) var(--ease-out),
+              box-shadow var(--duration-normal) var(--ease-out);
+}
+.cam-card:hover {
+  border-color: var(--border-strong);
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-md);
+}
+.cam-card.is-offline { cursor: default; }
+.cam-card.is-offline:hover { transform: none; box-shadow: none; border-color: var(--border-subtle); }
+
+.cam-card__preview {
+  position: relative; aspect-ratio: 16 / 9;
+  background: #0a0d12; overflow: hidden;
+}
+.cam-card__preview img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+.cam-card__time {
+  position: absolute; top: var(--space-3); right: var(--space-3);
+  display: inline-flex; align-items: center; gap: 5px;
+  padding: 2px 8px; border-radius: var(--radius-sm);
+  background: rgba(0,0,0,.6); backdrop-filter: blur(4px);
+  color: #fff; font-size: var(--text-sm); font-variant-numeric: tabular-nums;
+}
+.rec-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--danger); flex: 0 0 auto;
+  animation: dot-pulse 2s var(--ease-out) infinite;
+}
+
+.cam-card__badges {
+  position: absolute; top: var(--space-3); left: var(--space-3);
+  display: flex; gap: var(--space-2);
+}
+.cam-card__badges .badge {
+  backdrop-filter: blur(4px);
+  background: rgba(0,0,0,.55); color: #fff;
+}
+.cam-card__badges .badge--accent { background: rgba(59,130,246,.85); color: #fff; }
+
+.cam-card__off {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: var(--space-2); text-align: center; color: var(--text-secondary);
+}
+.cam-card__off .icon { color: var(--text-muted); }
+.cam-card__off-title { font-size: var(--text-lg); color: var(--text); }
+.cam-card__off-sub { font-size: var(--text-base); color: var(--text-muted); }
+
+.cam-card__foot {
+  display: flex; align-items: flex-start; gap: var(--space-3);
+  padding: var(--space-4) var(--space-4);
+}
+.cam-card__info { flex: 1; min-width: 0; }
+.cam-card__row {
+  display: flex; align-items: center; gap: var(--space-2);
+  min-width: 0;
+}
+.cam-card__name {
+  font-size: var(--text-lg); font-weight: var(--weight-medium);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cam-card__en {
+  font-size: var(--text-base); color: var(--text-muted);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 0 1 auto;
+}
+.cam-card__meta {
+  font-size: var(--text-base); color: var(--text-muted);
+  margin-top: 3px; padding-left: 19px;   /* 对齐状态点右侧 */
+}
+.cam-card__fav { margin-top: -2px; }
+.cam-card__fav.is-active { color: var(--accent); }
+.cam-card__fav.is-active:hover { color: var(--accent-hover); background: var(--surface-2); }
