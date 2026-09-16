@@ -43,12 +43,16 @@ for (const f of CSS_FILES) {
   css += '\n/* ===== ' + f + ' ===== */\n' + raw + '\n';
 }
 
-const out = shell
+let out = shell
   .replace('<!--SPRITE-->', sprite)
   .replace('<!--APP_JS-->', js)
   .replace('<!--INLINE_CSS-->', css);
 
-fs.writeFileSync(path.join(W, 'index.html'), out);
+// 注入构建时间戳，便于确认浏览器加载的是哪一版
+const stamp = new Date().toISOString().replace('T',' ').slice(0,19);
+const withStamp = out.replace('<title>小米摄像头</title>',
+  '<title>小米摄像头</title>\n<meta name="micam-build" content="' + stamp + '">');
+fs.writeFileSync(path.join(W, 'index.html'), withStamp);
 
 // 校验
 const errors = [];

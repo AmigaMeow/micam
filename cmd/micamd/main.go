@@ -39,7 +39,7 @@ const appName = "micam"
 // appVersion 用 var 而非 const：
 // 允许构建时用 -ldflags "-X main.appVersion=x.y.z" 注入，
 // 确保二进制里的版本与 manifest 严格一致（构建脚本会校验）。
-var appVersion = "0.18.0"
+var appVersion = "0.18.1"
 
 func main() {
 	var (
@@ -657,7 +657,29 @@ func (s *Server) staticHandler() http.Handler {
 	if _, err := os.Stat(dir); err != nil {
 		dir = "web"
 	}
-	return http.FileServer(http.Dir(dir))
+	fs := http.FileServer(http.Dir(dir))
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// HTML 必须每次校验，不能强缓存。
+		//
+		// 踩过的坑（2026-09-16）：
+		//   浏览器缓存了旧版 index.html，新版部署后用户仍加载旧 JS，
+		//   结果实时预览卡在「加载中…」（旧版有 ReferenceError）。
+		//   用户看到的是"服务端坏了"，其实是缓存。
+		//
+		// no-cache 不是"不缓存"，而是"每次都向服务器校验"，
+		// 配合 Last-Modified / ETag 走 304，既正确又省流量。
+		p := r.URL.Path
+		if p == "/" || p == "/index.html" || strings.HasSuffix(p, ".html") {
+			w.Header().Set("Cache-Control", "no-cache, must-revalidate")
+			w.Header().Set("Pragma", "no-cache")
+			w.Header().Set("Expires", "0")
+		} else {
+			// 静态资源（现在是：仅 hls.min.js / 图标，其余都内联在 HTML 里）
+			w.Header().Set("Cache-Control", "public, max-age=86400")
+		}
+		fs.ServeHTTP(w, r)
+	})
 }
 
 // ---- 工具 ----

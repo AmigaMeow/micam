@@ -744,3 +744,7 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; line-h
   .topbar { padding: 0 var(--space-4); }
   .dialog { max-height: 92vh; }
 }
+
+/* 自动播放被拦时的兜底按钮 */
+#livePlayBtn { animation: fade-in var(--duration-normal) var(--ease-out); }
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }

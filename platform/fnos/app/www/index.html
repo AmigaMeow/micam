@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <title>小米摄像头</title>
+<meta name="micam-build" content="2026-09-16 05:37:21">
 
 <!-- 样式内联：飞牛网关会剥前缀，相对路径不可靠（详见 build/assemble-web.js）-->
 <style>
@@ -1085,6 +1086,10 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; line-h
   .topbar { padding: 0 var(--space-4); }
   .dialog { max-height: 92vh; }
 }
+
+/* 自动播放被拦时的兜底按钮 */
+#livePlayBtn { animation: fade-in var(--duration-normal) var(--ease-out); }
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
 
 
 /* ===== assets/css/pages.css ===== */
@@ -2350,6 +2355,43 @@ function startLiveHLS(did){
     started = true;
     if(st) st.textContent = "播放中";
     clearProg();
+
+    // 显式播放
+    //
+    // 不能只靠 autoplay 属性：浏览器（尤其 Edge/Safari）可能拦截自动播放，
+    // 表现就是「状态显示播放中，但画面全黑、currentTime 停在 0」。
+    // 这里主动调 play()，被拒时给一个「点击播放」的兜底。
+    var tryPlay = function(){
+      var p = video.play();
+      if(p && p.catch){
+        p.catch(function(err){
+          console.warn("[micam] 自动播放被拦截: " + err);
+          if(st) st.textContent = "点击画面播放";
+          showPlayOverlay();
+        });
+      }
+    };
+    tryPlay();
+  }
+
+  // 自动播放被拦时显示一个大播放按钮
+  function showPlayOverlay(){
+    if(document.getElementById("livePlayBtn")) return;
+    var btn = document.createElement("div");
+    btn.id = "livePlayBtn";
+    btn.style.cssText = "position:absolute;inset:0;display:flex;align-items:center;"
+      + "justify-content:center;background:rgba(10,13,18,.7);cursor:pointer;z-index:5";
+    btn.innerHTML = '<div style="display:flex;flex-direction:column;align-items:center;gap:12px;color:#e6edf3">'
+      + '<svg width="48" height="48" viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>'
+      + '<span style="font-size:14px">点击播放</span></div>';
+    btn.onclick = function(){
+      video.play().then(function(){
+        btn.remove();
+        if(st) st.textContent = "播放中";
+      }).catch(function(){});
+    };
+    var box = document.getElementById("player");
+    if(box) box.appendChild(btn);
   }
 
   function fallback(reason){
@@ -2366,12 +2408,18 @@ function startLiveHLS(did){
     startLiveMJPEG(did);
   }
 
-  if(video.canPlayType("application/vnd.apple.mpegurl")){
-    // Safari 原生 HLS
-    video.src = src;
-    video.onplaying = ok;
-    video.onerror = function(){ fallback("HLS 播放失败"); };
-  } else if(window.Hls && window.Hls.isSupported()){
+  // ===== 分支顺序很重要（踩过的坑）=====
+  //
+  // 原来是「先判断 canPlayType，再判断 hls.js」。
+  //
+  // 问题：Edge / Chrome 的 canPlayType("application/vnd.apple.mpegurl")
+  // 会返回 "maybe"（它们对 MSE 的 HLS 有部分支持声明），
+  // 于是走了「原生 HLS」分支 —— 但 Chromium 内核**实际不支持**，
+  // 报 MEDIA_ERR_SRC_NOT_SUPPORTED(4)，表现就是**全黑 + currentTime 卡 0**。
+  //
+  // 正确做法：**优先 hls.js**（它在所有浏览器行为一致），
+  // 只有 hls.js 不可用（Safari / 没加载到库）才用原生。
+  if(window.Hls && window.Hls.isSupported()){
     hlsObj = new window.Hls({
       // 延迟优化：只缓冲 1 个分片（原来是 2）
       lowLatencyMode: true,
@@ -2394,6 +2442,18 @@ function startLiveHLS(did){
       setTimeout(function(){ fallback("HLS 加载失败"); }, 800);
     });
     video.onplaying = ok;
+
+  } else if(video.canPlayType("application/vnd.apple.mpegurl")){
+    // 原生 HLS（Safari 等）
+    console.log("[micam] 使用浏览器原生 HLS");
+    video.src = src;
+    video.onplaying = ok;
+    video.onerror = function(){ fallback("原生 HLS 播放失败"); };
+    var np = video.play();
+    if(np && np.catch){
+      np.catch(function(e){ console.warn("[micam] 原生播放被拒: " + e); showPlayOverlay(); });
+    }
+
   } else {
     fallback(window.__hlsFailed ? "hls.js 加载失败" : "浏览器不支持 HLS");
     return;
