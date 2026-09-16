@@ -65,6 +65,10 @@ type Device struct {
 	AliasEn      string `json:"aliasEn,omitempty"`      // 英文名
 	Favorite     bool   `json:"favorite,omitempty"`     // 收藏
 	LastActivity string `json:"lastActivity,omitempty"` // 最后活动时间
+
+	// SecondLensClaimed 型号声称有第二镜头，但协议层暂未证实能取到不同画面。
+	// 客户端**不要**据此显示镜头切换按钮。
+	SecondLensClaimed bool `json:"secondLensClaimed,omitempty"`
 	Permit    int    `json:"permitLevel"`
 	ParentID  string `json:"parent_id"`
 	Token     string `json:"token"`

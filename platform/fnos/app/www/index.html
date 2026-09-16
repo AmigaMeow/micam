@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <title>小米摄像头</title>
-<meta name="micam-build" content="2026-09-16 06:57:42">
+<meta name="micam-build" content="2026-09-16 09:10:15">
 <!-- 样式内联：飞牛网关会剥前缀，相对路径不可靠（详见 build/assemble-web.js）-->
 <style>
 
@@ -1908,9 +1908,35 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; line-h
 /* ---- 左侧摄像头列表 ---- */
 .live-side {
   display: flex; flex-direction: column; gap: var(--space-2);
-  max-height: calc(100vh - 260px); overflow-y: auto;
+  max-height: calc(100vh - 276px);
+  overflow-y: auto;
   padding-right: 2px;
 }
+
+/* 当前摄像头信息面板：填满左栏下方空白，同时有实用价值 */
+.live-info {
+  margin-top: var(--space-2);
+  padding: var(--space-4);
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
+.live-info__title { font-size: var(--text-sm); color: var(--text-muted); }
+.live-info__name {
+  font-size: var(--text-lg); font-weight: var(--weight-medium);
+  margin-top: 4px; line-height: 1.3;
+  word-break: break-all;
+}
+.live-info__name em { font-style: normal; color: var(--text-muted); font-size: var(--text-base); }
+.live-info__rows { margin-top: var(--space-4); display: flex; flex-direction: column; gap: 7px; }
+.live-info__row {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: var(--text-base); color: var(--text-muted);
+}
+.live-info__row b { color: var(--text-secondary); font-weight: var(--weight-normal); font-variant-numeric: tabular-nums; }
+.live-info__row b.is-online { color: var(--online); }
+.live-info__acts { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); margin-top: var(--space-4); }
+
 @media (max-width: 1000px) {
   .live-side { flex-direction: row; max-height: none; overflow-x: auto; }
 }
@@ -1957,9 +1983,10 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; line-h
 
 .player-wrap {
   position: relative;
+  width: 100%;                 /* 占满可用宽度（原来 max-height 把宽度也压窄了） */
   aspect-ratio: 16 / 9;
-  max-height: calc(100vh - 300px);
-  margin: 0 auto;
+  max-height: calc(100vh - 276px);
+  margin: 0;
   border-radius: var(--radius-xl);
   overflow: hidden;
   background: #000;
@@ -2120,6 +2147,25 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; line-h
 .ls__item { display: inline-flex; align-items: center; gap: 6px; }
 .ls__right { margin-left: auto; font-size: var(--text-sm); color: var(--text-muted); }
 @media (max-width: 700px) { .ls__sep, .ls__right { display: none; } }
+
+
+/* 实时预览：收紧间距，减少空白 */
+.page__inner--wide .crumbs { margin-bottom: var(--space-3); }
+.page__inner--wide .list-head { margin-bottom: var(--space-3); }
+.page__inner--wide .live-status { margin-top: var(--space-3); }
+
+.live-empty {
+  padding: var(--space-4);
+  font-size: var(--text-base); color: var(--text-muted);
+  text-align: center;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-lg);
+}
+
+/* 离线卡片的删除按钮 */
+.cam-card__del { color: var(--text-muted); }
+.cam-card__del:hover { color: var(--danger); background: var(--surface-2); }
+.cam-card__foot .icon-btn { flex: 0 0 auto; }
 
 
 </style>
@@ -2748,6 +2794,9 @@ function camCardHTML(d){
     +     '</div>'
     +     '<div class="cam-card__meta">' + metaLine + '</div>'
     +   '</div>'
+    +   (on ? '' : '<button class="icon-btn cam-card__del" data-del="' + esc(d.did) + '" title="删除这台离线设备">'
+         + '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>'
+         + '</button>')
     +   '<button class="icon-btn cam-card__fav' + (fav ? ' is-active' : '') + '" data-fav="' + esc(d.did) + '" title="收藏">'
     +     '<svg class="icon" viewBox="0 0 24 24" fill="' + (fav ? 'currentColor' : 'none') + '" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="' + starPath + '"/></svg>'
     +   '</button>'
@@ -2895,7 +2944,35 @@ function renderDevices(c){
           var d = all.filter(function(x){ return x.did === el.dataset.did; })[0];
           if(d) showRenameDialog(d.did, d);
         };
+        // 离线卡片：悬停显示删除按钮
+        if(el.classList.contains('is-offline')){
+          el.onclick = function(ev){
+            if(ev.target.closest('[data-del]') || ev.target.closest('[data-fav]')) return;
+            showRenameDialog(el.dataset.did, all.filter(function(x){ return x.did === el.dataset.did; })[0]);
+          };
+        }
       });
+      // 删除离线设备（从本机列表移除，不影响小米账号）
+      Array.prototype.forEach.call(c.querySelectorAll('[data-del]'), function(b){
+        b.onclick = function(ev){
+          ev.stopPropagation();
+          var did = b.dataset.del;
+          var dev = all.filter(function(x){ return x.did === did; })[0] || {};
+          if(!confirm('删除「' + (dev.alias || dev.name || did) + '」？\n\n'
+            + '只从本机列表移除，不影响小米账号。\n'
+            + '下次同步设备时会重新出现 —— 如需永久隐藏请加入忽略名单。')) return;
+          api('/api/devices/hide', {
+            method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ did: did, hidden: true })
+          }).then(function(){
+            toast('已移除', 'ok');
+            all = all.filter(function(x){ return x.did !== did; });
+            devices = devices.filter(function(x){ return x.did !== did; });
+            renderDevices(c);
+          }).catch(function(e){ toast('移除失败：' + e.message, 'err'); });
+        };
+      });
+
       Array.prototype.forEach.call(c.querySelectorAll('[data-fav]'), function(b){
         b.onclick = function(ev){
           ev.stopPropagation();
@@ -3034,6 +3111,17 @@ function bindDeviceActions(){
   });
 }
 
+// gotoReplay 跳到回放页并定位到指定设备/时刻
+function gotoReplay(did, time){
+  page = 'recordings';
+  if(did) currentDid = did;
+  if(time) replaySeekTime = time;
+  setPageTitle('回放');
+  renderMenu();
+  render();
+}
+var replaySeekTime = '';
+
 // setPageTitle 兼容旧代码。
 //
 // 顶栏导航改版后 #pageTitle 元素已移除（标题现在在页面内容里），
@@ -3071,6 +3159,8 @@ function renderHome(c){
 
     var online = h.online || 0;
     var total  = h.total || 0;
+    // 首页默认只看在线的（离线设备在「摄像头列表」里管理）
+    var camsOnline = (h.cameras || []).filter(function(d){ return d.online; });
 
     c.innerHTML = '<div class="page__inner">'
 
@@ -3096,7 +3186,9 @@ function renderHome(c){
       +     '<span class="sec-head__title">摄像头 <span class="sec-head__en">Cameras</span></span>'
       +     '<a class="sec-head__more" href="javascript:;" data-go="devices">查看全部 ' + icon('chevron-right',14) + '</a>'
       +   '</div>'
-      +   '<div class="cam-row">' + (h.cameras || []).map(camTile).join('') + '</div>'
+      +   '<div class="cam-row">' + (camsOnline.length
+              ? camsOnline.map(camTile).join('')
+              : empty('camera','没有在线的摄像头','到「摄像头」页查看离线设备','')) + '</div>'
       + '</section>'
 
       // ---- 底部两栏 ----
@@ -3125,6 +3217,17 @@ function renderHome(c){
 
     // 摄像头缩略图
     loadHomeThumbs(c);
+
+    // 首页摄像头 -> 实时预览
+    Array.prototype.forEach.call(c.querySelectorAll('.cam-tile[data-did]'), function(el){
+      if(el.classList.contains('is-offline')) return;
+      el.onclick = function(){ gotoLive(el.dataset.did); };
+    });
+
+    // 最近事件 -> 回放（跳到该设备该时刻）
+    Array.prototype.forEach.call(c.querySelectorAll('.event-item'), function(el){
+      el.onclick = function(){ gotoReplay(el.dataset.ev, el.dataset.evt); };
+    });
 
     // 「查看全部」跳转
     Array.prototype.forEach.call(c.querySelectorAll('[data-go]'), function(a){
@@ -3446,8 +3549,9 @@ function renderLive(c){
       currentDid = ((online[0] || devices[0]) || {}).did;
     }
 
-    // 左侧摄像头列表（带缩略图）
-    var tabs = devices.map(function(d){
+    // 左侧摄像头列表（带缩略图）—— **只列在线的**
+    // （离线设备没有画面可看，列出来只是噪音）
+    var tabs = devices.filter(function(d){ return d.isOnline; }).map(function(d){
       var on = d.isOnline;
       var n = d.alias || d.name;
       var en = d.aliasEn || '';
@@ -3466,6 +3570,10 @@ function renderLive(c){
         + '</span>'
         + '</button>';
     }).join('');
+
+    if(!tabs){
+      tabs = '<div class="live-empty">没有在线的摄像头</div>';
+    }
 
     var cname = (curDev() && (curDev().alias || curDev().name)) || '';
     var cen = (curDev() && curDev().aliasEn) || '';
@@ -3491,7 +3599,25 @@ function renderLive(c){
       + '<div class="live-wrap">'
 
       // 左：摄像头列表
-      + '<aside class="live-side">' + tabs + '</aside>'
+      + '<aside class="live-side">'
+      +   tabs
+      +   '<div class="live-info" id="liveInfo">'
+      +     '<div class="live-info__title">当前摄像头</div>'
+      +     '<div class="live-info__name">' + esc(cname) + (cen ? ' <em>' + esc(cen) + '</em>' : '') + '</div>'
+      +     '<div class="live-info__rows">'
+      +       '<div class="live-info__row"><span>状态</span><b class="is-online">● 在线</b></div>'
+      +       '<div class="live-info__row"><span>分辨率</span><b id="iiRes">—</b></div>'
+      +       '<div class="live-info__row"><span>编码</span><b id="iiCodec">H.264</b></div>'
+      +       '<div class="live-info__row"><span>码率</span><b id="iiRate">—</b></div>'
+      +       '<div class="live-info__row"><span>模式</span><b id="iiMode">HLS</b></div>'
+      +       '<div class="live-info__row"><span>运行</span><b id="iiUp">—</b></div>'
+      +     '</div>'
+      +     '<div class="live-info__acts">'
+      +       '<button class="btn btn--sm" id="iiSnap">' + icon('camera',13) + '截图</button>'
+      +       '<button class="btn btn--sm" id="iiFull">' + icon('maximize',13) + '全屏</button>'
+      +     '</div>'
+      +   '</div>'
+      + '</aside>'
 
       // 右：播放器
       + '<div class="live-main">'
@@ -3688,6 +3814,29 @@ function renderLive(c){
   });
 }
 
+// fillLiveInfo 填充左栏的「当前摄像头」信息
+function fillLiveInfo(){
+  var v = document.querySelector('#player video');
+  var res = document.getElementById('iiRes');
+  if(res && v && v.videoWidth) res.textContent = v.videoWidth + '×' + v.videoHeight;
+  var mode = document.getElementById('iiMode');
+  if(mode) mode.textContent = (liveMode === 'hls' ? 'HLS' : 'MJPEG');
+
+  // 码率：跟着轮询一起刷（loadLiveVersion 只跑一次，会和接口返回时序错开）
+  var ir = document.getElementById('iiRate');
+  var br2 = document.getElementById('lsBitrate');
+  if(ir && currentDid && !ir.dataset.done){
+    api('/api/live/stats?did=' + encodeURIComponent(currentDid)).then(function(s){
+      if(s && s.mbps > 0){
+        var t = s.mbps.toFixed(1) + ' Mbps';
+        ir.textContent = t;
+        if(br2) br2.textContent = t;
+      }
+    }).catch(function(){});
+  }
+}
+setInterval(fillLiveInfo, 2500);
+
 // loadSideThumbs 左侧摄像头列表缩略图
 function loadSideThumbs(root, list){
   Array.prototype.forEach.call(root.querySelectorAll('img[data-side-thumb]'), function(img, i){
@@ -3745,9 +3894,11 @@ function loadLiveVersion(){
 
   // 运行时间
   api('/api/health').then(function(h){
+    if(!h.uptimeSec) return;
     var el = document.getElementById('lsUptime');
-    if(!el || !h.uptimeSec) return;
-    el.textContent = '运行时间 ' + fmtDuration(h.uptimeSec);
+    if(el) el.textContent = '运行时间 ' + fmtDuration(h.uptimeSec);
+    var iu = document.getElementById('iiUp');
+    if(iu) iu.textContent = fmtDuration(h.uptimeSec);
   }).catch(function(){});
 
   // 媒率（从 HLS 分片大小估算）
@@ -3755,7 +3906,11 @@ function loadLiveVersion(){
   if(br){
     br.textContent = '8.4 Mbps';
     api('/api/live/stats?did=' + encodeURIComponent(currentDid)).then(function(s){
-      if(s && s.mbps) br.textContent = s.mbps.toFixed(1) + ' Mbps';
+      if(s && s.mbps){
+        br.textContent = s.mbps.toFixed(1) + ' Mbps';
+        var ir = document.getElementById('iiRate');
+        if(ir) ir.textContent = s.mbps.toFixed(1) + ' Mbps';
+      }
     }).catch(function(){});
   }
 }

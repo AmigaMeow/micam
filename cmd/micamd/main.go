@@ -43,7 +43,7 @@ const appName = "micam"
 // startedAt 进程启动时间（状态条显示「运行时间」用）
 var startedAt = time.Now()
 
-var appVersion = "0.21.0"
+var appVersion = "0.23.0"
 
 func main() {
 	var (
@@ -151,6 +151,7 @@ func main() {
 	// 事件库 + 设备别名
 	srv.eventStore = event.NewStore(filepath.Join(*dataDir, "events"), 90)
 	srv.meta = newMetaStore(*dataDir)
+	srv.presets = newPresetStore(*dataDir)
 
 	// 移动侦测（复用缩略图缓存，几乎零成本）
 	srv.startMotionDetector()
@@ -266,6 +267,7 @@ type Server struct {
 
 	eventStore *event.Store
 	meta       *metaStore
+	presets    *presetStore
 }
 
 // ffmpegPath 返回 ffmpeg 路径。
@@ -443,6 +445,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/events", s.handleEvents)
 	mux.HandleFunc("/api/events/thumb", s.handleEventThumb)
 	mux.HandleFunc("/api/devices/meta", s.handleDevMeta)
+	mux.HandleFunc("/api/devices/hide", s.handleDevHide)
 
 	// 播放
 	mux.HandleFunc("/api/live/source-status", s.handleSourceStatus)
@@ -484,6 +487,8 @@ func (s *Server) routes(mux *http.ServeMux) {
 
 	mux.HandleFunc("/api/ptz/status", s.handlePTZStatus)
 	mux.HandleFunc("/api/ptz/move", s.handlePTZMove)
+	mux.HandleFunc("/api/ptz/preset", s.handlePTZPreset)
+	mux.HandleFunc("/api/ptz/goto", s.handlePTZGoto)
 
 	// 录像
 	// 存储监控
@@ -650,13 +655,25 @@ func (s *Server) handleDevices(w http.ResponseWriter, r *http.Request) {
 			seen[d.Did] = true
 			// 标记归属账号（前端可按账号筛选）
 			d.AccountID = sess.UserID
+			// lenses = **实际能提供几路**，不是「型号声称几路」。
+			//
+			// 实测（2026-09-16）：CW500 型号是双摄（isa.camera.hlmax），
+			// cs2 的 channel=2 走 {"videoquality":-1,"videoquality2":N}
+			// 能建连成功、也返回 200，但画面与主镜头**是同一个视场**
+			// （全分辨率逐像素 MAD=5.02，与同镜头帧间基线 4.6 同级；
+			//   差异>60 的像素仅 0.045%，且 99% 落在时间戳区域）。
+			//
+			// 所以现在只提供 1 路，避免客户端做出「切了没反应」的按钮。
+			// 物理第二镜头若后续确认可用，再把这里改回 2。
+			d.Lenses = 1
 			if stream.HasSecondLens(d.Model) {
-				d.Lenses = 2
-			} else {
-				d.Lenses = 1
+				d.SecondLensClaimed = true
 			}
 			// 别名 + 最后活动（前端卡片要用）
 			meta := s.meta.Get(d.Did)
+			if meta.Hidden {
+				continue // 用户主动隐藏的设备（通常是已拆掉的离线机）
+			}
 			d.Alias = meta.Alias
 			d.AliasEn = meta.AliasEn
 			d.Favorite = meta.Favorite

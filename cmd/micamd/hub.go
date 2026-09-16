@@ -190,6 +190,44 @@ func (c *camConn) stop() {
 }
 
 // getConn 取现有的可用连接（不建连）。
+// stopSiblingLenses 停掉「同一台摄像机的其它镜头」连接。
+//
+// 为什么需要（Mac 侧实测发现）：
+//   connKey(did, 2) = did#2，和主镜头是不同的 key，
+//   于是切通道时会对**同一台摄像机**建第二条 P2P 会话。
+//   但小米摄像机一次只接受一条会话 —— 第二条会 probe 失败：
+//     {"msg":"连接摄像头失败: xiaomi: probe: miss: read media: cs2: EOF"}
+//   表现为「在两路之间来回切很容易失败」。
+//
+// 做法：建新连接前，先把同设备其它 lens 的连接停掉，并等一小会儿
+//       让摄像机释放会话。
+func stopSiblingLenses(did string, keepKey string) {
+	prefix := did + "#"
+	var victims []*camConn
+	connMu.Lock()
+	for k, c := range conns {
+		if k == keepKey {
+			continue
+		}
+		// 同设备：要么是主镜头 key（== did），要么是 did#N
+		if k == did || strings.HasPrefix(k, prefix) {
+			victims = append(victims, c)
+			delete(conns, k)
+		}
+	}
+	connMu.Unlock()
+
+	if len(victims) == 0 {
+		return
+	}
+	logf("[%s] 切换镜头：先停掉 %d 条同设备连接（摄像机只接受一条会话）", did, len(victims))
+	for _, c := range victims {
+		c.stop()
+	}
+	// 给摄像机一点时间释放 P2P 会话，否则新会话会 probe 失败
+	time.Sleep(1200 * time.Millisecond)
+}
+
 func getConn(did string) *camConn {
 	connMu.Lock()
 	defer connMu.Unlock()
@@ -242,6 +280,10 @@ func (s *Server) useConnKey(dev *xiaomi.Device, lens int) (*camConn, *mpegtsCons
 	tLock := time.Now()
 	lock.Lock()
 	defer lock.Unlock()
+
+	// 同一台摄像机一次只能有一条 P2P 会话，
+	// 所以建新连接前必须先停掉它的另一路（否则 probe 会 cs2: EOF）
+	stopSiblingLenses(dev.Did, key)
 	logf("⏱ [1] 等建连锁 %v", time.Since(tLock).Round(time.Millisecond))
 
 	// 双重检查：等锁期间可能已有人建好

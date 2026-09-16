@@ -33,6 +33,7 @@ type devMeta struct {
 	AliasEn  string `json:"aliasEn,omitempty"`  // 英文名（Front Door）
 	Group    string `json:"group,omitempty"`    // 分组
 	Favorite bool   `json:"favorite,omitempty"` // 收藏
+	Hidden   bool   `json:"hidden,omitempty"`   // 从列表隐藏（清理已拆掉的离线设备）
 }
 
 type metaStore struct {
@@ -253,6 +254,28 @@ func (s *Server) handleDevMeta(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, map[string]any{"ok": true})
+}
+
+// handleDevHide 隐藏/恢复设备（本机忽略名单）。
+//
+// 用途：用户不想要的离线设备（例如已经拆掉的摄像头）可以从列表移除。
+// 只写本机名单，**不动小米账号**；重新同步设备时按名单过滤掉。
+func (s *Server) handleDevHide(w http.ResponseWriter, r *http.Request) {
+	var req struct {
+		Did    string `json:"did"`
+		Hidden bool   `json:"hidden"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Did == "" {
+		writeErr(w, 400, "参数错误")
+		return
+	}
+	cur := s.meta.Get(req.Did)
+	cur.Hidden = req.Hidden
+	if err := s.meta.Set(req.Did, cur); err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	writeJSON(w, 200, map[string]any{"ok": true, "did": req.Did, "hidden": req.Hidden})
 }
 
 // handleEvents 查询事件。

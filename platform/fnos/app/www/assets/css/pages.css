@@ -667,9 +667,35 @@
 /* ---- 左侧摄像头列表 ---- */
 .live-side {
   display: flex; flex-direction: column; gap: var(--space-2);
-  max-height: calc(100vh - 260px); overflow-y: auto;
+  max-height: calc(100vh - 276px);
+  overflow-y: auto;
   padding-right: 2px;
 }
+
+/* 当前摄像头信息面板：填满左栏下方空白，同时有实用价值 */
+.live-info {
+  margin-top: var(--space-2);
+  padding: var(--space-4);
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
+.live-info__title { font-size: var(--text-sm); color: var(--text-muted); }
+.live-info__name {
+  font-size: var(--text-lg); font-weight: var(--weight-medium);
+  margin-top: 4px; line-height: 1.3;
+  word-break: break-all;
+}
+.live-info__name em { font-style: normal; color: var(--text-muted); font-size: var(--text-base); }
+.live-info__rows { margin-top: var(--space-4); display: flex; flex-direction: column; gap: 7px; }
+.live-info__row {
+  display: flex; align-items: center; justify-content: space-between;
+  font-size: var(--text-base); color: var(--text-muted);
+}
+.live-info__row b { color: var(--text-secondary); font-weight: var(--weight-normal); font-variant-numeric: tabular-nums; }
+.live-info__row b.is-online { color: var(--online); }
+.live-info__acts { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-2); margin-top: var(--space-4); }
+
 @media (max-width: 1000px) {
   .live-side { flex-direction: row; max-height: none; overflow-x: auto; }
 }
@@ -716,9 +742,10 @@
 
 .player-wrap {
   position: relative;
+  width: 100%;                 /* 占满可用宽度（原来 max-height 把宽度也压窄了） */
   aspect-ratio: 16 / 9;
-  max-height: calc(100vh - 300px);
-  margin: 0 auto;
+  max-height: calc(100vh - 276px);
+  margin: 0;
   border-radius: var(--radius-xl);
   overflow: hidden;
   background: #000;
@@ -879,3 +906,22 @@
 .ls__item { display: inline-flex; align-items: center; gap: 6px; }
 .ls__right { margin-left: auto; font-size: var(--text-sm); color: var(--text-muted); }
 @media (max-width: 700px) { .ls__sep, .ls__right { display: none; } }
+
+
+/* 实时预览：收紧间距，减少空白 */
+.page__inner--wide .crumbs { margin-bottom: var(--space-3); }
+.page__inner--wide .list-head { margin-bottom: var(--space-3); }
+.page__inner--wide .live-status { margin-top: var(--space-3); }
+
+.live-empty {
+  padding: var(--space-4);
+  font-size: var(--text-base); color: var(--text-muted);
+  text-align: center;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-lg);
+}
+
+/* 离线卡片的删除按钮 */
+.cam-card__del { color: var(--text-muted); }
+.cam-card__del:hover { color: var(--danger); background: var(--surface-2); }
+.cam-card__foot .icon-btn { flex: 0 0 auto; }
