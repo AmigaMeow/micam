@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <title>小米摄像头</title>
-<meta name="micam-build" content="2026-09-17 21:46:01">
+<meta name="micam-build" content="2026-09-17 21:57:49">
 <!-- 样式内联：飞牛网关会剥前缀，相对路径不可靠（详见 build/assemble-web.js）-->
 <style>
 
@@ -3386,6 +3386,10 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; line-h
 
 
 /* AI 设置页：两栏网格（卡片自动等高） */
+/* AI 设置页：面板内的网格不再需要顶部 margin（面板之间由导航切换） */
+.pnl[data-pnl] .ai-set-grid { margin-top: 0; }
+.pnl[data-pnl] > .card + .ai-set-grid, .pnl[data-pnl] > .card + .card { margin-top: var(--space-5); }
+
 .ai-set-grid {
   display: grid; gap: var(--space-5);
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3665,7 +3669,8 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; line-h
   grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.9fr) minmax(0, 1.6fr);
 }
 .ai-priv__cam { gap: 8px; }
-.ai-priv__camname { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.ai-priv__camname { display: flex; align-items: baseline; gap: 6px; min-width: 0; overflow:hidden; }
+.ai-priv__camname > span, .ai-priv__camname > b { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
 .ai-priv__camname em { font-style: normal; font-size: var(--text-xs); color: var(--text-muted); }
 .ai-priv__allow { display: flex; align-items: center; }
 .ai-check { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); color: var(--text-secondary); cursor: pointer; }
@@ -7407,6 +7412,7 @@ function loadEventFrames(box, ev, root){
 //   接上 LLM 后这些位置自动换成真正的理解结果，UI 不用改。
 
 var aiTab = 'overview';
+var aiSetTab = 'mode';   // AI 设置页左导航：mode / prov / policy / usage
 var aiQuery = '';
 var aiResult = null;
 var aiCache = {};          // 各 Tab 的数据缓存
@@ -8232,7 +8238,22 @@ function aiTabSettings(){
 
   return ''
 
+    + '<div class="set3">'
+    +   '<aside class="set3__nav">'
+    +     [['mode','AI 模式','Mode','cpu'],['prov','本地与云端','Providers','cloud'],['policy','策略与隐私','Policy','shield'],['usage','用量与成本','Usage','chart']].map(function(x){
+            return '<button class="set3__tab' + (aiSetTab === x[0] ? ' is-active' : '') + '" data-aiset="' + x[0] + '">'
+              + icon(x[3],17)
+              + '<span class="set3__tab-body">'
+              +   '<span class="set3__tab-name">' + x[1] + '</span>'
+              +   '<span class="set3__tab-en">' + x[2] + '</span>'
+              + '</span>'
+              + '</button>';
+          }).join('')
+    +   '</aside>'
+    +   '<div class="set3__main">'
+
     // ===== AI 模式 =====
+    + '<div class="pnl' + (aiSetTab === 'mode' ? ' is-on' : '') + '" data-pnl="mode">'
     + '<div class="card">'
     +   '<div class="card__head">' + icon('settings',16) + '<span class="card__title">AI 模式</span>'
     +     '<span class="card__hint">选择适合您使用场景的 AI 模式，不同模式在功能、成本和隐私方面有所不同。</span></div>'
@@ -8243,8 +8264,11 @@ function aiTabSettings(){
     +   '</div>'
     + '</div>'
 
+    + '</div>'
+    + '<div class="pnl' + (aiSetTab === 'prov' ? ' is-on' : '') + '" data-pnl="prov">'
+
     // ===== 本地 AI + 外部 Provider =====
-    + '<div class="ai-set-grid" style="margin-top:var(--space-5)">'
+    + '<div class="ai-set-grid">'
 
     +   '<div class="card">'
     +     '<div class="card__head">' + icon('cpu',16) + '<span class="card__title">本地 AI</span>'
@@ -8415,8 +8439,11 @@ function aiTabSettings(){
 
     + '</div>'
 
+    + '</div>'
+    + '<div class="pnl' + (aiSetTab === 'policy' ? ' is-on' : '') + '" data-pnl="policy">'
+
     // ===== 分析策略 + 隐私 =====
-    + '<div class="ai-set-grid ai-set-grid--tall" style="margin-top:var(--space-5)">'
+    + '<div class="ai-set-grid ai-set-grid--tall">'
 
     +   '<div class="card">'
     +     '<div class="card__head">' + icon('filter',16) + '<span class="card__title">分析策略（省钱关键）</span>'
@@ -8471,13 +8498,18 @@ function aiTabSettings(){
 
     + '</div>'
 
-    // ===== 用量与成本（整行）=====
-    + '<div class="ai-set-grid ai-set-grid--1" style="margin-top:var(--space-5)">'
+    + '</div>'
+    + '<div class="pnl' + (aiSetTab === 'usage' ? ' is-on' : '') + '" data-pnl="usage">'
+
+    // ===== 用量与成本 =====
+    + '<div class="ai-set-grid ai-set-grid--1">'
     +   '<div class="card">'
     +     '<div class="card__head">' + icon('chart',16) + '<span class="card__title">用量与成本</span>'
     +       '<span class="card__hint">监控云端使用量，控制成本。</span>'
     +       '<a class="sec-head__more" href="javascript:;" data-aigoto="overview">查看详细用量 ' + icon('chevron-right',13) + '</a></div>'
     +     '<div class="ai-usage-wrap" id="aiUsageWrap">' + loading('读取中…') + '</div>'
+    +   '</div>'
+    + '</div>'
     +   '</div>'
     + '</div>';
 }
@@ -8577,6 +8609,9 @@ function aiUsageCard(ic, label, val){
 
 // ============ 绑定 ============
 function bindAI(){
+  Array.prototype.forEach.call(document.querySelectorAll('[data-aiset]'), function(b){
+    b.onclick = function(){ aiSetTab = this.dataset.aiset; paintAITab(); };
+  });
   var c = document.getElementById('content');
   if(!c) return;
 

@@ -2028,6 +2028,10 @@
 
 
 /* AI 设置页：两栏网格（卡片自动等高） */
+/* AI 设置页：面板内的网格不再需要顶部 margin（面板之间由导航切换） */
+.pnl[data-pnl] .ai-set-grid { margin-top: 0; }
+.pnl[data-pnl] > .card + .ai-set-grid, .pnl[data-pnl] > .card + .card { margin-top: var(--space-5); }
+
 .ai-set-grid {
   display: grid; gap: var(--space-5);
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -2307,7 +2311,8 @@
   grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.9fr) minmax(0, 1.6fr);
 }
 .ai-priv__cam { gap: 8px; }
-.ai-priv__camname { display: flex; align-items: baseline; gap: 6px; min-width: 0; }
+.ai-priv__camname { display: flex; align-items: baseline; gap: 6px; min-width: 0; overflow:hidden; }
+.ai-priv__camname > span, .ai-priv__camname > b { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; min-width:0; }
 .ai-priv__camname em { font-style: normal; font-size: var(--text-xs); color: var(--text-muted); }
 .ai-priv__allow { display: flex; align-items: center; }
 .ai-check { display: inline-flex; align-items: center; gap: 6px; font-size: var(--text-sm); color: var(--text-secondary); cursor: pointer; }

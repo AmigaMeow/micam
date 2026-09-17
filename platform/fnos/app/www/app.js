@@ -2257,6 +2257,7 @@ function loadEventFrames(box, ev, root){
 //   接上 LLM 后这些位置自动换成真正的理解结果，UI 不用改。
 
 var aiTab = 'overview';
+var aiSetTab = 'mode';   // AI 设置页左导航：mode / prov / policy / usage
 var aiQuery = '';
 var aiResult = null;
 var aiCache = {};          // 各 Tab 的数据缓存
@@ -3082,7 +3083,22 @@ function aiTabSettings(){
 
   return ''
 
+    + '<div class="set3">'
+    +   '<aside class="set3__nav">'
+    +     [['mode','AI 模式','Mode','cpu'],['prov','本地与云端','Providers','cloud'],['policy','策略与隐私','Policy','shield'],['usage','用量与成本','Usage','chart']].map(function(x){
+            return '<button class="set3__tab' + (aiSetTab === x[0] ? ' is-active' : '') + '" data-aiset="' + x[0] + '">'
+              + icon(x[3],17)
+              + '<span class="set3__tab-body">'
+              +   '<span class="set3__tab-name">' + x[1] + '</span>'
+              +   '<span class="set3__tab-en">' + x[2] + '</span>'
+              + '</span>'
+              + '</button>';
+          }).join('')
+    +   '</aside>'
+    +   '<div class="set3__main">'
+
     // ===== AI 模式 =====
+    + '<div class="pnl' + (aiSetTab === 'mode' ? ' is-on' : '') + '" data-pnl="mode">'
     + '<div class="card">'
     +   '<div class="card__head">' + icon('settings',16) + '<span class="card__title">AI 模式</span>'
     +     '<span class="card__hint">选择适合您使用场景的 AI 模式，不同模式在功能、成本和隐私方面有所不同。</span></div>'
@@ -3093,8 +3109,11 @@ function aiTabSettings(){
     +   '</div>'
     + '</div>'
 
+    + '</div>'
+    + '<div class="pnl' + (aiSetTab === 'prov' ? ' is-on' : '') + '" data-pnl="prov">'
+
     // ===== 本地 AI + 外部 Provider =====
-    + '<div class="ai-set-grid" style="margin-top:var(--space-5)">'
+    + '<div class="ai-set-grid">'
 
     +   '<div class="card">'
     +     '<div class="card__head">' + icon('cpu',16) + '<span class="card__title">本地 AI</span>'
@@ -3265,8 +3284,11 @@ function aiTabSettings(){
 
     + '</div>'
 
+    + '</div>'
+    + '<div class="pnl' + (aiSetTab === 'policy' ? ' is-on' : '') + '" data-pnl="policy">'
+
     // ===== 分析策略 + 隐私 =====
-    + '<div class="ai-set-grid ai-set-grid--tall" style="margin-top:var(--space-5)">'
+    + '<div class="ai-set-grid ai-set-grid--tall">'
 
     +   '<div class="card">'
     +     '<div class="card__head">' + icon('filter',16) + '<span class="card__title">分析策略（省钱关键）</span>'
@@ -3321,13 +3343,18 @@ function aiTabSettings(){
 
     + '</div>'
 
-    // ===== 用量与成本（整行）=====
-    + '<div class="ai-set-grid ai-set-grid--1" style="margin-top:var(--space-5)">'
+    + '</div>'
+    + '<div class="pnl' + (aiSetTab === 'usage' ? ' is-on' : '') + '" data-pnl="usage">'
+
+    // ===== 用量与成本 =====
+    + '<div class="ai-set-grid ai-set-grid--1">'
     +   '<div class="card">'
     +     '<div class="card__head">' + icon('chart',16) + '<span class="card__title">用量与成本</span>'
     +       '<span class="card__hint">监控云端使用量，控制成本。</span>'
     +       '<a class="sec-head__more" href="javascript:;" data-aigoto="overview">查看详细用量 ' + icon('chevron-right',13) + '</a></div>'
     +     '<div class="ai-usage-wrap" id="aiUsageWrap">' + loading('读取中…') + '</div>'
+    +   '</div>'
+    + '</div>'
     +   '</div>'
     + '</div>';
 }
@@ -3427,6 +3454,9 @@ function aiUsageCard(ic, label, val){
 
 // ============ 绑定 ============
 function bindAI(){
+  Array.prototype.forEach.call(document.querySelectorAll('[data-aiset]'), function(b){
+    b.onclick = function(){ aiSetTab = this.dataset.aiset; paintAITab(); };
+  });
   var c = document.getElementById('content');
   if(!c) return;
 
