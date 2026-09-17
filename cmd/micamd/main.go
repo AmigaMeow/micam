@@ -46,7 +46,7 @@ var appDestDir string
 // startedAt 进程启动时间（状态条显示「运行时间」用）
 var startedAt = time.Now()
 
-var appVersion = "0.30.0"
+var appVersion = "0.31.0"
 
 func main() {
 	var (

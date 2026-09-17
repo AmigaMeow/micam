@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <title>小米摄像头</title>
-<meta name="micam-build" content="2026-09-17 00:17:19">
+<meta name="micam-build" content="2026-09-17 00:34:25">
 <!-- 样式内联：飞牛网关会剥前缀，相对路径不可靠（详见 build/assemble-web.js）-->
 <style>
 
@@ -73,6 +73,13 @@
   --text:           #e6edf3;
   --text-secondary: #8b949e;
   --text-muted:     #6e7681;
+
+  /* 兼容别名：代码里有 48 处用 --text-2 / --text-3，
+     这两个变量从未定义过（声明无效 -> 颜色继承父级）。
+     补上别名，让「次要/弱化文字」的层次真正生效。 */
+  --text-1:         var(--text);
+  --text-2:         var(--text-secondary);
+  --text-3:         var(--text-muted);
 
   --accent:       #3b82f6;
   --accent-hover: #4d8df7;
@@ -332,6 +339,13 @@ code, pre, kbd {
     transition-duration: .01ms !important;
   }
 }
+
+
+/* 少量工具类（代码里有几处用了 Tailwind 风格命名） */
+.text-sm { font-size: var(--text-sm); }
+.text-muted { color: var(--text-muted); }
+.row { display: flex; flex-direction: row; }
+.gap-2 { gap: var(--space-2); }
 
 
 /* ===== assets/css/components.css ===== */
@@ -800,7 +814,12 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; line-h
   display: flex; align-items: center; gap: var(--space-3);
   min-width: 0;
 }
-.cfg-row__control .input { width: 100%; }
+/* 用 flex 撑开而不是 width:100% ——
+   否则同一行还有「单位」文字时会溢出（设置页实测溢出 23px） */
+.cfg-row__control .input { flex: 1 1 auto; min-width: 0; width: auto; }
+.cfg-row__control .input.cfg-row__num,
+.cfg-row__control > input.cfg-row__num { flex: 0 0 88px; width: 88px; }
+.cfg-row__unit { flex: 0 0 auto; white-space: nowrap; }
 .cfg-row__hint {
   grid-area: hint;
   font-size: var(--text-sm); color: var(--text-muted);
@@ -3279,7 +3298,7 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; line-h
 .ai-cfg { padding: 0 var(--space-5); }
 .ai-cfg .cfg-row__control { padding-right: 2px; }
 .ai-cfg .cfg-row__control > .input { max-width: 100%; }
-.ai-cfg .cfg-row__num { width: 88px; flex: 0 0 auto; }
+/* 数字框与单位的宽度规则已统一在 components.css 里 */
 .ai-foot-line { padding: var(--space-3) var(--space-5); font-size: var(--text-sm); color: var(--text-muted); }
 .ai-prov { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-5); flex-wrap: wrap; }
 
@@ -8856,7 +8875,7 @@ function loadRecConfig(){
       + "<div class='cfg-row' style='align-items:flex-start;border-top:1px solid var(--split);margin-top:6px;padding-top:14px'>"
       +   "<div class='cfg-row__label' style='padding-top:8px'>自动录像</div>"
       +   "<div style='flex:1'>"
-      +     "<label class='switch'><input type='checkbox' id='cfgEnabled'" + (c.enabled ? " checked" : "") + "><span></span></label>"
+      +     "<label class='switch'><input type='checkbox' id='cfgEnabled'" + (c.enabled ? " checked" : "") + "><span class='switch__track'></span></label>"
       +     "<div class='cfg-row__hint' style='margin-top:6px'>"
       +       (c.enabled
               ? "<span style='color:var(--warning)'>正在录像</span> —— 持续占用磁盘，按「保留天数」自动清理旧文件。"
@@ -10532,11 +10551,11 @@ function loadNotifyCfg(){
     box.innerHTML = ""
       + "<div class='cfg-row'>"
       +   "<div class='cfg-row__label'>启用通知</div>"
-      +   "<label class='switch'><input type='checkbox' id='ntEnabled'" + (c.enabled ? ' checked' : '') + "><span></span></label>"
+      +   "<label class='switch'><input type='checkbox' id='ntEnabled'" + (c.enabled ? ' checked' : '') + "><span class='switch__track'></span></label>"
       + "</div>"
       + "<div class='cfg-row' style='align-items:flex-start'>"
       +   "<div class='cfg-row__label' style='padding-top:8px'>Webhook 地址</div>"
-      +   "<input class='btn' id='ntWebhook' style='flex:1;min-width:200px;text-align:left;font-size:12px' placeholder='https://...' value='" + esc(c.webhook||'') + "'>"
+      +   "<input class='input' id='ntWebhook' style='flex:1;min-width:200px;text-align:left;font-size:12px' placeholder='https://...' value='" + esc(c.webhook||'') + "'>"
       + "</div>"
       + "<div style='font-size:12px;color:var(--text-3);margin:8px 0 12px'>"
       +   "POST JSON 到该地址。可对接钉钉/企业微信/Bark/自建服务。"

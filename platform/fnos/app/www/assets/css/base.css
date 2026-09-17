@@ -114,3 +114,10 @@ code, pre, kbd {
     transition-duration: .01ms !important;
   }
 }
+
+
+/* 少量工具类（代码里有几处用了 Tailwind 风格命名） */
+.text-sm { font-size: var(--text-sm); }
+.text-muted { color: var(--text-muted); }
+.row { display: flex; flex-direction: row; }
+.gap-2 { gap: var(--space-2); }

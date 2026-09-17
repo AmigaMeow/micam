@@ -463,7 +463,12 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; line-h
   display: flex; align-items: center; gap: var(--space-3);
   min-width: 0;
 }
-.cfg-row__control .input { width: 100%; }
+/* 用 flex 撑开而不是 width:100% ——
+   否则同一行还有「单位」文字时会溢出（设置页实测溢出 23px） */
+.cfg-row__control .input { flex: 1 1 auto; min-width: 0; width: auto; }
+.cfg-row__control .input.cfg-row__num,
+.cfg-row__control > input.cfg-row__num { flex: 0 0 88px; width: 88px; }
+.cfg-row__unit { flex: 0 0 auto; white-space: nowrap; }
 .cfg-row__hint {
   grid-area: hint;
   font-size: var(--text-sm); color: var(--text-muted);

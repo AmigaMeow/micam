@@ -1986,7 +1986,7 @@
 .ai-cfg { padding: 0 var(--space-5); }
 .ai-cfg .cfg-row__control { padding-right: 2px; }
 .ai-cfg .cfg-row__control > .input { max-width: 100%; }
-.ai-cfg .cfg-row__num { width: 88px; flex: 0 0 auto; }
+/* 数字框与单位的宽度规则已统一在 components.css 里 */
 .ai-foot-line { padding: var(--space-3) var(--space-5); font-size: var(--text-sm); color: var(--text-muted); }
 .ai-prov { display: flex; align-items: center; gap: var(--space-3); padding: var(--space-3) var(--space-5); flex-wrap: wrap; }
 
