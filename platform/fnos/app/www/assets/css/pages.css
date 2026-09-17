@@ -3117,8 +3117,26 @@
 .pnl { display: none; }
 .pnl.is-on { display: block; }
 
+/* 账号页：账号卡片内的设备清单 */
+.acct-dev { display:flex; align-items:center; gap: var(--space-3); margin-top: var(--space-3); padding-top: var(--space-3); border-top:1px solid var(--border-subtle); }
+.acct-dev__hint { font-size: var(--text-xs); color: var(--text-muted); }
+.acct-dev__list { margin-top: var(--space-3); border:1px solid var(--border-subtle); border-radius: var(--radius-lg); overflow:hidden; }
+.acct-dev__row { display:flex; align-items:center; gap: var(--space-3); padding: var(--space-3) var(--space-4); border-bottom:1px solid var(--border-subtle); }
+.acct-dev__row:last-child { border-bottom:0; }
+.acct-dev__row.is-hidden { opacity:.55; }
+.acct-dev__thumb { position:relative; width:72px; height:44px; flex:0 0 72px; border-radius: var(--radius-md); overflow:hidden; background: var(--surface-3); display:flex; align-items:center; justify-content:center; color: var(--text-muted); }
+.acct-dev__thumb .icon { position:absolute; }
+.acct-dev__thumb img { position:relative; width:100%; height:100%; object-fit:cover; display:block; }
+.acct-dev__body { flex:1 1 auto; min-width:140px; display:flex; flex-direction:column; gap:2px; }
+.acct-dev__name { font-size: var(--text-base); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.acct-dev__meta { font-size: var(--text-xs); color: var(--text-muted); white-space:nowrap; }
+.acct-dev__acts { display:flex; gap:6px; flex:0 0 auto; flex-wrap:nowrap; }
+.acct-dev__acts .btn { white-space:nowrap; }
+.acct-dev__acts .btn--icon.btn--sm { width:26px; padding:0; }
+.acct-dev__none { padding: var(--space-4); font-size: var(--text-sm); color: var(--text-muted); }
+
 /* 账号页：卡片改成网格，消灭"左列下面一大片空白" */
-.set3__main .acct-list { display:grid; grid-template-columns: repeat(auto-fill, minmax(430px, 1fr)); gap: var(--space-4); }
+.set3__main .acct-list { display:grid; grid-template-columns: repeat(auto-fill, minmax(430px, 1fr)); gap: var(--space-4); align-items:start; }
 .set3__main .acct-side { display:grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: var(--space-5); align-items:start; }
 
 /* 两栏：左导航 + 内容。v0.40.1 去掉右列摘要卡（标题与左栏完全重复） */

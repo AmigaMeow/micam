@@ -5230,6 +5230,9 @@ function bindStorage(c, cams){
 //   （原「扫码添加引导（预览）」区块已按需求删除，扫码入口只保留顶部按钮）
 
 var acctAuto = null;
+var acctDevOpen = '';      // 展开了哪个账号的设备清单
+var devIndex = {};         // did -> /api/devices 元数据（别名 / 隐藏）
+var recByDid = {};         // did -> 录像状态
 
 function renderAccounts(c){
   if(acctAuto){ clearInterval(acctAuto); acctAuto = null; }
@@ -5238,16 +5241,24 @@ function renderAccounts(c){
   Promise.all([
     api('/api/accounts/detail').catch(function(){ return {}; }),
     api('/api/accounts/status').catch(function(){ return {}; }),
+    api('/api/devices').catch(function(){ return { devices: [] }; }),
+    api('/api/recordings').catch(function(){ return { recordings: [] }; }),
   ]).then(function(res){
-    paintAccounts(c, res[0] || {}, res[1] || {});
+    paintAccounts(c, res[0] || {}, res[1] || {}, res[2] || {}, res[3] || {});
   }).catch(function(err){
     c.innerHTML = '<div class="page__inner">' + errorCard(err, function(){ renderAccounts(c); }) + '</div>';
   });
 }
 
-function paintAccounts(c, d, st){
+function paintAccounts(c, d, st, devs, recs){
   var accts = d.accounts || [];
   var byAcct = d.byAccount || {};
+
+  // 设备元数据（别名 / 隐藏）与录像状态：按 did 建索引，供每行设备使用
+  devIndex = {};
+  ((devs && devs.devices) || []).forEach(function(x){ devIndex[x.did] = x; });
+  recByDid = {};
+  ((recs && recs.recordings) || []).forEach(function(x){ recByDid[x.did] = x; });
   var backups = d.backups || [];
   var activity = d.activity || [];
   var stats = d.stats || {};
@@ -5325,7 +5336,17 @@ function paintAccounts(c, d, st){
     +   '<div class="acct-list">'
     +   (accts.length ? accts.map(function(a){
           var stt = acctState(a);
-          var ds = byAcct[a.userId] || [];
+          var ds = (byAcct[a.userId] || []).map(function(x){
+            var m = devIndex[x.did] || {};
+            return {
+              did: x.did,
+              name: x.name || m.name || '',
+              online: (x.online !== undefined && x.online !== null) ? x.online : !!m.isOnline,
+              shared: !!x.shared,
+              alias: m.alias || '',
+              hidden: !!m.hidden,
+            };
+          });
           return '<div class="acct-card">'
             + '<div class="acct-card__thumb">'
             +   (a.thumb ? '<img loading="lazy" src="' + apiUrl(a.thumb) + '" alt="">' : '<div class="acct-card__ph">' + icon('camera',22) + '</div>')
@@ -5348,12 +5369,47 @@ function paintAccounts(c, d, st){
             +     pill('DID 绑定', a.didBound===true)
             +   '</div>'
             +   '<div class="acct-card__acts">'
-            +     '<button class="btn btn--sm" data-acct-dev="' + esc(a.userId) + '">' + icon('camera',13) + '查看设备</button>'
             +     '<button class="btn btn--sm" data-acct-refresh="' + esc(a.userId) + '">' + icon('refresh',13) + '刷新</button>'
             +     '<button class="btn btn--sm" data-acct-alias="' + esc(a.userId) + '">' + icon('edit',13) + '编辑别名</button>'
             +     '<button class="btn btn--sm" data-acct-backup="' + esc(a.userId) + '">' + icon('save',13) + '备份</button>'
             +     '<button class="btn btn--sm" data-acct-more="' + esc(a.userId) + '">' + icon('more-horizontal',13) + '</button>'
             +   '</div>'
+            +   '<div class="acct-dev">'
+            +     '<button class="btn btn--sm" data-acct-dev="' + esc(a.userId) + '">'
+            +       icon('camera',13) + (ds.length ? '设备 ' + ds.length + ' ▾' : '设备 0') + '</button>'
+            +     '<span class="acct-dev__hint">该账号下的摄像头由米家云端下发</span>'
+            +   '</div>'
+            +   ((acctDevOpen === a.userId)
+                  ? '<div class="acct-dev__list">'
+                    + (ds.length ? ds.map(function(d){
+                        var rec = recByDid[d.did];
+                        return '<div class="acct-dev__row' + (d.hidden ? ' is-hidden' : '') + '">'
+                          + '<span class="acct-dev__thumb">'
+                          +   icon('camera',16)
+                          +   '<img loading="lazy" src="' + apiUrl('/api/live/thumb?did=' + encodeURIComponent(d.did) + '&t=' + Date.now()) + '" alt="" onerror="this.style.display=\'none\'">'
+                          + '</span>'
+                          + '<span class="acct-dev__body">'
+                          +   '<span class="acct-dev__name" title="' + esc(d.alias || d.name) + '">' + esc(d.alias || d.name) + '</span>'
+                          +   '<span class="acct-dev__meta">'
+                          +     (d.online ? '在线' : '离线')
+                          +     (d.shared ? ' · 共享' : '')
+                          +     (d.hidden ? ' · 已隐藏' : '')
+                          +     (rec && rec.running ? ' · 录像中' : '')
+                          +   '</span>'
+                          + '</span>'
+                          + '<span class="acct-dev__acts">'
+                          +   '<button class="btn btn--sm btn--icon" data-dev-rec="' + esc(d.did) + '" data-dev-on="' + (rec && rec.running ? '1' : '0') + '" title="' + (rec && rec.running ? '停止录像' : '开始录像') + '">'
+                          +     icon(rec && rec.running ? 'stop' : 'rec',13) + '</button>'
+                          +   '<button class="btn btn--sm btn--icon" data-dev-alias="' + esc(d.did) + '" data-dev-name="' + esc(d.name) + '" title="编辑别名">' + icon('edit',13) + '</button>'
+                          +   '<button class="btn btn--sm btn--icon" data-dev-hide="' + esc(d.did) + '" data-dev-hidden="' + (d.hidden ? '1' : '0') + '" title="' + (d.hidden ? '取消隐藏' : '隐藏') + '">'
+                          +     icon(d.hidden ? 'eye' : 'eye-off',13) + '</button>'
+                          +   '<button class="btn btn--sm btn--icon" data-dev-open="' + esc(d.did) + '" title="查看设备">' + icon('play',13) + '</button>'
+                          + '</span>'
+                          + '</div>';
+                      }).join('')
+                      : '<div class="acct-dev__none">这个账号下没有摄像头（设备由米家云端下发，重新登录或等待同步）</div>')
+                    + '</div>'
+                  : '')
             + '</div>'
             + '</div>';
         }).join('')
@@ -5513,8 +5569,64 @@ function bindAccounts(c){
   };
 
   // 账号操作
+  // 展开 / 收起某个账号下的设备清单
   Array.prototype.forEach.call(c.querySelectorAll('[data-acct-dev]'), function(b){
-    b.onclick = function(){ page='devices'; renderMenu(); render(); };
+    b.onclick = function(){
+      acctDevOpen = (acctDevOpen === this.dataset.acctDev) ? '' : this.dataset.acctDev;
+      render();
+    };
+  });
+  // 每台设备：开始 / 停止录像
+  Array.prototype.forEach.call(c.querySelectorAll('[data-dev-rec]'), function(b){
+    b.onclick = function(){
+      var did = this.dataset.devRec, on = this.dataset.devOn === '1';
+      api(on ? '/api/recordings/stop' : '/api/recordings', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ did: did })
+      }).then(function(r){
+        if(r && r.msg){ toast(r.msg, 'err'); return; }
+        toast(on ? '已停止录像' : '已开始录像', 'ok');
+        render();
+      }).catch(function(e){ toast('操作失败：' + e.message, 'err'); });
+    };
+  });
+  // 每台设备：别名
+  Array.prototype.forEach.call(c.querySelectorAll('[data-dev-alias]'), function(b){
+    b.onclick = function(){
+      var did = this.dataset.devAlias;
+      var cur = (devIndex[did] && devIndex[did].alias) || '';
+      var v = prompt('设备别名（留空则清除）', cur);
+      if(v === null) return;
+      api('/api/devices/meta', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ did: did, alias: v.trim() })
+      }).then(function(r){
+        if(r && r.msg){ toast(r.msg, 'err'); return; }
+        toast('别名已保存', 'ok'); render();
+      }).catch(function(e){ toast('保存失败：' + e.message, 'err'); });
+    };
+  });
+  // 每台设备：隐藏 / 取消隐藏
+  Array.prototype.forEach.call(c.querySelectorAll('[data-dev-hide]'), function(b){
+    b.onclick = function(){
+      var did = this.dataset.devHide;
+      var hidden = this.dataset.devHidden !== '1';
+      api('/api/devices/hide', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ did: did, hidden: hidden })
+      }).then(function(r){
+        if(r && r.msg){ toast(r.msg, 'err'); return; }
+        toast(hidden ? '已隐藏' : '已取消隐藏', 'ok'); render();
+      }).catch(function(e){ toast('操作失败：' + e.message, 'err'); });
+    };
+  });
+  // 每台设备：查看（进设备详情）
+  Array.prototype.forEach.call(c.querySelectorAll('[data-dev-open]'), function(b){
+    b.onclick = function(){
+      devDetailDid = this.dataset.devOpen;
+      page = 'device';
+      renderMenu();
+      render();
+    };
   });
   Array.prototype.forEach.call(c.querySelectorAll('[data-acct-refresh]'), function(b){
     b.onclick = function(){ toast('正在刷新该账号…', 'ok'); render(); };
