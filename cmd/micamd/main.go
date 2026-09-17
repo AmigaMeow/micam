@@ -485,6 +485,8 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/accounts", s.handleAccounts)           // GET 列表 / POST 添加
 	mux.HandleFunc("/api/accounts/qr", s.handleQRStart)         // POST 发起扫码
 	mux.HandleFunc("/api/accounts/qr/status", s.handleQRStatus) // GET 轮询扫码状态
+	mux.HandleFunc("/api/accounts/login", s.handleAccountLogin)   // POST 账号密码登录
+	mux.HandleFunc("/api/accounts/verify", s.handleAccountVerify) // POST 提交二次验证码
 
 	// 凭据备份 / 恢复 / 状态
 	mux.HandleFunc("/api/accounts/export", s.handleCredExport)
