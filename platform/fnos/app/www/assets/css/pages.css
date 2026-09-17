@@ -3240,26 +3240,6 @@
 .acct-act__time { color:var(--text-muted); font-variant-numeric:tabular-nums; }
 .acct-act__text { color:var(--text-secondary); }
 
-/* 扫码引导 */
-.acct-guide { margin-top:var(--space-5); background:var(--surface-1); border:1px solid var(--border-subtle); border-radius:var(--radius-xl); overflow:hidden; }
-.acct-guide__head { display:flex; align-items:center; gap:8px; padding:var(--space-4) var(--space-5); cursor:pointer; font-size:var(--text-base); }
-.acct-guide__head > span { flex:1; display:flex; align-items:center; gap:8px; }
-.acct-guide__body { display:none; padding:0 var(--space-5) var(--space-5); grid-template-columns:auto minmax(0,1fr); gap:var(--space-6); align-items:center; }
-.acct-guide.is-open .acct-guide__body { display:grid; }
-@media (max-width:900px){ .acct-guide__body{ grid-template-columns:1fr;} }
-.acct-guide__steps { display:flex; align-items:center; gap:var(--space-3); }
-.acct-guide__step { display:flex; flex-direction:column; align-items:center; gap:6px; font-size:var(--text-xs); color:var(--text-muted); }
-.acct-guide__mock, .acct-guide__qr, .acct-guide__ok {
-  width:64px; height:64px; border-radius:var(--radius-lg);
-  display:flex; align-items:center; justify-content:center;
-  background:var(--surface-2); border:1px solid var(--border-subtle);
-  font-size:var(--text-sm); color:var(--text-secondary);
-}
-.acct-guide__qr { background:#fff; color:#111; }
-.acct-guide__ok { color:#4ade80; border-color:rgba(34,197,94,.4); }
-.acct-guide__arrow { color:var(--text-muted); }
-.acct-guide__title { font-size:var(--text-lg); font-weight:var(--weight-medium); margin-bottom:6px; }
-.acct-guide__desc { font-size:var(--text-base); color:var(--text-muted); line-height:1.7; margin-bottom:var(--space-3); }
 
 
 /* ===== 顶栏用户菜单 ===== */
@@ -3313,6 +3293,9 @@
 .dev-col > .card + .card { margin-top: 0; }
 
 .dev-hint { font-size: var(--text-sm); color: var(--text-muted); }
+/* 卡片头：标题 + 副标题（参考图每张卡标题下都有一行说明） */
+.dev-head__main { flex:1; min-width:0; display:flex; flex-direction:column; gap:1px; }
+.dev-head__hint { font-size: var(--text-sm); color: var(--text-muted); }
 .dev-note { padding: var(--space-3) var(--space-5); font-size: var(--text-sm); color: var(--text-muted); line-height: 1.6; }
 .dev-note--tight { padding: 0 0 var(--space-3); }
 .dev-dim { color: var(--text-muted); font-size: var(--text-sm); }
@@ -3323,12 +3306,18 @@
 .dev-empty { display:flex; flex-direction:column; align-items:center; gap:6px; padding: var(--space-6) var(--space-5); color: var(--text-muted); font-size: var(--text-base); }
 .dev-empty__sub { font-size: var(--text-sm); opacity:.85; text-align:center; }
 
+/* 开发者页 Tab：选中态用浅色块（参考图），不是下划线 */
+#devTabs .tabline { border-radius: var(--radius-md); padding: 8px var(--space-4); }
+#devTabs .tabline::after { display: none; }
+#devTabs .tabline.is-active { background: var(--surface-2); color: var(--text); font-weight: var(--weight-medium); }
+
 /* 开放能力卡 */
 .dev-caps { display:flex; flex-direction:column; gap: var(--space-2); }
 .dev-caps--dim { opacity:.55; }
 .dev-cap { display:flex; align-items:center; gap: var(--space-3); padding: var(--space-3) var(--space-4); border:1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--surface-2); }
 .dev-cap__icon { width:32px; height:32px; flex:0 0 32px; border-radius: var(--radius-md); display:flex; align-items:center; justify-content:center; background: var(--accent-soft); color: var(--accent); }
 .dev-cap.is-off .dev-cap__icon { background: var(--surface-3); color: var(--text-muted); }
+.dev-cap--master { background: var(--surface-1); border-color: var(--border); }
 .dev-cap__body { flex:1; min-width:0; }
 .dev-cap__title { font-size: var(--text-base); font-weight: var(--weight-medium); }
 .dev-cap__desc { font-size: var(--text-sm); color: var(--text-muted); margin-top:2px; }
@@ -3386,14 +3375,22 @@
    快速开始是文字按钮，必须放开宽度，否则 cURL / Python / JS 挤成一团 */
 .dev-quick__head .segmented__btn { width: auto; height: 24px; padding: 0 var(--space-3); font-size: var(--text-sm); }
 .dev-code { position: relative; }
-.dev-code .code-block { max-height: 190px; }
+/* 参考图里快速开始的代码块是深色的 */
+.dev-code .code-block {
+  max-height: 190px;
+  background: #0b1017; color: #c9d4e3; border-color: #1d2634;
+}
+.dev-code .code-block { white-space: pre; }
 .dev-code__copy { position:absolute; top: var(--space-2); right: var(--space-2); }
 
 /* 工具与资源 */
+/* 右列只有 ~540px：3 列会把「下载 OpenAPI」「Webhook 测试」截断，用 2 列 */
 .dev-tools { display:grid; grid-template-columns: repeat(2, minmax(0,1fr)); gap: var(--space-3); }
+@media (max-width: 900px) { .dev-tools { grid-template-columns: 1fr; } }
 .dev-tools--wide { padding: 0 0 var(--space-3); }
-.dev-tool { display:flex; align-items:center; gap: var(--space-3); padding: var(--space-3) var(--space-4); border:1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--surface-2); text-align:left; width:100%; transition: border-color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out); }
+.dev-tool { display:flex; flex-direction:column; align-items:stretch; gap: var(--space-3); padding: var(--space-3) var(--space-4); border:1px solid var(--border-subtle); border-radius: var(--radius-lg); background: var(--surface-2); text-align:left; width:100%; transition: border-color var(--duration-fast) var(--ease-out), background var(--duration-fast) var(--ease-out); }
 .dev-tool:hover { border-color: var(--border-strong); background: var(--surface-3); }
+.dev-tool__top { display:flex; align-items:center; gap: var(--space-3); min-width:0; }
 .dev-tool__icon { width:30px; height:30px; flex:0 0 30px; border-radius: var(--radius-md); display:flex; align-items:center; justify-content:center; background: var(--surface-3); color: var(--text-secondary); }
 .dev-tool__body { min-width:0; display:flex; flex-direction:column; gap:1px; }
 .dev-tool__label { font-size: var(--text-base); color: var(--text); }
@@ -3406,7 +3403,10 @@
 .dev-method { display:inline-block; padding:1px 6px; border-radius: var(--radius-sm); font-size: var(--text-xs); font-weight: var(--weight-semibold); background: var(--surface-3); color: var(--text-secondary); }
 .dev-method.is-get { background: color-mix(in srgb, var(--online) 16%, transparent); color: var(--online); }
 .dev-method.is-post { background: var(--accent-soft); color: var(--accent); }
-.dev-path { font-family: var(--font-mono); font-size: var(--text-sm); word-break: break-all; }
+.dev-path { font-family: var(--font-mono); font-size: var(--text-sm); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:0; }
+/* 日志表在右列很窄：所有单元格都不换行，路径用省略号，避免每行变两行 */
+#devBody .table td, #devBody .table th { white-space: nowrap; }
+#devBody .table td.dev-dim { font-size: var(--text-xs); }
 
 /* Webhook 测试 */
 .dev-field { display:flex; gap: var(--space-3); align-items:center; margin-bottom: var(--space-3); }

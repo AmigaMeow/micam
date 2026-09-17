@@ -29,27 +29,27 @@
 //   页面：存储监控                              L  4825 -  4825
 //   页面：存储监控（对齐效果图）                L  4826 -  5178
 //   页面：账号管理                              L  5179 -  5179
-//   页面：账号管理（对齐效果图）                L  5180 -  5513
-//   页面：安装向导                              L  5514 -  5582
-//   页面：开发者                                L  5583 -  5583
-//   页面：开发者（对齐效果图：7 个 Tab）        L  5584 -  6696
-//   页面：系统设置                              L  6697 -  6697
-//   页面：设置（对齐效果图）                    L  6698 -  7047
-//   凭据状态提示                                L  7048 -  7101
-//   云台方向翻转（按设备记住）                  L  7102 -  7120
-//   动作                                        L  7121 -  7158
-//   扫码登录                                    L  7159 -  7198
-//   宿主 SDK 集成                               L  7199 -  7225
-//   事件通知配置                                L  7226 -  7226
-//   AI 设置                                     L  7227 -  7506
-//   诊断功能                                    L  7507 -  7556
-//   加载 hls.js（HLS 播放库）                   L  7557 -  7558
-//   为什么不用相对路径                          L  7559 -  7598
-//   开放模式（开发者选项）解锁                  L  7599 -  7626
-//   启动                                        L  7627 -  7666
-//                                               L  7667 -  7678
-//                                               L  7679 -  8206
-//   顶栏右上角：用户菜单 + 全局搜索             L  8207 -  8444
+//   页面：账号管理（对齐效果图）                L  5180 -  5483
+//   页面：安装向导                              L  5484 -  5552
+//   页面：开发者                                L  5553 -  5553
+//   页面：开发者（对齐效果图：7 个 Tab）        L  5554 -  6666
+//   页面：系统设置                              L  6667 -  6667
+//   页面：设置（对齐效果图）                    L  6668 -  7017
+//   凭据状态提示                                L  7018 -  7071
+//   云台方向翻转（按设备记住）                  L  7072 -  7090
+//   动作                                        L  7091 -  7128
+//   扫码登录                                    L  7129 -  7168
+//   宿主 SDK 集成                               L  7169 -  7195
+//   事件通知配置                                L  7196 -  7196
+//   AI 设置                                     L  7197 -  7476
+//   诊断功能                                    L  7477 -  7526
+//   加载 hls.js（HLS 播放库）                   L  7527 -  7528
+//   为什么不用相对路径                          L  7529 -  7568
+//   开放模式（开发者选项）解锁                  L  7569 -  7596
+//   启动                                        L  7597 -  7636
+//                                               L  7637 -  7648
+//                                               L  7649 -  8176
+//   顶栏右上角：用户菜单 + 全局搜索             L  8177 -  8414
 //
 // 重新生成索引：node build/gen-js-index.js
 // ===== 分节索引结束 =====
@@ -5183,7 +5183,7 @@ function bindStorage(c, cams){
 //   页头 + 顶部操作栏（扫码/导入/导出 + 实时刷新开关）
 //   左：账号卡片列表（缩略图 + 名称 + 掩码ID + 设备数 + 会话剩余 + 三层凭据胶囊 + 操作）
 //   右：三层凭据说明 / 备份与恢复 / 连接与同步 + 最近活动
-//   底部：扫码添加引导（可折叠）
+//   （原「扫码添加引导（预览）」区块已按需求删除，扫码入口只保留顶部按钮）
 
 var acctAuto = null;
 
@@ -5375,28 +5375,6 @@ function paintAccounts(c, d, st){
     +   '</aside>'
     + '</div>'
 
-    // 扫码引导
-    + '<div class="acct-guide" id="acctGuide">'
-    +   '<div class="acct-guide__head" id="acctGuideTog">'
-    +     '<span>' + icon('qr',15) + '扫码添加引导（预览）</span>'
-    +     icon('chevron-down',15)
-    +   '</div>'
-    +   '<div class="acct-guide__body">'
-    +     '<div class="acct-guide__steps">'
-    +       '<div class="acct-guide__step"><div class="acct-guide__mock">米家</div><span>米家 App</span></div>'
-    +       '<div class="acct-guide__arrow">' + icon('chevron-right',18) + '</div>'
-    +       '<div class="acct-guide__step"><div class="acct-guide__qr">' + icon('qr',30) + '</div><span>扫码</span></div>'
-    +       '<div class="acct-guide__arrow">' + icon('chevron-right',18) + '</div>'
-    +       '<div class="acct-guide__step"><div class="acct-guide__ok">' + icon('check',22) + '</div><span>登录成功</span></div>'
-    +     '</div>'
-    +     '<div class="acct-guide__text">'
-    +       '<div class="acct-guide__title">打开米家 App → 扫码登录</div>'
-    +       '<div class="acct-guide__desc">使用米家 App 扫描二维码，完成账号登录与设备获取。详细步骤请查看帮助文档。</div>'
-    +       '<button class="btn btn--sm" id="acctGuideGo">查看完整指南 →</button>'
-    +     '</div>'
-    +   '</div>'
-    + '</div>'
-
     + '</div>';
 
   bindAccounts(c);
@@ -5501,14 +5479,6 @@ function bindAccounts(c){
     b.onclick = function(e){ e.stopPropagation(); toast('恢复 / 下载 / 删除（开发中）', 'warn'); };
   });
 
-  // 扫码引导折叠
-  var tg = document.getElementById('acctGuideTog');
-  if(tg) tg.onclick = function(){
-    var g = document.getElementById('acctGuide');
-    if(g) g.classList.toggle('is-open');
-  };
-  var gg = document.getElementById('acctGuideGo');
-  if(gg) gg.onclick = function(){ page='setup'; renderMenu(); render(); };
 }
 
 // ===== 页面：安装向导 =====
@@ -5672,7 +5642,7 @@ function paintDev(c){
     + '<div class="list-head">'
     +   '<div class="list-head__main">'
     +     '<h1 class="list-head__title">开发者</h1>'
-    +     '<div class="list-head__en" id="devSub">' + esc(devSubtitle()) + '</div>'
+    +     '<div class="list-head__en" id="devSub">开放能力，让更多应用与 MiCam 连接。</div>'
     +   '</div>'
     +   '<div class="list-head__acts">'
     +     '<span class="chip is-active"><span class="status-dot is-online"></span>开发者模式已开启</span>'
@@ -5719,6 +5689,18 @@ function devRepaintBody(){
 
 // ---- 概览 ----
 
+// devCardHead 统一的卡片头：图标 + 标题 + 副标题（参考图每张卡标题下都有一行说明）
+function devCardHead(ic, title, hint, actions){
+  return '<div class="card__head">'
+    + icon(ic,15)
+    + '<div class="dev-head__main">'
+    +   '<span class="card__title">' + esc(title) + '</span>'
+    +   (hint ? '<span class="dev-head__hint">' + esc(hint) + '</span>' : '')
+    + '</div>'
+    + (actions ? '<div class="card__actions">' + actions + '</div>' : '')
+    + '</div>';
+}
+
 function devOverviewHTML(){
   return '<div class="dev-cols">'
     + '<div class="dev-col">'
@@ -5737,13 +5719,19 @@ function devOverviewHTML(){
 function devOpenCard(){
   var master = devFlag('enabled');
   return '<div class="card">'
-    + '<div class="card__head">' + icon('terminal',15) + '<span class="card__title">开放模式</span>'
-    +   '<div class="card__actions">'
-    +     '<span class="dev-hint" id="devMasterState">' + (master ? '已开启' : '已关闭') + '</span>'
-    +     '<label class="switch"><input type="checkbox" id="devMaster"' + (master ? ' checked' : '') + '><span class="switch__track"></span></label>'
-    +   '</div>'
-    + '</div>'
+    + devCardHead('terminal', '开放模式', '开启需要的功能，按需提供接口能力。', '')
     + '<div class="card__body dev-caps' + (master ? '' : ' dev-caps--dim') + '">'
+    +   '<div class="dev-cap dev-cap--master">'
+    +     '<div class="dev-cap__icon">' + icon('power',16) + '</div>'
+    +     '<div class="dev-cap__body">'
+    +       '<div class="dev-cap__title">全局开关</div>'
+    +       '<div class="dev-cap__desc">启用后，局域网内其它设备可以访问开放接口。</div>'
+    +     '</div>'
+    +     '<div class="dev-cap__right">'
+    +       '<span class="dev-cap__state" id="devMasterState">' + (master ? '已开启' : '已关闭') + '</span>'
+    +       '<label class="switch"><input type="checkbox" id="devMaster"' + (master ? ' checked' : '') + '><span class="switch__track"></span></label>'
+    +     '</div>'
+    +   '</div>'
     +   DEV_CAPS.map(devCapCard).join('')
     + '</div>'
     + '</div>';
@@ -5795,13 +5783,9 @@ function devCapCard(x){
 function devTokenCard(list){
   var tk = (devSt && devSt.tokens) || {};
   return '<div class="card">'
-    + '<div class="card__head">' + icon('lock',15) + '<span class="card__title">API Token</span>'
-    +   '<div class="card__actions">'
-    +     '<span class="dev-hint">' + (tk.total || 0) + ' / ' + (tk.limit || 50) + '</span>'
-    +     '<button class="btn btn--sm btn--accent" id="devTokenCreate">' + icon('plus',13) + '创建 Token</button>'
-    +   '</div>'
-    + '</div>'
-    + '<div class="dev-note">为第三方应用创建访问令牌，更安全地控制访问权限。服务端只保存哈希，明文仅在创建时显示一次。</div>'
+    + devCardHead('lock', 'API Token', '为第三方应用创建访问令牌，更安全地控制访问权限。',
+        '<span class="dev-hint">' + (tk.total || 0) + ' / ' + (tk.limit || 50) + '</span>'
+        + '<button class="btn btn--sm btn--primary" id="devTokenCreate">' + icon('plus',13) + '创建 Token</button>')
     + devTokenTable(list)
     + '</div>';
 }
@@ -5825,9 +5809,7 @@ function devTokenTable(list){
           + '<td><span class="dev-state ' + (t.enabled ? 'is-on' : 'is-off') + '">'
           +     '<span class="status-dot ' + (t.enabled ? 'is-online' : '') + '"></span>' + (t.enabled ? '启用' : '禁用') + '</span></td>'
           + '<td class="dev-acts">'
-          +   '<button class="btn btn--sm" data-tok-toggle="' + esc(t.id) + '" data-next="' + (t.enabled ? '0' : '1') + '">'
-          +     (t.enabled ? '禁用' : '启用') + '</button>'
-          +   '<button class="btn btn--sm btn--danger" data-tok-del="' + esc(t.id) + '" data-name="' + esc(t.name) + '">删除</button>'
+          +   '<button class="icon-btn" data-tok-menu="' + esc(t.id) + '" title="更多操作">' + icon('more-horizontal',16) + '</button>'
           + '</td>'
           + '</tr>';
       }).join('')
@@ -5838,15 +5820,12 @@ function devStatsCard(){
   var s = devStats || {};
   var t = s.totals || {};
   return '<div class="card">'
-    + '<div class="card__head">' + icon('chart',15) + '<span class="card__title">调用统计（近 ' + devStatDays + ' 天）</span>'
-    +   '<div class="card__actions">'
-    +     '<select class="input dev-sel" id="devDays">'
-    +       [7,14,30].map(function(d){
-              return '<option value="' + d + '"' + (d === devStatDays ? ' selected' : '') + '>近 ' + d + ' 天</option>';
-            }).join('')
-    +     '</select>'
-    +   '</div>'
-    + '</div>'
+    + devCardHead('chart', '调用统计', '接口调用量与耗时的趋势（近 ' + devStatDays + ' 天）。',
+        '<select class="input dev-sel" id="devDays">'
+        + [7,14,30].map(function(d){
+            return '<option value="' + d + '"' + (d === devStatDays ? ' selected' : '') + '>近 ' + d + ' 天</option>';
+          }).join('')
+        + '</select>')
     + devKpis(t, s.delta)
     + '<div class="dev-chart">' + devChart(s.series) + '</div>'
     + '<div class="dev-chart__foot">' + devStatRange(s.series) + '</div>'
@@ -5931,17 +5910,16 @@ function devAccessCard(){
   var base = location.origin;
   var ws = base.replace(/^http/, 'ws') + '/ws';
   return '<div class="card">'
-    + '<div class="card__head">' + icon('link',15) + '<span class="card__title">API 访问信息</span></div>'
+    + devCardHead('link', 'API 访问信息', '在局域网内使用以下地址访问 MiCam API。',
+        '<button class="btn btn--sm" id="devOpenBase">' + icon('external',13) + '在浏览器中打开</button>')
     + '<div class="card__body">'
-    +   '<div class="dev-note dev-note--tight">在局域网内使用以下地址访问摄像头 API</div>'
-    +   '<button class="btn btn--sm" id="devOpenBase">' + icon('external',13) + '在浏览器中打开</button>'
     +   devURLRow('基础地址', base, '')
     +   devURLRow('WebSocket', ws, '未实现')
     +   devURLRow('当前版本', 'v' + devVersion(), '')
     +   '<div class="dev-quick">'
     +     '<div class="dev-quick__head"><span>快速开始</span>'
     +       '<div class="segmented" id="devQuickSeg">'
-    +         [['curl','cURL'],['python','Python'],['js','JS']].map(function(x){
+    +         [['curl','cURL'],['python','Python'],['js','JavaScript']].map(function(x){
                   return '<button class="segmented__btn' + (devQuick === x[0] ? ' is-active' : '') + '" data-quick="' + x[0] + '">' + x[1] + '</button>';
                 }).join('')
     +       '</div>'
@@ -5989,12 +5967,9 @@ function devQuickCode(){
 
 function devLogsCard(list, compact){
   return '<div class="card">'
-    + '<div class="card__head">' + icon('activity',15) + '<span class="card__title">最近请求日志</span>'
-    +   '<div class="card__actions">'
-    +     '<span class="dev-hint">' + devLogCount() + '</span>'
-    +     (compact ? '<button class="btn btn--sm" id="devLogsMore">查看全部</button>' : '')
-    +   '</div>'
-    + '</div>'
+    + devCardHead('activity', '最近请求日志', '查看最近的 API 请求记录，用于调试和排查问题。',
+        '<span class="dev-hint">' + devLogCount() + '</span>'
+        + (compact ? '<button class="btn btn--sm" id="devLogsMore">查看全部</button>' : ''))
     + devLogTable(list)
     + '</div>';
 }
@@ -6029,24 +6004,27 @@ function devLogTable(list){
 
 function devToolsCard(){
   var tools = [
-    { ic:'file-video', t:'接口文档',     d:'Markdown 全文',  a:'docs' },
-    { ic:'download',   t:'下载 OpenAPI', d:'micam.json',     a:'openapi' },
-    { ic:'cpu',        t:'能力探测',     d:'硬件与编码器',    a:'caps' },
-    { ic:'refresh-cw', t:'Webhook 测试', d:'发一条示例事件',  a:'webhook' },
-    { ic:'database',   t:'诊断包',       d:'环境自检导出',    a:'diag' },
-    { ic:'timer',      t:'重置配置',     d:'恢复默认开关',    a:'reset', danger:true }
+    { ic:'file-video', t:'接口文档',     d:'浏览完整的 OpenAPI 文档', a:'docs',    btn:'查看文档 →' },
+    { ic:'download',   t:'下载 OpenAPI', d:'下载最新的 API 规范文件', a:'openapi', btn:'下载 JSON' },
+    { ic:'cpu',        t:'能力探测',     d:'检测当前可用的接口能力',  a:'caps',    btn:'开始检测' },
+    { ic:'refresh-cw', t:'Webhook 测试', d:'模拟发送事件到你的服务',  a:'webhook', btn:'开始测试' },
+    { ic:'database',   t:'诊断包',       d:'导出开发者诊断信息',      a:'diag',    btn:'导出诊断包' },
+    { ic:'timer',      t:'重置配置',     d:'恢复开发者相关设置',      a:'reset',   btn:'重置全部', danger:true }
   ];
   return '<div class="card">'
-    + '<div class="card__head">' + icon('set',15) + '<span class="card__title">工具与资源</span></div>'
+    + devCardHead('set', '工具与资源', '更多开发相关的工具和资源。', '')
     + '<div class="card__body dev-tools">'
     + tools.map(function(x){
-        return '<button class="dev-tool' + (x.danger ? ' dev-tool--danger' : '') + '" data-tool="' + x.a + '">'
-          + '<span class="dev-tool__icon">' + icon(x.ic,16) + '</span>'
-          + '<span class="dev-tool__body">'
-          +   '<span class="dev-tool__label">' + esc(x.t) + '</span>'
-          +   '<span class="dev-tool__desc">' + esc(x.d) + '</span>'
-          + '</span>'
-          + '</button>';
+        return '<div class="dev-tool' + (x.danger ? ' dev-tool--danger' : '') + '">'
+          + '<div class="dev-tool__top">'
+          +   '<span class="dev-tool__icon">' + icon(x.ic,15) + '</span>'
+          +   '<span class="dev-tool__body">'
+          +     '<span class="dev-tool__label">' + esc(x.t) + '</span>'
+          +     '<span class="dev-tool__desc">' + esc(x.d) + '</span>'
+          +   '</span>'
+          + '</div>'
+          + '<button class="btn btn--sm btn--block' + (x.danger ? ' btn--danger' : '') + '" data-tool="' + x.a + '">' + esc(x.btn) + '</button>'
+          + '</div>';
       }).join('')
     + '</div>'
     + '</div>';
@@ -6246,32 +6224,46 @@ function bindDevTokens(){
 }
 
 function bindDevTokenActions(){
-  Array.prototype.forEach.call(document.querySelectorAll('[data-tok-del]'), function(b){
-    b.onclick = function(){
-      var id = this.dataset.tokDel, name = this.dataset.name || '';
-      if(!confirm('删除 Token「' + name + '」？使用它的第三方会立即失效。')) return;
-      api('/api/dev/tokens?id=' + encodeURIComponent(id), { method: 'DELETE' }).then(function(r){
-        if(r && r.msg){ toast(r.msg, 'err'); return; }
-        toast('已删除', 'ok');
-        devReloadTokens();
-      }).catch(function(e){ toast('删除失败：' + e.message, 'err'); });
-    };
+  Array.prototype.forEach.call(document.querySelectorAll('[data-tok-menu]'), function(b){
+    b.onclick = function(){ devTokenMenu(this.dataset.tokMenu); };
   });
+}
 
-  Array.prototype.forEach.call(document.querySelectorAll('[data-tok-toggle]'), function(b){
-    b.onclick = function(){
-      var id = this.dataset.tokToggle;
-      var next = this.dataset.next === '1';
-      api('/api/dev/tokens', {
-        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ id: id, enabled: next })
-      }).then(function(r){
-        if(r && r.msg){ toast(r.msg, 'err'); return; }
-        toast(next ? '已启用' : '已禁用', 'ok');
-        devReloadTokens();
-      }).catch(function(e){ toast('操作失败：' + e.message, 'err'); });
-    };
-  });
+// devTokenMenu 一行 Token 的「···」菜单（参考图里操作列是一个省略号按钮）
+function devTokenMenu(id){
+  var t = devTokens.filter(function(x){ return x.id === id; })[0];
+  if(!t) return;
+  openModal('Token：' + t.name,
+    '<div class="ev-menu">'
+    + '<button class="ev-menu__item" data-tokact="toggle">' + icon(t.enabled ? 'close' : 'check',15) + (t.enabled ? '禁用该 Token' : '启用该 Token') + '</button>'
+    + '<button class="ev-menu__item" data-tokact="copy">' + icon('copy',15) + '复制前缀 ' + esc(t.prefix) + '…</button>'
+    + '<button class="ev-menu__item is-danger" data-tokact="del">' + icon('trash',15) + '删除该 Token</button>'
+    + '</div>',
+    function(root){
+      Array.prototype.forEach.call(root.querySelectorAll('[data-tokact]'), function(x){
+        x.onclick = function(){
+          var a = this.dataset.tokact;
+          if(a === 'toggle'){
+            api('/api/dev/tokens', {
+              method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ id: id, enabled: !t.enabled })
+            }).then(function(r){
+              if(r && r.msg){ toast(r.msg, 'err'); return; }
+              closeModal(); toast(t.enabled ? '已禁用' : '已启用', 'ok'); devReloadTokens();
+            }).catch(function(e){ toast('操作失败：' + e.message, 'err'); });
+          } else if(a === 'copy'){
+            copyText(t.prefix, '前缀已复制');
+          } else {
+            closeModal();
+            if(!confirm('删除 Token「' + t.name + '」？使用它的第三方会立即失效。')) return;
+            api('/api/dev/tokens?id=' + encodeURIComponent(id), { method: 'DELETE' }).then(function(r){
+              if(r && r.msg){ toast(r.msg, 'err'); return; }
+              toast('已删除', 'ok'); devReloadTokens();
+            }).catch(function(e){ toast('删除失败：' + e.message, 'err'); });
+          }
+        };
+      });
+    });
 }
 
 function devCreateTokenDialog(){
