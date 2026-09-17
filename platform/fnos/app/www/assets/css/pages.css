@@ -1578,10 +1578,18 @@
 .ai-row2 {
   display: grid; gap: var(--space-5);
   grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
-  align-items: start;
+  /* 等高：两栏内容量不同，start 会让矮的一侧下面空一大片 */
+  align-items: stretch;
   margin-top: var(--space-5);
 }
 @media (max-width: 1100px) { .ai-row2 { grid-template-columns: 1fr; } }
+/* 两栏高度不同会留出空白：让卡片等高，缩略图区/列表区吃掉剩余高度 */
+.ai-row2 > .card { display: flex; flex-direction: column; }
+.ai-row2 > .card > .ai-thumbs, .ai-row2 > .card > .ai-process { flex: 1; align-content: start; }
+/* 摘要卡只有 4 张缩略图，卡片被右栏拉高后会空一片：让缩略图铺成 2 行、每张更高 */
+.ai-row2 .ai-thumbs { grid-template-columns: repeat(2, minmax(0,1fr)); gap: var(--space-4); align-content: center; }
+.ai-row2 .ai-thumb { height: 100%; min-height: 120px; }
+.ai-row2 .ai-thumb img { height: 100%; }
 
 /* ---- 4 张统计卡 ---- */
 .ai-stats {
@@ -1657,6 +1665,8 @@
 .ai-thumbs__empty { grid-column: 1 / -1; padding: var(--space-5); text-align: center; color: var(--text-muted); font-size: var(--text-base); }
 
 /* ---- AI 处理情况 ---- */
+/* 卡片被右栏拉高后，环图与列表居中，别贴顶留白 */
+.ai-row2 .ai-process { flex: 1; align-items: center; justify-content: center; }
 .ai-process { display: flex; align-items: center; gap: var(--space-5); padding: 0 var(--space-5) var(--space-4); }
 .ai-process__ring { flex: 0 0 128px; }
 .ai-ring { width: 128px; height: 128px; }
@@ -1669,6 +1679,7 @@
 .ai-prow__label { color: var(--text-muted); flex: 1; }
 .ai-prow__val { color: var(--text); font-weight: var(--weight-medium); font-variant-numeric: tabular-nums; }
 
+.ai-row2 .ai-delta { margin-top: auto; }
 .ai-delta {
   display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
   padding: var(--space-3) var(--space-5) var(--space-4);
@@ -2141,9 +2152,12 @@
   border-color: var(--accent);
   background: radial-gradient(circle, var(--accent) 0 4px, transparent 4px);
 }
-.ai-mode__title { justify-content: flex-start; }
+.ai-mode__title { justify-content: flex-start; flex-wrap: wrap; row-gap: 2px; min-width: 0; }
+.ai-mode__title > span:first-child { flex: 0 1 auto; }
+.ai-mode__title > span:first-child, .ai-mode__title > b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.ai-mode__title .badge { flex: 0 0 auto; }
 .ai-mode__cost {
-  margin-left: auto;
+  margin-left: auto; white-space: nowrap; flex: 0 0 auto; max-width: 52%; font-size: var(--text-sm);
   font-size: var(--text-base); font-weight: var(--weight-medium);
   color: var(--text-secondary);
   padding: 2px 10px; border-radius: 999px;
@@ -2762,7 +2776,10 @@
 }
 @media (max-width: 1000px) { .ai-auto__stats { grid-template-columns: repeat(2, 1fr); } }
 
-.ai-autostat { display: flex; align-items: flex-start; gap: var(--space-3); }
+.ai-autostat { display: flex; align-items: flex-start; gap: var(--space-3); min-width: 0; }
+.ai-auto__stats > .ai-autostat + .ai-autostat { border-left: 1px solid var(--border-subtle); padding-left: var(--space-4); }
+.ai-autostat__body { min-width: 0; }
+.ai-autostat__label, .ai-autostat__hint, .ai-autostat__val { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ai-autostat__icon { color: var(--text-muted); flex: 0 0 auto; margin-top: 2px; }
 .ai-autostat__body { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
 .ai-autostat__label { font-size: var(--text-sm); color: var(--text-muted); }
