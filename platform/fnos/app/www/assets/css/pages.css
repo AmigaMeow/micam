@@ -3100,9 +3100,9 @@
    SETTINGS 3-COL — 设置页（左 Tab + 中内容 + 右摘要）
    ========================================================================== */
 
-.set3 { display:grid; gap: var(--space-5); grid-template-columns: 200px minmax(0,1fr) 300px; align-items:start; }
-@media (max-width:1300px){ .set3{ grid-template-columns: 180px minmax(0,1fr);} .set3__side{ grid-column:1/-1; display:grid; grid-template-columns:repeat(3,1fr); gap:var(--space-4);} }
-@media (max-width:900px){ .set3{ grid-template-columns:1fr;} .set3__side{ grid-template-columns:1fr;} }
+/* 两栏：左导航 + 内容。v0.40.1 去掉右列摘要卡（标题与左栏完全重复） */
+.set3 { display:grid; gap: var(--space-5); grid-template-columns: 200px minmax(0,1fr); align-items:start; }
+@media (max-width:900px){ .set3{ grid-template-columns:1fr;} }
 
 /* 左：竖排 Tab */
 .set3__nav { display:flex; flex-direction:column; gap:2px; position:sticky; top:var(--space-4); }
@@ -3121,7 +3121,7 @@
 .set3__tab.is-active .set3__tab-en { color: color-mix(in oklab, var(--accent) 70%, transparent); }
 
 /* 中：内容 */
-.set3__main { display:flex; flex-direction:column; gap: var(--space-5); min-width:0; }
+.set3__main { display:flex; flex-direction:column; gap: var(--space-5); min-width:0; max-width:1040px; }
 .set3__sec { background: var(--surface-1); border:1px solid var(--border-subtle); border-radius: var(--radius-xl); overflow:hidden; }
 .set3__sec-head { display:flex; align-items:baseline; gap:var(--space-2); padding: var(--space-4) var(--space-5) var(--space-3); border-bottom:1px solid var(--border-subtle); }
 .set3__sec-head > span { font-size: var(--text-lg); font-weight: var(--weight-semibold); }

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <title>小米摄像头</title>
-<meta name="micam-build" content="2026-09-17 11:49:30">
+<meta name="micam-build" content="2026-09-17 11:52:34">
 <!-- 样式内联：飞牛网关会剥前缀，相对路径不可靠（详见 build/assemble-web.js）-->
 <style>
 
@@ -4421,9 +4421,9 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; line-h
    SETTINGS 3-COL — 设置页（左 Tab + 中内容 + 右摘要）
    ========================================================================== */
 
-.set3 { display:grid; gap: var(--space-5); grid-template-columns: 200px minmax(0,1fr) 300px; align-items:start; }
-@media (max-width:1300px){ .set3{ grid-template-columns: 180px minmax(0,1fr);} .set3__side{ grid-column:1/-1; display:grid; grid-template-columns:repeat(3,1fr); gap:var(--space-4);} }
-@media (max-width:900px){ .set3{ grid-template-columns:1fr;} .set3__side{ grid-template-columns:1fr;} }
+/* 两栏：左导航 + 内容。v0.40.1 去掉右列摘要卡（标题与左栏完全重复） */
+.set3 { display:grid; gap: var(--space-5); grid-template-columns: 200px minmax(0,1fr); align-items:start; }
+@media (max-width:900px){ .set3{ grid-template-columns:1fr;} }
 
 /* 左：竖排 Tab */
 .set3__nav { display:flex; flex-direction:column; gap:2px; position:sticky; top:var(--space-4); }
@@ -4442,7 +4442,7 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; line-h
 .set3__tab.is-active .set3__tab-en { color: color-mix(in oklab, var(--accent) 70%, transparent); }
 
 /* 中：内容 */
-.set3__main { display:flex; flex-direction:column; gap: var(--space-5); min-width:0; }
+.set3__main { display:flex; flex-direction:column; gap: var(--space-5); min-width:0; max-width:1040px; }
 .set3__sec { background: var(--surface-1); border:1px solid var(--border-subtle); border-radius: var(--radius-xl); overflow:hidden; }
 .set3__sec-head { display:flex; align-items:baseline; gap:var(--space-2); padding: var(--space-4) var(--space-5) var(--space-3); border-bottom:1px solid var(--border-subtle); }
 .set3__sec-head > span { font-size: var(--text-lg); font-weight: var(--weight-semibold); }
@@ -5018,56 +5018,55 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; line-h
 // 说明：下面的行号会随改动漂移，找代码时**直接搜注释本身**更可靠，例如：
 //   搜 `// ===== 页面：事件中心` 或 `// ============ Tab 3：调查`
 //
-//   状态                                        L    60 -    78
-//   工具                                        L    79 -    81
-//   通用弹窗                                    L    82 -   183
-//   移动端菜单                                  L   184 -   202
-//   菜单                                        L   203 -   266
-//   绑定移动端交互                              L   267 -   313
-//   数据                                        L   314 -   339
-//   页面：设备详情（P1）                        L   340 -   686
-//   页面：设备列表                              L   687 -  1058
-//   为什么不用实时快照                          L  1059 -  1155
-//   页面：首页 / 家庭概览                       L  1156 -  1504
-//   页面：事件中心（增强版，对齐效果图 P0-3）   L  1505 -  1951
-//   事件详情弹窗（对齐效果图 P0-3 图 2）        L  1952 -  2230
-//   页面：AI 智能                               L  2231 -  2338
-//   Tab 1：概览                                 L  2339 -  2561
-//   Tab 2：搜索                                 L  2562 -  2703
-//   Tab 3：调查                                 L  2704 -  3011
-//   Tab 4：设置                                 L  3012 -  3411
-//   绑定                                        L  3412 -  3679
-//   页面：实时预览                              L  3680 -  4446
-//   云台控制                                    L  4447 -  4522
-//   页面：回放                                  L  4523 -  4794
-//   页面：存储监控                              L  4795 -  4883
-//   存储策略配置                                L  4884 -  5083
-//   页面：多路预览                              L  5084 -  5390
-//   播放位置记忆                                L  5391 -  5411
-//   时间轴缩略图                                L  5412 -  5458
-//   导出片段                                    L  5459 -  5541
-//   导出管理                                    L  5542 -  5600
-//   批量删除                                    L  5601 -  5718
-//   页面：账号管理                              L  5719 -  5828
-//   页面：安装向导                              L  5829 -  5897
-//   页面：开发者                                L  5898 -  6095
-//   页面：系统设置                              L  6096 -  6208
-//   凭据状态提示                                L  6209 -  6262
-//   云台方向翻转（按设备记住）                  L  6263 -  6281
-//   动作                                        L  6282 -  6319
-//   扫码登录                                    L  6320 -  6359
-//   宿主 SDK 集成                               L  6360 -  6386
-//   事件通知配置                                L  6387 -  6387
-//   AI 设置                                     L  6388 -  6667
-//   诊断功能                                    L  6668 -  6717
-//   加载 hls.js（HLS 播放库）                   L  6718 -  6719
-//   为什么不用相对路径                          L  6720 -  6759
-//   开放模式（开发者选项）解锁                  L  6760 -  6787
-//   启动                                        L  6788 -  6830
+//   状态                                        L    59 -    77
+//   工具                                        L    78 -    80
+//   通用弹窗                                    L    81 -   182
+//   移动端菜单                                  L   183 -   201
+//   菜单                                        L   202 -   265
+//   绑定移动端交互                              L   266 -   314
+//   数据                                        L   315 -   340
+//   页面：设备详情（P1）                        L   341 -   687
+//   页面：设备列表                              L   688 -  1059
+//   为什么不用实时快照                          L  1060 -  1156
+//   页面：首页 / 家庭概览                       L  1157 -  1505
+//   页面：事件中心（增强版，对齐效果图 P0-3）   L  1506 -  1952
+//   事件详情弹窗（对齐效果图 P0-3 图 2）        L  1953 -  2231
+//   页面：AI 智能                               L  2232 -  2339
+//   Tab 1：概览                                 L  2340 -  2562
+//   Tab 2：搜索                                 L  2563 -  2704
+//   Tab 3：调查                                 L  2705 -  3012
+//   Tab 4：设置                                 L  3013 -  3412
+//   绑定                                        L  3413 -  3680
+//   页面：实时预览                              L  3681 -  4476
+//   云台控制                                    L  4477 -  4552
+//   页面：回放                                  L  4553 -  4824
+//   页面：存储监控                              L  4825 -  4825
+//   页面：存储监控（对齐效果图）                L  4826 -  5178
+//   页面：账号管理                              L  5179 -  5179
+//   页面：账号管理（对齐效果图）                L  5180 -  5475
+//   页面：安装向导                              L  5476 -  5544
+//   页面：开发者                                L  5545 -  5545
+//   页面：开发者（对齐效果图：7 个 Tab）        L  5546 -  6658
+//   页面：系统设置                              L  6659 -  6659
+//   页面：设置（对齐效果图）                    L  6660 -  7009
+//   凭据状态提示                                L  7010 -  7063
+//   云台方向翻转（按设备记住）                  L  7064 -  7082
+//   动作                                        L  7083 -  7120
+//   扫码登录                                    L  7121 -  7160
+//   宿主 SDK 集成                               L  7161 -  7187
+//   事件通知配置                                L  7188 -  7188
+//   AI 设置                                     L  7189 -  7468
+//   诊断功能                                    L  7469 -  7518
+//   加载 hls.js（HLS 播放库）                   L  7519 -  7520
+//   为什么不用相对路径                          L  7521 -  7560
+//   开放模式（开发者选项）解锁                  L  7561 -  7588
+//   启动                                        L  7589 -  7628
+//                                               L  7629 -  7640
+//                                               L  7641 -  8168
+//   顶栏右上角：用户菜单 + 全局搜索             L  8169 -  8406
 //
 // 重新生成索引：node build/gen-js-index.js
 // ===== 分节索引结束 =====
-
 (function(){
 "use strict";
 
@@ -11712,7 +11711,6 @@ var SET_TABS = [
 
 function paintSettings(c){
   var cfg = setCfg || {};
-  var sum = setSum || {};
 
   c.innerHTML = '<div class="page__inner">'
 
@@ -11739,46 +11737,17 @@ function paintSettings(c){
     +   '</aside>'
 
       // 中：内容
+      //
+      // v0.40.1 去掉了原来的右列「录像 / 通知 / 系统 摘要卡」：
+      // 那三张卡标题和左栏导航完全同名、又是写死不随当前 Tab 变化
+      // （在「录像」页右侧还挂着一张「录像」卡），看起来就是第二份导航。
     +   '<div class="set3__main" id="setMain"></div>'
-
-      // 右：摘要卡
-    +   '<aside class="set3__side">' + setSideCards(sum) + '</aside>'
 
     + '</div>'
     + '</div>';
 
   paintSetMain();
   bindSettings(c);
-}
-
-// setSideCards 右侧三个摘要卡
-function setSideCards(sum){
-  var rec = sum.recording || {}, no = sum.notify || {}, sy = sum.system || {};
-  function card(icon0, title, tab, rows){
-    return '<div class="set3__card' + (setTab===tab?' is-current':'') + '" data-settab="' + tab + '">'
-      + '<div class="set3__card-head">' + icon(icon0,15) + '<span>' + title + '</span>'
-      +   icon('chevron-right',15) + '</div>'
-      + rows.map(function(r){
-            return '<div class="set3__kv"><span>' + r[0] + '</span><b>' + r[1] + '</b></div>';
-          }).join('')
-      + '</div>';
-  }
-  return ''
-    + card('film', '录像', 'record', [
-        ['默认录像计划', esc(rec.schedule==='always'?'全天':(rec.schedule||'全天'))],
-        ['保留天数', (rec.keepDays||7) + ' 天'],
-        ['循环覆盖', rec.loop===false?'关闭':'开启'],
-      ])
-    + card('bell', '通知', 'notify', [
-        ['免打扰时间', esc((no.quietFrom||'22:00') + ' - ' + (no.quietTo||'07:00'))],
-        ['推送通知', no.push===false?'关闭':'开启'],
-        ['邮件通知', no.email?'开启':'关闭'],
-      ])
-    + card('monitor', '系统', 'system', [
-        ['自动更新', sy.autoUpdate===false?'关闭':'开启'],
-        ['AI 设置', '<span class="set3__link">前往 AI 智能页面 ' + icon('chevron-right',12) + '</span>'],
-        ['设备与维护', '<span class="set3__link">' + icon('chevron-right',12) + '</span>'],
-      ]);
 }
 
 // paintSetMain 中间内容
