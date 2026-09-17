@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <title>小米摄像头</title>
-<meta name="micam-build" content="2026-09-17 11:38:45">
+<meta name="micam-build" content="2026-09-17 11:43:51">
 <!-- 样式内联：飞牛网关会剥前缀，相对路径不可靠（详见 build/assemble-web.js）-->
 <style>
 
@@ -12671,6 +12671,542 @@ api("/api/setup/check").then(function(st){
 }).catch(function(){
   render();
 });
+// ===================================================================
+// 恢复：多路预览页 / 回放导出管理 / 时长与体积格式化
+//
+// 背景：v0.38.0（2026-09-17 18:01 的 fpk）里这些实现是完整的，
+// 但 19:05 的「前端源文件纳管」提交把 app.js 换成了一份**缺了一整块**的版本：
+//   · renderGrid 不存在 -> 点「多路预览」直接 ReferenceError，整页打不开
+//   · fmtDur 不存在 -> 事件页整页「加载失败」
+//   · fmtSizeMB 不存在 -> 回放页整页「加载失败」
+//   · showExportManager 不存在 -> 回放页「导出管理」按钮报错
+// 下面这些函数是从 18:01 的 fpk（/vol1/1000/micam.fpk -> app/www/index.html）
+// 原样取回的，只补了依赖的状态变量声明，未做任何改写。
+// 校验：node build/check-classes.js + 浏览器实测（多路预览/事件/回放三页截图）
+// ===================================================================
+
+// 多路预览页的状态（原样恢复）
+var gridTimers = [];
+var gridLayout = 4;                    // 1 / 4 / 9 / 16
+var gridFocus = '';
+var gridSelected = null;               // null = 还没初始化
+var gridPatrol = false;
+var gridPatrolTimer = null;
+var gridInfoMode = 'full';             // full=名称+时间 / name=仅名称 / none=隐藏
+var gridFps = 3;
+var gridQuery = '';
+
+function gridLoad(){
+  if(gridSelected !== null) return gridSelected;
+  var out = [];
+  try { out = JSON.parse(localStorage.getItem(gridKey()) || 'null') || []; } catch(e){}
+  gridSelected = out;
+  return out;
+}
+
+function gridKey(){ return 'micam.grid.selected'; }
+
+function gridSave(){
+  try { localStorage.setItem(gridKey(), JSON.stringify(gridSelected || [])); } catch(e){}
+}
+
+function tile(d){
+      var nm = d.alias || d.name;
+      var en = d.aliasEn || '';
+      var foc = d.name === gridFocus;
+      var on = d.isOnline;
+      var info = gridInfoMode !== 'none';
+      return '<div class="gtile' + (foc ? ' is-focus' : '') + (on ? '' : ' is-offline')
+        + '" data-dev="' + esc(d.name) + '">'
+        + (on ? '<img data-stream="' + esc(d.name) + '" alt="">'
+              : '<div class="gtile__off">' + icon('video-off',30) + '<span>离线</span></div>')
+        + (info && gridInfoMode === 'full' && on
+            ? '<div class="gtile__time"><span class="rec-dot"></span><span data-gclock="' + esc(d.name) + '">' + clockNow() + '</span></div>'
+            : '')
+        + (info
+            ? '<div class="gtile__foot">'
+            +   '<div class="gtile__info">'
+            +     '<div class="gtile__name">' + esc(nm) + (en && gridInfoMode === 'full' ? ' <em>' + esc(en) + '</em>' : '') + '</div>'
+            +     (gridInfoMode === 'full' ? '<div class="gtile__meta">' + (d.shared ? '共享 · ' : '') + (on ? '在线' : '离线') + '</div>' : '')
+            +   '</div>'
+            +   '<div class="gtile__acts">'
+            +     '<button class="gtile__btn" data-gmax="1" title="放大">' + icon('maximize',15) + '</button>'
+            +     '<button class="gtile__btn" data-gfocus="1" title="聚焦">' + icon('eye',15) + '</button>'
+            +   '</div>'
+            + '</div>'
+            : '')
+        + (foc ? '<span class="gtile__focusbar"></span>' : '')
+        + '</div>';
+    }
+
+function devicePanel(){
+      var q = (gridQuery || '').trim().toLowerCase();
+      var list = all.filter(function(d){
+        if(!q) return true;
+        return ((d.alias||'') + ' ' + (d.aliasEn||'') + ' ' + d.name).toLowerCase().indexOf(q) >= 0;
+      });
+      var items = list.map(function(d){
+        var added = (gridSelected||[]).indexOf(d.name) >= 0;
+        var nm = d.alias || d.name;
+        var en = d.aliasEn || '';
+        return '<div class="gd-item' + (added ? ' is-added' : '') + '" data-dev="' + esc(d.name) + '">'
+          + '<span class="gd-item__thumb"><img loading="lazy" data-gdthumb="' + esc(d.name) + '" alt=""></span>'
+          + '<span class="gd-item__body">'
+          +   '<span class="gd-item__name">' + esc(nm) + '</span>'
+          +   (en ? '<span class="gd-item__en">' + esc(en) + '</span>' : '')
+          +   '<span class="gd-item__status"><span class="status-dot ' + (d.isOnline?'is-online':'is-offline') + '"></span>'
+          +     (d.isOnline ? '在线' : '离线') + '</span>'
+          + '</span>'
+          + '<button class="gd-item__btn' + (added ? ' is-del' : '') + '" data-gtoggle="' + esc(d.name) + '">'
+          +   (added ? '移除' : '添加') + '</button>'
+          + '</div>';
+      }).join('');
+
+      return '<div class="gd-panel__head">'
+        +   '<span class="gd-panel__title">可选设备 <em>Available</em></span>'
+        +   '<span class="gd-panel__count">' + (gridSelected||[]).length + ' / ' + all.length + '</span>'
+        + '</div>'
+        + '<div class="search gd-panel__search">' + icon('search',14)
+        +   '<input class="input" id="gdSearch" type="search" placeholder="搜索摄像头…" value="' + esc(gridQuery||'') + '">'
+        + '</div>'
+        + '<div class="gd-panel__list">' + (items || empty('camera','没有匹配的设备','','')) + '</div>'
+        + '<div class="gd-panel__hint">' + icon('move',14) + '点「添加」把设备放进画面</div>';
+    }
+
+function gotoLiveByName(name){
+  var d = (devices||[]).filter(function(x){ return x.name === name; })[0];
+  gotoLive(d ? d.did : name);
+}
+
+function setFocus(name){
+      gridFocus = name;
+      Array.prototype.forEach.call(c.querySelectorAll('.gtile'), function(el){
+        el.classList.toggle('is-focus', el.dataset.dev === name);
+      });
+    }
+
+function setPatrol(on){
+      gridPatrol = on;
+      if(gridPatrolTimer){ clearInterval(gridPatrolTimer); gridPatrolTimer = null; }
+      if(!on) return;
+      gridPatrolTimer = setInterval(function(){
+        if(shown.length < 2) return;
+        var i = -1;
+        shown.forEach(function(d, k){ if(d.name === gridFocus) i = k; });
+        var next = shown[(i + 1) % shown.length];
+        gridFocus = next.name;
+        Array.prototype.forEach.call(c.querySelectorAll('.gtile'), function(el){
+          el.classList.toggle('is-focus', el.dataset.dev === gridFocus);
+        });
+      }, 15000);
+    }
+
+function bindPanel(){
+      Array.prototype.forEach.call(document.querySelectorAll('[data-gtoggle]'), function(b){
+        b.onclick = function(){
+          var name = this.dataset.gtoggle;
+          var sel2 = gridLoad().slice();
+          var i = sel2.indexOf(name);
+          if(i >= 0){ sel2.splice(i,1); toast('已移除'); }
+          else {
+            if(sel2.length >= gridLayout){ toast('最多 ' + gridLayout + ' 路，请先调大布局', 'warn'); return; }
+            sel2.push(name); toast('已添加', 'ok');
+          }
+          gridSelected = sel2; gridSave();
+          stopGrid();
+          renderGrid(c);
+        };
+      });
+      Array.prototype.forEach.call(document.querySelectorAll('img[data-gdthumb]'), function(img, i){
+        var name = img.dataset.gdthumb;
+        var dev = all.filter(function(d){ return d.name === name; })[0];
+        if(!dev || !dev.isOnline) return;
+        setTimeout(function(){
+          fetch(apiUrl('/api/live/thumb?did=' + encodeURIComponent(dev.did) + '&w=320'), { cache:'no-store' })
+            .then(function(r){ return r.ok ? r.blob() : null; })
+            .then(function(b){ if(b && document.body.contains(img)) img.src = URL.createObjectURL(b); })
+            .catch(function(){});
+        }, i * 100);
+      });
+    }
+
+function renderGrid(c){
+  c.innerHTML = '<div class="page__inner">' + loading('加载设备…') + '</div>';
+
+  loadDevices().then(function(){
+    var all = devices || [];
+    var sel = gridLoad().slice();
+
+    // 清理已不存在的设备
+    var before = sel.length;
+    sel = sel.filter(function(n){ return all.some(function(d){ return d.name === n; }); });
+    if(sel.length !== before){ gridSelected = sel; gridSave(); }
+
+    // 首次进入：自动加前几个在线设备，免得看到空白
+    if(gridSelected.length === 0 && !localStorage.getItem('micam.grid.inited')){
+      sel = all.filter(function(d){ return d.isOnline; }).slice(0, 4).map(function(d){ return d.name; });
+      gridSelected = sel; gridSave();
+      try { localStorage.setItem('micam.grid.inited', '1'); } catch(e){}
+    }
+
+    var cap = gridLayout;
+    var shown = sel.map(function(n){
+      return all.filter(function(d){ return d.name === n; })[0];
+    }).filter(Boolean).slice(0, cap);
+
+    if(!gridFocus || !shown.some(function(d){ return d.name === gridFocus; })){
+      gridFocus = shown.length ? shown[0].name : '';
+    }
+
+    function tile(d){
+      var nm = d.alias || d.name;
+      var en = d.aliasEn || '';
+      var foc = d.name === gridFocus;
+      var on = d.isOnline;
+      var info = gridInfoMode !== 'none';
+      return '<div class="gtile' + (foc ? ' is-focus' : '') + (on ? '' : ' is-offline')
+        + '" data-dev="' + esc(d.name) + '">'
+        + (on ? '<img data-stream="' + esc(d.name) + '" alt="">'
+              : '<div class="gtile__off">' + icon('video-off',30) + '<span>离线</span></div>')
+        + (info && gridInfoMode === 'full' && on
+            ? '<div class="gtile__time"><span class="rec-dot"></span><span data-gclock="' + esc(d.name) + '">' + clockNow() + '</span></div>'
+            : '')
+        + (info
+            ? '<div class="gtile__foot">'
+            +   '<div class="gtile__info">'
+            +     '<div class="gtile__name">' + esc(nm) + (en && gridInfoMode === 'full' ? ' <em>' + esc(en) + '</em>' : '') + '</div>'
+            +     (gridInfoMode === 'full' ? '<div class="gtile__meta">' + (d.shared ? '共享 · ' : '') + (on ? '在线' : '离线') + '</div>' : '')
+            +   '</div>'
+            +   '<div class="gtile__acts">'
+            +     '<button class="gtile__btn" data-gmax="1" title="放大">' + icon('maximize',15) + '</button>'
+            +     '<button class="gtile__btn" data-gfocus="1" title="聚焦">' + icon('eye',15) + '</button>'
+            +   '</div>'
+            + '</div>'
+            : '')
+        + (foc ? '<span class="gtile__focusbar"></span>' : '')
+        + '</div>';
+    }
+
+    function devicePanel(){
+      var q = (gridQuery || '').trim().toLowerCase();
+      var list = all.filter(function(d){
+        if(!q) return true;
+        return ((d.alias||'') + ' ' + (d.aliasEn||'') + ' ' + d.name).toLowerCase().indexOf(q) >= 0;
+      });
+      var items = list.map(function(d){
+        var added = (gridSelected||[]).indexOf(d.name) >= 0;
+        var nm = d.alias || d.name;
+        var en = d.aliasEn || '';
+        return '<div class="gd-item' + (added ? ' is-added' : '') + '" data-dev="' + esc(d.name) + '">'
+          + '<span class="gd-item__thumb"><img loading="lazy" data-gdthumb="' + esc(d.name) + '" alt=""></span>'
+          + '<span class="gd-item__body">'
+          +   '<span class="gd-item__name">' + esc(nm) + '</span>'
+          +   (en ? '<span class="gd-item__en">' + esc(en) + '</span>' : '')
+          +   '<span class="gd-item__status"><span class="status-dot ' + (d.isOnline?'is-online':'is-offline') + '"></span>'
+          +     (d.isOnline ? '在线' : '离线') + '</span>'
+          + '</span>'
+          + '<button class="gd-item__btn' + (added ? ' is-del' : '') + '" data-gtoggle="' + esc(d.name) + '">'
+          +   (added ? '移除' : '添加') + '</button>'
+          + '</div>';
+      }).join('');
+
+      return '<div class="gd-panel__head">'
+        +   '<span class="gd-panel__title">可选设备 <em>Available</em></span>'
+        +   '<span class="gd-panel__count">' + (gridSelected||[]).length + ' / ' + all.length + '</span>'
+        + '</div>'
+        + '<div class="search gd-panel__search">' + icon('search',14)
+        +   '<input class="input" id="gdSearch" type="search" placeholder="搜索摄像头…" value="' + esc(gridQuery||'') + '">'
+        + '</div>'
+        + '<div class="gd-panel__list">' + (items || empty('camera','没有匹配的设备','','')) + '</div>'
+        + '<div class="gd-panel__hint">' + icon('move',14) + '点「添加」把设备放进画面</div>';
+    }
+
+    c.innerHTML = '<div class="page__inner">'
+
+      + '<nav class="crumbs">'
+      +   '<a href="javascript:;" data-go="devices">' + icon('camera',14) + '<span>摄像头</span></a>'
+      +   '<span class="crumbs__sep">' + icon('chevron-right',13) + '</span>'
+      +   '<span class="crumbs__cur">多路预览</span>'
+      + '</nav>'
+
+      + '<div class="list-head">'
+      +   '<div class="list-head__main">'
+      +     '<h1 class="list-head__title">多路预览</h1>'
+      +     '<div class="list-head__en">Multi-Camera View</div>'
+      +   '</div>'
+      +   '<div class="list-head__acts">'
+      +     '<div class="segmented" id="gridLayout">'
+      +       [1,4,9,16].map(function(n){
+                return '<button class="segmented__btn' + (gridLayout===n?' is-active':'') + '" data-gl="' + n + '">' + n + ' 路</button>';
+              }).join('')
+      +     '</div>'
+      +   '</div>'
+      + '</div>'
+
+      + '<div class="gbar">'
+      +   '<button class="gbar__btn' + (gridPatrol ? ' is-active' : '') + '" id="gPatrol">'
+      +     icon('refresh',14) + '轮巡' + (gridPatrol ? '中' : '') + '</button>'
+      +   '<label class="gbar__sel">' + icon('eye',14)
+      +     '<select id="gInfo">'
+      +       '<option value="full"' + (gridInfoMode==='full'?' selected':'') + '>显示名称+时间</option>'
+      +       '<option value="name"' + (gridInfoMode==='name'?' selected':'') + '>仅显示名称</option>'
+      +       '<option value="none"' + (gridInfoMode==='none'?' selected':'') + '>隐藏信息</option>'
+      +     '</select></label>'
+      +   '<label class="gbar__sel">' + icon('gauge',14)
+      +     '<select id="gFps">'
+      +       [1,3,5,10].map(function(v){
+                return '<option value="' + v + '"' + (gridFps===v?' selected':'') + '>' + v + ' fps</option>';
+              }).join('')
+      +     '</select></label>'
+      +   '<span class="gbar__right">在线 ' + all.filter(function(d){ return d.isOnline; }).length + ' / 共 ' + all.length + ' 台</span>'
+      + '</div>'
+
+      + '<div class="grid-wrap">'
+      +   '<div class="ggrid ggrid--' + (shown.length === 1 ? 1 : (gridLayout === 16 ? 4 : gridLayout === 9 ? 3 : 2))
+      +     '" id="gridBox">'
+      +     (shown.length ? shown.map(tile).join('') : empty('camera','还没有添加摄像头','从右侧选择要看的设备',''))
+      +   '</div>'
+      +   '<aside class="gd-panel" id="gdPanel">' + devicePanel() + '</aside>'
+      + '</div>'
+
+      + '</div>';
+
+    // ---- 开流 ----
+    // 注意：宫格用**设备名**作 key（录像接口的 name 参数），
+    // 但实时流接口要的是 **did**，所以这里要查一次。
+    Array.prototype.forEach.call(c.querySelectorAll('img[data-stream]'), function(img){
+      var dev = all.filter(function(d){ return d.name === img.dataset.stream; })[0];
+      if(!dev){ return; }
+      img.src = apiUrl('/api/live/mjpeg?did=' + encodeURIComponent(dev.did) + '&fps=' + gridFps + '&w=640');
+    });
+
+    // ---- 时间戳 ----
+    gridTimers.push(setInterval(function(){
+      Array.prototype.forEach.call(document.querySelectorAll('[data-gclock]'), function(el){
+        el.textContent = clockNow();
+      });
+    }, 1000));
+
+    // ---- 轮巡 ----
+    function setPatrol(on){
+      gridPatrol = on;
+      if(gridPatrolTimer){ clearInterval(gridPatrolTimer); gridPatrolTimer = null; }
+      if(!on) return;
+      gridPatrolTimer = setInterval(function(){
+        if(shown.length < 2) return;
+        var i = -1;
+        shown.forEach(function(d, k){ if(d.name === gridFocus) i = k; });
+        var next = shown[(i + 1) % shown.length];
+        gridFocus = next.name;
+        Array.prototype.forEach.call(c.querySelectorAll('.gtile'), function(el){
+          el.classList.toggle('is-focus', el.dataset.dev === gridFocus);
+        });
+      }, 15000);
+    }
+    setPatrol(gridPatrol);
+
+    // ---- 交互 ----
+    function setFocus(name){
+      gridFocus = name;
+      Array.prototype.forEach.call(c.querySelectorAll('.gtile'), function(el){
+        el.classList.toggle('is-focus', el.dataset.dev === name);
+      });
+    }
+
+    Array.prototype.forEach.call(c.querySelectorAll('.gtile'), function(el){
+      var name = el.dataset.dev;
+      el.onclick = function(ev){
+        if(ev.target.closest('[data-gmax]')){ gotoLiveByName(name); return; }
+        if(ev.target.closest('[data-gfocus]')){ setFocus(name); return; }
+        setFocus(name);
+      };
+      el.ondblclick = function(){ gotoLiveByName(name); };
+    });
+
+    Array.prototype.forEach.call(c.querySelectorAll('[data-gl]'), function(b){
+      b.onclick = function(){
+        var v = parseInt(this.dataset.gl, 10);
+        if(v === gridLayout) return;
+        gridLayout = v;
+        stopGrid();
+        renderGrid(c);
+      };
+    });
+
+    var gp = document.getElementById('gPatrol');
+    if(gp) gp.onclick = function(){ stopGrid(); gridPatrol = !gridPatrol; renderGrid(c); };
+
+    var gi = document.getElementById('gInfo');
+    if(gi) gi.onchange = function(){ gridInfoMode = this.value; stopGrid(); renderGrid(c); };
+
+    var gf = document.getElementById('gFps');
+    if(gf) gf.onchange = function(){ gridFps = parseInt(this.value,10) || 3; stopGrid(); renderGrid(c); };
+
+    var gs = document.getElementById('gdSearch');
+    if(gs){
+      var deb = null;
+      gs.oninput = function(){
+        gridQuery = this.value;
+        if(deb) clearTimeout(deb);
+        deb = setTimeout(function(){
+          var panel = document.getElementById('gdPanel');
+          if(panel){ panel.innerHTML = devicePanel(); bindPanel(); }
+        }, 200);
+      };
+    }
+
+    function bindPanel(){
+      Array.prototype.forEach.call(document.querySelectorAll('[data-gtoggle]'), function(b){
+        b.onclick = function(){
+          var name = this.dataset.gtoggle;
+          var sel2 = gridLoad().slice();
+          var i = sel2.indexOf(name);
+          if(i >= 0){ sel2.splice(i,1); toast('已移除'); }
+          else {
+            if(sel2.length >= gridLayout){ toast('最多 ' + gridLayout + ' 路，请先调大布局', 'warn'); return; }
+            sel2.push(name); toast('已添加', 'ok');
+          }
+          gridSelected = sel2; gridSave();
+          stopGrid();
+          renderGrid(c);
+        };
+      });
+      Array.prototype.forEach.call(document.querySelectorAll('img[data-gdthumb]'), function(img, i){
+        var name = img.dataset.gdthumb;
+        var dev = all.filter(function(d){ return d.name === name; })[0];
+        if(!dev || !dev.isOnline) return;
+        setTimeout(function(){
+          fetch(apiUrl('/api/live/thumb?did=' + encodeURIComponent(dev.did) + '&w=320'), { cache:'no-store' })
+            .then(function(r){ return r.ok ? r.blob() : null; })
+            .then(function(b){ if(b && document.body.contains(img)) img.src = URL.createObjectURL(b); })
+            .catch(function(){});
+        }, i * 100);
+      });
+    }
+    bindPanel();
+
+    var gb = c.querySelector('[data-go]');
+    if(gb) gb.onclick = function(){ page='devices'; renderMenu(); render(); };
+  }).catch(function(err){
+    c.innerHTML = '<div class="page__inner">' + errorCard(err, function(){ renderGrid(c); }) + '</div>';
+  });
+}
+
+function showExportManager(){
+  api("/api/recordings/export/list").then(function(d){
+    var list = d.exports || [];
+    var html = "<div style=\"max-height:60vh;overflow:auto\">";
+
+    if(!list.length){
+      html += "<div style=\"padding:20px;text-align:center;color:var(--text-3);font-size:13px\">暂无导出文件</div>";
+    } else {
+      html += "<div style=\"font-size:12px;color:var(--text-3);margin-bottom:10px\">"
+        + "共 " + list.length + " 个 · " + fmtSizeMB(d.totalMB||0) + " · 目录 " + esc(d.dir||"") + "</div>";
+      html += "<table style=\"font-size:12px\"><thead><tr>"
+        + "<th>文件</th><th style=\"width:80px\">大小</th><th style=\"width:140px\">时间</th><th style=\"width:110px\"></th>"
+        + "</tr></thead><tbody>";
+      list.forEach(function(x){
+        html += "<tr>"
+          + "<td style=\"font-family:ui-monospace,monospace;font-size:11px\">" + esc(x.id) + "</td>"
+          + "<td>" + fmtSizeMB(x.sizeMB||0) + "</td>"
+          + "<td style=\"color:var(--text-3)\">" + esc(x.createdAt||"") + "</td>"
+          + "<td><a class=\"btn btn--sm\" href=\"" + apiUrl("/api/recordings/export/download?id=" + encodeURIComponent(x.id)) + "\" download>下载</a>"
+          + " <button class=\"btn btn--sm\" data-exdel=\"" + esc(x.id) + "\">删除</button></td>"
+          + "</tr>";
+      });
+      html += "</tbody></table>";
+    }
+
+    html += "</div>"
+      + "<div class=\"row gap-2\" style=\"margin-top:14px\">"
+      +   "<button class=\"btn btn--danger\" id=\"btnExpClear\">清空全部</button>"
+      +   "<button class=\"btn\" id=\"btnExpClose\">关闭</button>"
+      + "</div>";
+
+    openModal("导出文件管理", html, function(root){
+      var cl = root.querySelector("#btnExpClear");
+      if(cl) cl.onclick = function(){
+        if(!confirm("清空所有导出文件？\n\n已下载的不受影响，未下载的会丢失。")) return;
+        api("/api/recordings/export/clear", { method: "POST" }).then(function(r){
+          toast("已清空 " + (r.count||0) + " 个，释放 " + fmtSizeMB(r.freedMB||0), "ok");
+          closeModal();
+        }).catch(function(e){ toast("失败：" + e.message, "err"); });
+      };
+      var cc = root.querySelector("#btnExpClose");
+      if(cc) cc.onclick = closeModal;
+
+      Array.prototype.forEach.call(root.querySelectorAll("[data-exdel]"), function(b){
+        b.onclick = function(){
+          var id = this.dataset.exdel;
+          if(!confirm("删除导出 " + id + "？")) return;
+          api("/api/recordings/export/delete?id=" + encodeURIComponent(id), { method: "POST" }).then(function(){
+            toast("已删除", "ok");
+            closeModal();
+            showExportManager();
+          }).catch(function(e){ toast("失败：" + e.message, "err"); });
+        };
+      });
+    });
+  }).catch(function(e){ toast("加载失败：" + e.message, "err"); });
+}
+
+function fmtDur(sec){
+  if(!sec || sec <= 0) return "—";
+  var m = Math.floor(sec / 60), s = Math.round(sec % 60);
+  return m + ":" + (s < 10 ? "0" : "") + s;
+}
+
+function fmtSizeMB(v){
+  if(v == null) return "—";
+  if(v < 1) return (v * 1024).toFixed(0) + " KB";
+  if(v < 1024) return v.toFixed(1) + " MB";
+  return (v / 1024).toFixed(2) + " GB";
+}
+
+// -------------------------------------------------------------------
+// 下面两个函数在 v0.38.0 和 19:05 之后的版本里**都没有实现**，
+// 但调用点一直在（点「···」、点「新建调查」会直接 ReferenceError）。
+// 这里按调用点既有的语义补齐，不引入新交互：
+//   · showEventMenu  —— 事件卡片「···」菜单，动作复用已有的
+//     setEvMark / gotoReplay / copyText，样式用现成的 .ev-menu
+//   · aiLoadInvestigations —— 读自定义调查（localStorage）
+// -------------------------------------------------------------------
+
+function showEventMenu(el, ev){
+  var id = ev.id;
+  var fav = evIsFav(id);
+  var watch = evIsWatch(id);
+  openModal('事件操作',
+    '<div class="ev-menu">'
+    + '<button class="ev-menu__item" data-evact="play">' + icon('play',15) + '播放该时刻录像</button>'
+    + '<button class="ev-menu__item" data-evact="book">' + icon('bookmark',15) + (fav ? '取消收藏' : '收藏此事件') + '</button>'
+    + '<button class="ev-menu__item" data-evact="watch">' + icon('alert',15) + (watch ? '取消「需关注」' : '标记为需关注') + '</button>'
+    + '<button class="ev-menu__item" data-evact="copy">' + icon('copy',15) + '复制事件 ID</button>'
+    + '<button class="ev-menu__item is-danger" data-evact="close">' + icon('close',15) + '关闭</button>'
+    + '</div>',
+    function(root){
+      Array.prototype.forEach.call(root.querySelectorAll('[data-evact]'), function(b){
+        b.onclick = function(){
+          var a = this.dataset.evact;
+          if(a === 'play'){ closeModal(); gotoReplay(ev.did, ev.time); }
+          else if(a === 'book'){ setEvMark(id, { bookmark: !fav }); closeModal(); }
+          else if(a === 'watch'){ setEvMark(id, { watch: !watch }); closeModal(); }
+          else if(a === 'copy'){ copyText(id, '事件 ID 已复制'); }
+          else closeModal();
+        };
+      });
+    });
+}
+
+function aiLoadInvestigations(){
+  try {
+    var v = JSON.parse(localStorage.getItem('micam.ai.inv') || '[]');
+    return (v && typeof v.length === 'number') ? v : [];
+  } catch(e){
+    return [];
+  }
+}
+
 initSDK();
 })();
 
