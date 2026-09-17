@@ -2782,7 +2782,7 @@
 .ai-auto__stats {
   display: grid; gap: var(--space-4);
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  padding: var(--space-4) var(--space-5);
+  padding: var(--space-5) var(--space-5);
 }
 @media (max-width: 1000px) { .ai-auto__stats { grid-template-columns: repeat(2, 1fr); } }
 
@@ -2791,7 +2791,7 @@
 .ai-autostat__body { min-width: 0; }
 .ai-autostat__label, .ai-autostat__hint, .ai-autostat__val { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ai-autostat__icon { color: var(--text-muted); flex: 0 0 auto; margin-top: 2px; }
-.ai-autostat__body { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.ai-autostat__body { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
 .ai-autostat__label { margin-bottom: 1px; }
 .ai-autostat__label { font-size: var(--text-sm); color: var(--text-muted); }
 .ai-autostat__val { font-size: var(--text-lg); font-weight: var(--weight-semibold); line-height: 1.2; }
@@ -2809,14 +2809,14 @@
 .ai-jobs { padding: 0 var(--space-5) var(--space-5); }
 .ai-jobs__head {
   font-size: var(--text-sm); color: var(--text-muted);
-  padding-bottom: var(--space-2);
+  padding: var(--space-4) 0 var(--space-3);
   border-bottom: 1px solid var(--border-subtle);
   margin-bottom: var(--space-2);
 }
 .ai-job {
   display: grid; align-items: center; gap: var(--space-3);
   grid-template-columns: 58px minmax(0, 0.9fr) minmax(0, 1fr) minmax(0, 1.1fr) 56px;
-  padding: 7px 0;
+  padding: 11px 0;
   font-size: var(--text-sm);
   border-bottom: 1px solid var(--border-subtle);
 }
