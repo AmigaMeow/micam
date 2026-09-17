@@ -49,7 +49,7 @@ var appDestDir string
 // startedAt 进程启动时间（状态条显示「运行时间」用）
 var startedAt = time.Now()
 
-var appVersion = "0.32.0"
+var appVersion = "0.33.0"
 
 func main() {
 	var (
@@ -166,6 +166,12 @@ func main() {
 	srv.meta = newMetaStore(*dataDir)
 	srv.presets = newPresetStore(*dataDir)
 	srv.marks = newMarkStore(*dataDir)
+	srv.aiw = newAIWorker(srv)
+
+	// 云端已配置就启动自动分析工作器
+	if cfg.AI.CloudEnabled && cfg.AI.Mode != "local" {
+		srv.aiw.Start()
+	}
 
 	// AI 推理客户端（默认关闭；开启且环境可用时才启动子进程）
 	aiScript := filepath.Join(*appDest, "ai", "infer.py")
@@ -173,6 +179,7 @@ func main() {
 		aiScript = filepath.Join("platform", "fnos", "app", "ai", "infer.py")
 	}
 	srv.ai = newAIClient(*dataDir, aiScript)
+	loadCostState(srv.ai) // 恢复今日费用记账（否则重启就绕过预算上限）
 	if cfg.AI.Enabled {
 		if err := srv.ai.Start(aiConfigFromUser(cfg.AI)); err != nil {
 			logf("[ai] 启动失败（继续用帧差模式）: %v", err)
@@ -295,6 +302,7 @@ type Server struct {
 	meta       *metaStore
 	presets    *presetStore
 	marks      *markStore
+	aiw        *aiWorker
 	ai         *aiClient
 }
 
@@ -488,6 +496,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/ai/embed", s.handleAIEmbed)
 	mux.HandleFunc("/api/ai/provider/test", s.handleAIProviderTest)
 	mux.HandleFunc("/api/ai/analyze", s.handleAIAnalyze)
+	mux.HandleFunc("/api/ai/jobs", s.handleAIJobs)
 
 	// 播放
 	mux.HandleFunc("/api/live/source-status", s.handleSourceStatus)

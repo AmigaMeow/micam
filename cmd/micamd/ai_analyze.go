@@ -167,11 +167,12 @@ func (s *Server) handleAIAnalyze(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 记账
-	s.ai.addCost(res.CostCNY)
-	s.ai.addImages(len(imgs))
+	// 记账：**缓存命中不能再计费**（否则同一张图重复收钱）
 	if res.Cached {
 		res.CostCNY = 0
+	} else {
+		s.ai.addCost(res.CostCNY)
+		s.ai.addImages(len(imgs))
 	}
 
 	// 写回事件

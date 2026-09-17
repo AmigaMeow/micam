@@ -258,6 +258,19 @@ func (s *Server) handleAIConfig(w http.ResponseWriter, r *http.Request) {
 
 	// 同步到运行中的客户端
 	s.ai.applyConfig(neu)
+	if s.aiw != nil {
+		globalCacheEnabled = neu.CacheEnabled
+	}
+
+	// 云端开关/模式变了 -> 启停自动分析
+	if s.aiw != nil {
+		shouldRun := neu.CloudEnabled && neu.Mode != "local" && loadProviderKey() != ""
+		if shouldRun && !s.aiw.isRunning() {
+			s.aiw.Start()
+		} else if !shouldRun && s.aiw.isRunning() {
+			s.aiw.Stop()
+		}
+	}
 
 	// 重启推理进程以应用新配置
 	if neu.Enabled {

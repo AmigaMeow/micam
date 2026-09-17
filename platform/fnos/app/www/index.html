@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <title>小米摄像头</title>
-<meta name="micam-build" content="2026-09-17 01:21:30">
+<meta name="micam-build" content="2026-09-17 06:39:42">
 <!-- 样式内联：飞牛网关会剥前缀，相对路径不可靠（详见 build/assemble-web.js）-->
 <style>
 
@@ -4057,6 +4057,62 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; line-h
 .dd-ops .btn { flex: 1 1 auto; justify-content: center; }
 
 
+/* ---- 自动分析状态卡 ---- */
+.ai-auto { margin-bottom: var(--space-5); }
+.ai-auto__mode {
+  margin-left: auto; margin-right: var(--space-3);
+  font-size: var(--text-sm); color: var(--text-muted);
+}
+.card__head .ai-auto__mode + .sec-head__more { margin-left: 0; }
+
+.ai-auto__stats {
+  display: grid; gap: var(--space-4);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  padding: var(--space-4) var(--space-5);
+}
+@media (max-width: 1000px) { .ai-auto__stats { grid-template-columns: repeat(2, 1fr); } }
+
+.ai-autostat { display: flex; align-items: flex-start; gap: var(--space-3); }
+.ai-autostat__icon { color: var(--text-muted); flex: 0 0 auto; margin-top: 2px; }
+.ai-autostat__body { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.ai-autostat__label { font-size: var(--text-sm); color: var(--text-muted); }
+.ai-autostat__val { font-size: var(--text-lg); font-weight: var(--weight-semibold); line-height: 1.2; }
+.ai-autostat__hint { font-size: var(--text-xs); color: var(--text-muted); }
+
+.ai-auto__warn {
+  display: flex; align-items: center; gap: 6px;
+  margin: 0 var(--space-5) var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: rgba(245,158,11,.10);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm); color: var(--warning);
+}
+
+.ai-jobs { padding: 0 var(--space-5) var(--space-5); }
+.ai-jobs__head {
+  font-size: var(--text-sm); color: var(--text-muted);
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: var(--space-2);
+}
+.ai-job {
+  display: grid; align-items: center; gap: var(--space-3);
+  grid-template-columns: 58px minmax(0, 0.9fr) minmax(0, 1fr) minmax(0, 1.1fr) 56px;
+  padding: 7px 0;
+  font-size: var(--text-sm);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.ai-job:last-child { border-bottom: 0; }
+.ai-job__time { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.ai-job__dev { color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ai-job__reason { color: var(--text-muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ai-job__title { color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ai-job__st { text-align: right; color: var(--text-muted); }
+.ai-job__st.is-ok { color: var(--online); }
+.ai-job__st.is-bad { color: var(--danger); }
+.ai-job__st.is-run { color: var(--accent); }
+
+
 </style>
 </head>
 <body>
@@ -6520,8 +6576,14 @@ function renderAI(c){
 function isAIReady(){
   return aiCache.st && aiCache.st.status && aiCache.st.status.status === 'ready';
 }
+// hasCloud 云端是否可用。
+//
+// 注意：不能读 /api/ai/status 的 hasCloud —— 那个接口不返回这个字段。
+// 直接用配置里的 cloudEnabled + hasKey 判断。
 function hasCloud(){
-  return aiCache.st && aiCache.st.status && aiCache.st.status.hasCloud;
+  var cf = (aiCache.cf && aiCache.cf.config) || {};
+  var hasKey = !!(aiCache.cf && aiCache.cf.hasKey);
+  return !!cf.cloudEnabled && hasKey;
 }
 
 function paintAITab(){
@@ -6531,7 +6593,7 @@ function paintAITab(){
   var cur = document.querySelector('[data-ait="' + aiTab + '"]');
   if(sub && cur) sub.textContent = cur.dataset.sub;
 
-  if(aiTab === 'overview')       box.innerHTML = aiTabOverview();
+  if(aiTab === 'overview'){ box.innerHTML = aiTabOverview(); setTimeout(paintAutoCard, 0); }
   else if(aiTab === 'search')    box.innerHTML = aiTabSearch();
   else if(aiTab === 'investigate') box.innerHTML = aiTabInvestigate();
   else { box.innerHTML = aiTabSettings(); setTimeout(paintAIUsage, 0); }
@@ -6580,6 +6642,9 @@ function aiTabOverview(){
     + '</div>'
 
     // 今日摘要 + 处理情况
+    // 自动分析状态（有云端配置时才显示）
+    + (hasCloud() ? '<div id="aiAutoCard"></div>' : '')
+
     + '<div class="ai-row2">'
 
     +   '<div class="card">'
@@ -6639,6 +6704,69 @@ function aiTabOverview(){
         return aiRecentCard(e2);
       }).join('') : empty('bell','还没有 AI 事件','启用本地 AI 后，事件会带上识别结果',''))
     +   '</div>'
+    + '</div>';
+}
+
+// paintAutoCard 自动分析状态卡
+//
+// 让用户一眼看到：云端在自动帮忙看家，花了多少钱，省了多少。
+function paintAutoCard(){
+  var box = document.getElementById('aiAutoCard');
+  if(!box) return;
+  api('/api/ai/jobs').then(function(d){
+    var running = !!d.running;
+    var mode = d.mode || 'local';
+    var modeName = mode === 'full' ? '完整智能' : mode === 'balanced' ? '均衡模式' : '只用本地';
+
+    box.innerHTML = '<div class="card ai-auto">'
+      + '<div class="card__head">' + icon('zap',16) + '<span class="card__title">自动分析</span>'
+      +   '<span class="chip ' + (running ? 'is-active' : '') + '">'
+      +     '<span class="status-dot ' + (running ? 'is-online' : '') + '"></span>'
+      +     (running ? '运行中' : '已停止')
+      +   '</span>'
+      +   '<span class="ai-auto__mode">' + modeName + '</span>'
+      +   '<a class="sec-head__more" href="javascript:;" data-aigoto="settings">策略设置 ' + icon('chevron-right',13) + '</a>'
+      + '</div>'
+      + '<div class="ai-auto__stats">'
+      +   autoStat('check', '已自动分析', d.analyzed || 0, '云端读懂了这些事件')
+      +   autoStat('filter', '已过滤', d.skipped || 0, '判定不值得花钱')
+      +   autoStat('clock', '排队中', d.queueWaiting || 0, (d.queueWaiting ? '下一轮自动处理' : '暂无待分析'))
+      +   autoStat('yuan', '今日花费', '¥' + ((d.costCny||0)).toFixed(4), '预算 ¥' + (d.budget || 5))
+      + '</div>'
+      + (d.failed ? '<div class="ai-auto__warn">' + icon('alert',13) + '有 ' + d.failed + ' 条分析失败（最多重试 2 次）</div>' : '')
+      + autoJobs(d.recentJobs || [])
+      + '</div>';
+  }).catch(function(){ box.innerHTML = ''; });
+}
+
+function autoStat(ic, label, val, hint){
+  return '<div class="ai-autostat">'
+    + '<span class="ai-autostat__icon">' + icon(ic,16) + '</span>'
+    + '<span class="ai-autostat__body">'
+    +   '<span class="ai-autostat__label">' + label + '</span>'
+    +   '<span class="ai-autostat__val">' + val + '</span>'
+    +   '<span class="ai-autostat__hint">' + hint + '</span>'
+    + '</span>'
+    + '</div>';
+}
+
+// autoJobs 最近自动分析任务
+function autoJobs(jobs){
+  if(!jobs.length) return '';
+  var st = { done:'已完成', failed:'失败', running:'分析中', queued:'排队', skipped:'跳过' };
+  var cls = { done:'is-ok', failed:'is-bad', running:'is-run', queued:'', skipped:'' };
+  return '<div class="ai-jobs">'
+    + '<div class="ai-jobs__head">最近自动分析</div>'
+    + jobs.slice(0, 6).map(function(j){
+        var title = (j.result && j.result.title) || j.error || j.reason || '';
+        return '<div class="ai-job">'
+          + '<span class="ai-job__time">' + esc(j.createdAt || '') + '</span>'
+          + '<span class="ai-job__dev">' + esc((j.device||'').replace('小米室外摄像机','')) + '</span>'
+          + '<span class="ai-job__reason">' + esc(j.reason || '') + '</span>'
+          + '<span class="ai-job__title">' + esc(title) + '</span>'
+          + '<span class="ai-job__st ' + (cls[j.status]||'') + '">' + (st[j.status]||j.status) + '</span>'
+          + '</div>';
+      }).join('')
     + '</div>';
 }
 

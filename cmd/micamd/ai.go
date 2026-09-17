@@ -240,6 +240,53 @@ func (a *aiClient) addImages(n int) {
 		a.imgCount = 0
 	}
 	a.imgCount += n
+	day2, cny2, cloud2, img2 := a.costDay, a.costCNY, a.cloudCount, a.imgCount
+	a.mu.Unlock()
+	saveCostState(day2, cny2, cloud2, img2)
+	a.mu.Lock()
+}
+
+// ---- 费用记账持久化 ----
+//
+// 记账只在内存里的话，重启就清零 —— 那样「每日预算」形同虚设
+// （重启一下就能绕过上限）。所以落盘。
+
+type costState struct {
+	Day     string  `json:"day"`
+	CostCNY float64 `json:"costCny"`
+	Cloud   int     `json:"cloud"`
+	Images  int     `json:"images"`
+}
+
+func costStatePath() string {
+	dir := dataDirPath
+	if dir == "" {
+		dir = "."
+	}
+	return filepath.Join(dir, "ai-cost.json")
+}
+
+func loadCostState(a *aiClient) {
+	if a == nil {
+		return
+	}
+	raw, err := os.ReadFile(costStatePath())
+	if err != nil {
+		return
+	}
+	var c costState
+	if json.Unmarshal(raw, &c) != nil {
+		return
+	}
+	a.costDay = c.Day
+	a.costCNY = c.CostCNY
+	a.cloudCount = c.Cloud
+	a.imgCount = c.Images
+}
+
+func saveCostState(day string, cny float64, cloud, images int) {
+	raw, _ := json.Marshal(costState{Day: day, CostCNY: cny, Cloud: cloud, Images: images})
+	_ = os.WriteFile(costStatePath(), raw, 0o644)
 }
 
 // addCost 记一笔费用
@@ -255,6 +302,10 @@ func (a *aiClient) addCost(cny float64) {
 	}
 	a.costCNY += cny
 	a.cloudCount++
+	day2, cny2, cloud2, img2 := a.costDay, a.costCNY, a.cloudCount, a.imgCount
+	a.mu.Unlock()
+	saveCostState(day2, cny2, cloud2, img2)
+	a.mu.Lock()
 }
 
 var ai *aiClient
