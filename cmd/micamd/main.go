@@ -124,6 +124,10 @@ func main() {
 
 	srv := &Server{cfg: cfg, store: st, dataDir: *dataDir, dev: *devMode, rtspPort: *rtspPort, ffm: *ffmpegPath}
 
+	// 开发者页的两个内存态存储（Token 落盘、请求日志只在内存）
+	srv.tokens = newTokenStore(*dataDir)
+	srv.reqlog = newReqLogStore(*dataDir)
+
 	// 初始化录像模块
 	recDir := cfg.RecordDir
 	if recDir == "" {
@@ -215,6 +219,13 @@ func main() {
 	// CORS（开放模式开关控制）
 	handler = srv.corsMiddleware(handler)
 
+	// API Token 鉴权（**只对带 Authorization/?token= 的请求生效**，
+	// 不带 token 的现有 UI / 局域网直连行为完全不变）
+	handler = srv.devAuthMiddleware(handler)
+
+	// 请求日志 + 调用统计（在鉴权外层，401/403 也会被记下来）
+	handler = srv.devLogMiddleware(handler)
+
 	httpSrv := &http.Server{
 		Handler:           logMiddleware(handler),
 		ReadHeaderTimeout: 10 * time.Second,
@@ -296,6 +307,10 @@ type Server struct {
 	store   *store.Store
 	dataDir string
 	dev     bool
+
+	// 开发者页（v0.40）：API Token 与请求日志/统计
+	tokens *tokenStore
+	reqlog *reqLogStore
 
 	rtspPort int
 	ffm      string
@@ -549,6 +564,13 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/dev/openapi", s.handleDevOpenAPI)
 	mux.HandleFunc("/api/dev/docs", s.handleDevDocs)
 	mux.HandleFunc("/api/dev/capabilities", s.handleDevCapabilities)
+
+	// 开发者页（v0.40）：Token 管理 / 请求日志 / 调用统计 / Webhook 测试 / 重置配置
+	mux.HandleFunc("/api/dev/tokens", s.handleDevTokens)
+	mux.HandleFunc("/api/dev/logs", s.handleDevLogs)
+	mux.HandleFunc("/api/dev/stats", s.handleDevStats)
+	mux.HandleFunc("/api/dev/webhook/test", s.handleDevWebhookTest)
+	mux.HandleFunc("/api/dev/reset-config", s.handleDevResetConfig)
 
 	// 安装向导 / 自检
 	mux.HandleFunc("/api/setup/check", s.handleSetupCheck)

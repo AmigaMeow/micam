@@ -14,12 +14,20 @@ package main
 //   GET  /api/dev/openapi   OpenAPI 3.0 规格（给第三方接入）
 //   GET  /api/dev/docs      Markdown 文档
 //   POST /api/dev/reset     关闭开发者模式
+//
+// v0.40 起（开发者页效果图）新增：
+//   GET/POST/PATCH/DELETE /api/dev/tokens  API Token 管理
+//   GET  /api/dev/logs       最近请求日志（内存环形缓冲 200 条）
+//   GET  /api/dev/stats      调用统计（近 N 天 + 环比）
+//   POST /api/dev/webhook/test   向第三方地址发示例事件
+//   POST /api/dev/reset-config   开放模式开关恢复默认
 
 import (
 	"encoding/json"
 	"net/http"
 	"time"
 
+	"github.com/micam/micam/internal/config"
 	"github.com/micam/micam/internal/hardware"
 )
 
@@ -35,11 +43,23 @@ func (s *Server) handleDevStatus(w http.ResponseWriter, r *http.Request) {
 		"tapCount":  d.TapCount,
 		"tapNeeded": tapToUnlock,
 		"flags": map[string]any{
+			// 调试开关（效果图放在「本地 API」卡的详情区）
 			"cors":       d.CORS,
 			"allowLan":   d.AllowLAN,
 			"verboseLog": d.VerboseLog,
 			"mockMode":   d.MockMode,
 			"exposeSpec": d.ExposeSpec,
+			// 开放能力 5 项（效果图「开放模式」的 5 张卡）
+			"enabled":    d.Enabled,
+			"hls":        d.HLS,
+			"webhook":    d.Webhook,
+			"fileAccess": d.FileAccess,
+			"websocket":  d.WebSocket,
+		},
+		"tokens": tokenCounts(s),
+		"logs": map[string]any{
+			"buffered": s.reqlog.count(),
+			"cap":      reqLogCap,
 		},
 		"app": map[string]any{
 			"name":    appName,
@@ -108,6 +128,13 @@ func (s *Server) handleDevConfig(w http.ResponseWriter, r *http.Request) {
 		VerboseLog *bool `json:"verboseLog"`
 		MockMode   *bool `json:"mockMode"`
 		ExposeSpec *bool `json:"exposeSpec"`
+
+		// 开放能力（v0.40 新增）
+		Enabled    *bool `json:"enabled"`
+		HLS        *bool `json:"hls"`
+		Webhook    *bool `json:"webhook"`
+		FileAccess *bool `json:"fileAccess"`
+		WebSocket  *bool `json:"websocket"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeErr(w, 400, "参数错误")
@@ -129,14 +156,30 @@ func (s *Server) handleDevConfig(w http.ResponseWriter, r *http.Request) {
 	if req.ExposeSpec != nil {
 		s.cfg.Dev.ExposeSpec = *req.ExposeSpec
 	}
+	if req.Enabled != nil {
+		s.cfg.Dev.Enabled = *req.Enabled
+	}
+	if req.HLS != nil {
+		s.cfg.Dev.HLS = *req.HLS
+	}
+	if req.Webhook != nil {
+		s.cfg.Dev.Webhook = *req.Webhook
+	}
+	if req.FileAccess != nil {
+		s.cfg.Dev.FileAccess = *req.FileAccess
+	}
+	if req.WebSocket != nil {
+		s.cfg.Dev.WebSocket = *req.WebSocket
+	}
 
 	if err := s.cfg.SaveSelf(); err != nil {
 		writeErr(w, 500, "保存失败: "+err.Error())
 		return
 	}
 
-	logf("开放模式已更新: cors=%v lan=%v verbose=%v",
-		s.cfg.Dev.CORS, s.cfg.Dev.AllowLAN, s.cfg.Dev.VerboseLog)
+	logf("开放模式已更新: cors=%v lan=%v verbose=%v | 能力: enabled=%v hls=%v webhook=%v fileAccess=%v websocket=%v",
+		s.cfg.Dev.CORS, s.cfg.Dev.AllowLAN, s.cfg.Dev.VerboseLog,
+		s.cfg.Dev.Enabled, s.cfg.Dev.HLS, s.cfg.Dev.Webhook, s.cfg.Dev.FileAccess, s.cfg.Dev.WebSocket)
 
 	writeJSON(w, 200, map[string]any{"ok": true})
 }
@@ -149,6 +192,14 @@ func (s *Server) handleDevReset(w http.ResponseWriter, r *http.Request) {
 	s.cfg.Dev.TapCount = 0
 	s.cfg.Dev.CORS = false
 	s.cfg.Dev.MockMode = false
+	// 能力开关一并复位：特别是 fileAccess（安全敏感），
+	// 不能因为「关掉开发者模式」还留着打开状态
+	def := config.Default().Dev
+	s.cfg.Dev.Enabled = def.Enabled
+	s.cfg.Dev.HLS = def.HLS
+	s.cfg.Dev.Webhook = def.Webhook
+	s.cfg.Dev.FileAccess = def.FileAccess
+	s.cfg.Dev.WebSocket = def.WebSocket
 	if err := s.cfg.SaveSelf(); err != nil {
 		logf("[dev] 重置后保存配置失败: %v", err)
 	}
@@ -241,6 +292,12 @@ func (s *Server) probeAllEncoders() []map[string]any {
 		out = append(out, item)
 	}
 	return out
+}
+
+// tokenCounts 给状态接口用的 Token 统计。
+func tokenCounts(s *Server) map[string]any {
+	total, enabled := s.tokens.counts()
+	return map[string]any{"total": total, "enabled": enabled, "limit": maxTokens}
 }
 
 func itoa(n int) string {

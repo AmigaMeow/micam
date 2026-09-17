@@ -23,6 +23,24 @@ type DevConfig struct {
 	MockMode bool `json:"mockMode"`
 	// ExposeSpec 暴露 API 规格文档接口
 	ExposeSpec bool `json:"exposeSpec"`
+
+	// ---- 开放能力（开发者页「开放模式」的 5 张能力卡）----
+	//
+	// 与上面 5 个「调试开关」的区别：
+	//   上面是调试用途（CORS / 详细日志 / Mock），下面是**对外提供的能力**，
+	//   效果图上每项一张卡（图标 + 标题 + 说明 + 开关）。
+
+	// Enabled 全局开关：关掉后开放能力整体不可用（卡片区置灰）
+	Enabled bool `json:"enabled"`
+	// HLS 实时流（HLS）能力
+	HLS bool `json:"hls"`
+	// Webhook 事件推送能力
+	Webhook bool `json:"webhook"`
+	// FileAccess 本地文件访问（暴露录像文件，**安全敏感，默认必须关闭**）
+	FileAccess bool `json:"fileAccess"`
+	// WebSocket 实时事件流（**未实现**，占位）
+	WebSocket bool `json:"websocket"`
+
 	// TapCount 解锁进度（不落盘用途，仅内存）
 	TapCount int `json:"-"`
 }
@@ -206,6 +224,11 @@ func Default() *Config {
 		Dev: DevConfig{
 			AllowLAN:   true,
 			ExposeSpec: true,
+			Enabled:    true,
+			HLS:        true,
+			Webhook:    true,
+			// FileAccess / WebSocket 默认关闭：
+			// 前者暴露录像文件，后者尚未实现
 		},
 	}
 }
@@ -222,6 +245,7 @@ func Load(path string) *Config {
 		return cfg
 	}
 	_ = json.Unmarshal(raw, cfg)
+	applyDevFlagDefaults(raw, cfg)
 	if cfg.Subtype == "" {
 		cfg.Subtype = "3"
 	}
@@ -238,6 +262,29 @@ func Load(path string) *Config {
 		cfg.TranscodeCacheGB = 5
 	}
 	return cfg
+}
+
+// applyDevFlagDefaults 给 v0.40 之前写下的 config.json 补新开关的默认值。
+//
+// 为什么需要单独做：这 3 个开关在旧文件里**不存在**，json.Unmarshal 会留成
+// false —— 升级后「实时流 / 事件推送」会被静默关掉（用户什么都没改，功能没了）。
+// 判断依据是原始 JSON 里有没有这个 key，而不是靠零值猜。
+func applyDevFlagDefaults(raw []byte, cfg *Config) {
+	var probe struct {
+		Dev map[string]json.RawMessage `json:"dev"`
+	}
+	if err := json.Unmarshal(raw, &probe); err != nil {
+		return
+	}
+	setTrue := func(key string, dst *bool) {
+		if _, ok := probe.Dev[key]; !ok {
+			*dst = true
+		}
+	}
+	setTrue("enabled", &cfg.Dev.Enabled)
+	setTrue("hls", &cfg.Dev.HLS)
+	setTrue("webhook", &cfg.Dev.Webhook)
+	// fileAccess / websocket 默认就是 false，不写也对
 }
 
 // Save 写配置。
