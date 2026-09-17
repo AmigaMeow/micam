@@ -321,8 +321,21 @@ function loadDevices(){
   }).catch(function(e){ return {needLogin:false, error:e.message}; });
 }
 
+// lastRenderedPage 上一次真正渲染的页面 key。
+//
+// 用途：只在「页面真的切换」时播入场动画 —— 轮询（15s 自动刷新）和局部重绘
+// 都会走 render()，不加这个判断的话每次刷新整页都会闪一下。
+var lastRenderedPage = null;
+
 function render(){
   var c = $("#content");
+  if(c && page !== lastRenderedPage){
+    lastRenderedPage = page;
+    c.classList.remove("is-enter");
+    void c.offsetWidth; // 强制重排，让动画能重播
+    c.classList.add("is-enter");
+    setTimeout(function(){ c.classList.remove("is-enter"); }, 420);
+  }
   if(page==="home")     return renderHome(c);
   if(page==="events")   return renderEvents(c);
   if(page==="ai")       return renderAI(c);

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <title>小米摄像头</title>
-<meta name="micam-build" content="2026-09-17 12:11:02">
+<meta name="micam-build" content="2026-09-17 12:14:22">
 <!-- 样式内联：飞牛网关会剥前缀，相对路径不可靠（详见 build/assemble-web.js）-->
 <style>
 
@@ -474,6 +474,27 @@ code, pre, kbd {
 .page {
   flex: 1; overflow-y: auto;
   padding: var(--space-6) var(--space-6) var(--space-8);
+}
+
+/* 页面切换入场：只由 render() 在 page 变化时挂 .is-enter，
+   同页重绘（轮询/局部刷新）不会触发，避免整页闪 */
+@keyframes page-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+.page.is-enter > * { animation: page-enter var(--duration-normal) var(--ease-out) both; }
+
+/* 顶栏导航项：hover 抬图标、按下回弹 */
+.tabnav { transition: color var(--duration-fast) var(--ease-out); }
+.tabnav .icon { transition: transform var(--duration-normal) var(--ease-out); }
+.tabnav:hover .icon { transform: translateY(-1px) scale(1.08); }
+.tabnav__c { transition: transform var(--duration-fast) var(--ease-out); }
+.tabnav:active .tabnav__c { transform: translateY(1px) scale(.97); }
+.tabnav.is-active .tabnav__c { font-weight: var(--weight-medium); }
+
+@media (prefers-reduced-motion: reduce) {
+  .page.is-enter > * { animation: none; }
+  .tabnav .icon, .tabnav__c, .tabnav { transition: none; }
 }
 .page__inner { max-width: var(--content-max); margin: 0 auto; }
 
@@ -5366,8 +5387,21 @@ function loadDevices(){
   }).catch(function(e){ return {needLogin:false, error:e.message}; });
 }
 
+// lastRenderedPage 上一次真正渲染的页面 key。
+//
+// 用途：只在「页面真的切换」时播入场动画 —— 轮询（15s 自动刷新）和局部重绘
+// 都会走 render()，不加这个判断的话每次刷新整页都会闪一下。
+var lastRenderedPage = null;
+
 function render(){
   var c = $("#content");
+  if(c && page !== lastRenderedPage){
+    lastRenderedPage = page;
+    c.classList.remove("is-enter");
+    void c.offsetWidth; // 强制重排，让动画能重播
+    c.classList.add("is-enter");
+    setTimeout(function(){ c.classList.remove("is-enter"); }, 420);
+  }
   if(page==="home")     return renderHome(c);
   if(page==="events")   return renderEvents(c);
   if(page==="ai")       return renderAI(c);

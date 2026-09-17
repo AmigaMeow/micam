@@ -124,6 +124,27 @@
   flex: 1; overflow-y: auto;
   padding: var(--space-6) var(--space-6) var(--space-8);
 }
+
+/* 页面切换入场：只由 render() 在 page 变化时挂 .is-enter，
+   同页重绘（轮询/局部刷新）不会触发，避免整页闪 */
+@keyframes page-enter {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+.page.is-enter > * { animation: page-enter var(--duration-normal) var(--ease-out) both; }
+
+/* 顶栏导航项：hover 抬图标、按下回弹 */
+.tabnav { transition: color var(--duration-fast) var(--ease-out); }
+.tabnav .icon { transition: transform var(--duration-normal) var(--ease-out); }
+.tabnav:hover .icon { transform: translateY(-1px) scale(1.08); }
+.tabnav__c { transition: transform var(--duration-fast) var(--ease-out); }
+.tabnav:active .tabnav__c { transform: translateY(1px) scale(.97); }
+.tabnav.is-active .tabnav__c { font-weight: var(--weight-medium); }
+
+@media (prefers-reduced-motion: reduce) {
+  .page.is-enter > * { animation: none; }
+  .tabnav .icon, .tabnav__c, .tabnav { transition: none; }
+}
 .page__inner { max-width: var(--content-max); margin: 0 auto; }
 
 .fab-menu {
