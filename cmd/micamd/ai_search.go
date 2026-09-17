@@ -42,10 +42,11 @@ type aiQuery struct {
 // parseNaturalQuery 本地规则解析自然语言。
 //
 // 支持的说法（中文为主）：
-//   时间：今天 / 昨天 / 前天 / 最近 N 天 / 这周 / 本周 / 昨晚 / 今早
-//   类型：人 / 有人 / 人员 / 车 / 车辆 / 汽车 / 包裹 / 快递 / 移动 / 动静
-//   设备：直接匹配设备名或别名里的子串
-//   时段：早上 / 上午 / 中午 / 下午 / 晚上 / 凌晨 / 半夜
+//
+//	时间：今天 / 昨天 / 前天 / 最近 N 天 / 这周 / 本周 / 昨晚 / 今早
+//	类型：人 / 有人 / 人员 / 车 / 车辆 / 汽车 / 包裹 / 快递 / 移动 / 动静
+//	设备：直接匹配设备名或别名里的子串
+//	时段：早上 / 上午 / 中午 / 下午 / 晚上 / 凌晨 / 半夜
 func parseNaturalQuery(q string, devNames []string, aliasOf func(string) string) aiQuery {
 	r := aiQuery{Days: 1, HourFrom: 0, HourTo: 23, MatchedBy: "本地规则"}
 	s := strings.ToLower(q)

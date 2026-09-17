@@ -27,14 +27,14 @@ import (
 
 // diagReport 诊断报告。
 type diagReport struct {
-	GeneratedAt string         `json:"generatedAt"`
-	App         map[string]any `json:"app"`
-	Runtime     map[string]any `json:"runtime"`
-	Hardware    map[string]any `json:"hardware"`
-	Config      map[string]any `json:"config"`
+	GeneratedAt string           `json:"generatedAt"`
+	App         map[string]any   `json:"app"`
+	Runtime     map[string]any   `json:"runtime"`
+	Hardware    map[string]any   `json:"hardware"`
+	Config      map[string]any   `json:"config"`
 	Devices     []map[string]any `json:"devices"`
-	Checks      []CheckItem    `json:"checks"`
-	Stats       map[string]any `json:"stats"`
+	Checks      []CheckItem      `json:"checks"`
+	Stats       map[string]any   `json:"stats"`
 }
 
 // handleDiagReport 返回诊断报告（JSON，已脱敏）。
@@ -183,11 +183,11 @@ func (s *Server) buildDiagReport() *diagReport {
 	// 设备（脱敏）
 	for _, d := range s.store.Devices() {
 		rep.Devices = append(rep.Devices, map[string]any{
-			"name":     d.Name,
-			"model":    d.Model,
-			"online":   d.IsOnline,
-			"didMask":  maskString(d.Did),
-			"ipMask":   maskIP(d.LocalIP),
+			"name":      d.Name,
+			"model":     d.Model,
+			"online":    d.IsOnline,
+			"didMask":   maskString(d.Did),
+			"ipMask":    maskIP(d.LocalIP),
 			"shareFlag": d.ShareFlag,
 		})
 	}

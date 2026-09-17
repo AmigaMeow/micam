@@ -74,6 +74,7 @@ type aiConfig struct {
 	APIBaseURL     string  `json:"apiBaseUrl"`     // API 地址
 	APITimeout     int     `json:"apiTimeout"`     // 请求超时（秒）
 	MaxConcurrent  int     `json:"maxConcurrent"`  // 最大并发
+	MaxTokens      int     `json:"maxTokens"`      // 单次分析最大 token（推理模型要给足）
 	FrameInterval  string  `json:"frameInterval"`  // 帧采样：realtime / 1fps / 5fps / 10fps
 	ResultKeepDays int     `json:"resultKeepDays"` // 结果保留天数
 	DetectPet      bool    `json:"detectPet"`      // 宠物检测
@@ -181,6 +182,13 @@ type aiProvider struct {
 	Enabled bool   `json:"enabled"`
 }
 
+// applyConfig 把新配置同步进客户端（不重启进程时用）
+func (a *aiClient) applyConfig(c aiConfig) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.cfg = c
+}
+
 // getConfig 取当前配置副本（锁保护）
 func (a *aiClient) getConfig() aiConfig {
 	a.mu.Lock()
@@ -208,6 +216,30 @@ func (a *aiClient) costToday() float64 {
 		return 0
 	}
 	return a.costCNY
+}
+
+// imgToday 今日上传的图片数
+func (a *aiClient) imgToday() int {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.costDay != time.Now().Format("2006-01-02") {
+		return 0
+	}
+	return a.imgCount
+}
+
+// addImages 记图片数
+func (a *aiClient) addImages(n int) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	day := time.Now().Format("2006-01-02")
+	if a.costDay != day {
+		a.costDay = day
+		a.costCNY = 0
+		a.cloudCount = 0
+		a.imgCount = 0
+	}
+	a.imgCount += n
 }
 
 // addCost 记一笔费用

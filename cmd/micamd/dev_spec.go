@@ -95,9 +95,9 @@ func (s *Server) openAPISpec(r *http.Request) map[string]any {
 		},
 		"/live/hls": map[string]any{
 			"get": map[string]any{
-				"summary": "HLS 播放（推荐）",
+				"summary":     "HLS 播放（推荐）",
 				"description": "返回 m3u8 播放列表。分片通过同一路径 + seg 参数获取。注意：m3u8 里的分片行是相对路径（hls?did=X&seg=seg0.ts），播放器按相对路径解析即可，不要手工拼接。",
-				"tags": []string{"播放"},
+				"tags":        []string{"播放"},
 				"parameters": []any{
 					strParam("did", "设备 DID", true),
 					strParam("fps", "帧率，默认 15，上限 15", false),
@@ -172,9 +172,9 @@ func (s *Server) openAPISpec(r *http.Request) map[string]any {
 		},
 		"/ptz/move": map[string]any{
 			"post": map[string]any{
-				"summary": "云台移动",
+				"summary":     "云台移动",
 				"description": "operation: 1=查询 2=左 3=右 4=下 5=上。注意：同一设备同时只能有一路 cs2 连接，云台会短暂占用视频通道。",
-				"tags": []string{"云台"},
+				"tags":        []string{"云台"},
 				"requestBody": map[string]any{
 					"required": true,
 					"content": map[string]any{
@@ -275,8 +275,8 @@ func (s *Server) openAPISpec(r *http.Request) map[string]any {
 		},
 		"/recordings/download": map[string]any{
 			"get": map[string]any{
-				"summary":   "下载录像原文件",
-				"tags":      []string{"录像"},
+				"summary": "下载录像原文件",
+				"tags":    []string{"录像"},
 				"parameters": []any{
 					strParam("name", "设备名", true),
 					strParam("date", "日期", false),
@@ -287,8 +287,8 @@ func (s *Server) openAPISpec(r *http.Request) map[string]any {
 		},
 		"/recordings/delete": map[string]any{
 			"post": map[string]any{
-				"summary":   "删除单个录像文件",
-				"tags":      []string{"录像"},
+				"summary": "删除单个录像文件",
+				"tags":    []string{"录像"},
 				"requestBody": map[string]any{
 					"required": true,
 					"content": map[string]any{
@@ -421,10 +421,10 @@ func (s *Server) openAPISpec(r *http.Request) map[string]any {
 		},
 		"/recordings/export/download": map[string]any{
 			"get": map[string]any{
-				"summary":   "下载导出结果",
-				"tags":      []string{"录像"},
+				"summary":    "下载导出结果",
+				"tags":       []string{"录像"},
 				"parameters": []any{strParam("id", "任务 ID", true)},
-				"responses": map[string]any{"200": map[string]any{"description": "MP4 文件"}},
+				"responses":  map[string]any{"200": map[string]any{"description": "MP4 文件"}},
 			},
 		},
 		"/recordings/export/delete": map[string]any{

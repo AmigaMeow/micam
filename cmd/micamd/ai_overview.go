@@ -18,21 +18,21 @@ import (
 
 // aiOverviewResp 概览数据
 type aiOverviewResp struct {
-	Today     aiTodayStat    `json:"today"`
-	Process   aiProcessStat  `json:"process"`
-	Recent    []event.Event  `json:"recent"`
-	Summary   string         `json:"summary"`
-	SummaryAt string         `json:"summaryAt"`
-	HasLLM    bool           `json:"hasLLM"`
+	Today     aiTodayStat   `json:"today"`
+	Process   aiProcessStat `json:"process"`
+	Recent    []event.Event `json:"recent"`
+	Summary   string        `json:"summary"`
+	SummaryAt string        `json:"summaryAt"`
+	HasLLM    bool          `json:"hasLLM"`
 }
 
 type aiTodayStat struct {
-	Person   int `json:"person"`
-	Vehicle  int `json:"vehicle"`
-	Package  int `json:"package"`
-	Watch    int `json:"watch"`    // 需关注（规则判定）
-	Motion   int `json:"motion"`
-	Total    int `json:"total"`
+	Person  int `json:"person"`
+	Vehicle int `json:"vehicle"`
+	Package int `json:"package"`
+	Watch   int `json:"watch"` // 需关注（规则判定）
+	Motion  int `json:"motion"`
+	Total   int `json:"total"`
 }
 
 type aiProcessStat struct {
@@ -40,8 +40,8 @@ type aiProcessStat struct {
 	CloudAnalyzed  int     `json:"cloudAnalyzed"`
 	Filtered       int     `json:"filtered"`
 	CostCNY        float64 `json:"costCny"`
-	Percent        float64 `json:"percent"`   // 环形图百分比
-	DeltaPct       float64 `json:"deltaPct"`  // 较昨日变化
+	Percent        float64 `json:"percent"`  // 环形图百分比
+	DeltaPct       float64 `json:"deltaPct"` // 较昨日变化
 	HasCloud       bool    `json:"hasCloud"`
 }
 

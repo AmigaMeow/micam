@@ -27,16 +27,16 @@ func (s *Server) handleAllDevices(w http.ResponseWriter, r *http.Request) {
 	}
 
 	type devInfo struct {
-		Did       string `json:"did"`
-		Name      string `json:"name"`
-		Model     string `json:"model"`
-		Type      string `json:"type"`
-		IsCamera  bool   `json:"isCamera"`
-		IsOnline  bool   `json:"isOnline"`
-		LocalIP   string `json:"localip,omitempty"`
-		Shared    bool   `json:"shared"`
-		Permit    int    `json:"permitLevel"`
-		UID       string `json:"uid,omitempty"`
+		Did      string `json:"did"`
+		Name     string `json:"name"`
+		Model    string `json:"model"`
+		Type     string `json:"type"`
+		IsCamera bool   `json:"isCamera"`
+		IsOnline bool   `json:"isOnline"`
+		LocalIP  string `json:"localip,omitempty"`
+		Shared   bool   `json:"shared"`
+		Permit   int    `json:"permitLevel"`
+		UID      string `json:"uid,omitempty"`
 	}
 
 	var out []devInfo

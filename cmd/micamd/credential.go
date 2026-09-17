@@ -220,7 +220,7 @@ func (s *Server) handleCredStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{
 		"devices":     out,
 		"renewAfterH": int(credRenewAfter.Hours()),
-		"validForH":   24,   // 实测值（保守）
+		"validForH":   24, // 实测值（保守）
 	})
 }
 

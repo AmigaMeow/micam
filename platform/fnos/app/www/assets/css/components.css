@@ -213,6 +213,15 @@
 .btn:hover { background: var(--surface-hover); border-color: var(--border-strong); }
 .btn:active { transform: translateY(.5px); }
 
+/* 强调按钮（AI 分析）*/
+.btn--accent {
+  background: color-mix(in oklab, var(--accent) 18%, transparent);
+  border-color: color-mix(in oklab, var(--accent) 45%, transparent);
+  color: var(--accent);
+}
+.btn--accent:hover { background: color-mix(in oklab, var(--accent) 26%, transparent); }
+.btn--accent .icon { color: var(--accent); }
+
 .btn--primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 .btn--primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
 

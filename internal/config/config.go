@@ -30,6 +30,7 @@ type DevConfig struct {
 // Config 应用配置。
 // AIConfig AI 推理配置
 type AIConfig struct {
+	// ---- 本地推理 ----
 	Enabled       bool     `json:"enabled"`
 	Model         string   `json:"model"`
 	ConfThreshold float64  `json:"confThreshold"`
@@ -37,6 +38,45 @@ type AIConfig struct {
 	MaxPerMinute  int      `json:"maxPerMinute"`
 	PythonPath    string   `json:"pythonPath"`
 	Threads       int      `json:"threads"`
+
+	// ---- 运行模式 ----
+	//   local    只用本地（默认，不花钱）
+	//   balanced 均衡：重要事件送云端
+	//   full     完整智能：所有事件都送云端
+	Mode string `json:"mode"`
+
+	// ---- 本地检测项 ----
+	DetectPerson   bool   `json:"detectPerson"`
+	DetectVehicle  bool   `json:"detectVehicle"`
+	DetectPackage  bool   `json:"detectPackage"`
+	DetectPet      bool   `json:"detectPet"`
+	EmbedEnabled   bool   `json:"embedEnabled"`
+	FrameInterval  string `json:"frameInterval"`
+	ResultKeepDays int    `json:"resultKeepDays"`
+
+	// ---- 云端分析 ----
+	//
+	// 注意：**API Key 不在这里**，单独存在 <dataDir>/ai-key（权限 0600），
+	// 避免随 config.json 一起被导出/分享。
+	CloudEnabled   bool    `json:"cloudEnabled"`
+	CloudImportant bool    `json:"cloudImportant"`
+	DailyBudgetCNY float64 `json:"dailyBudgetCny"`
+	BudgetAction   string  `json:"budgetAction"` // stop / alert
+	ProviderName   string  `json:"providerName"`
+	ProviderModel  string  `json:"providerModel"`
+	ProviderURL    string  `json:"providerUrl"`
+	APITimeout     int     `json:"apiTimeout"` // 秒
+	MaxConcurrent  int     `json:"maxConcurrent"`
+	MaxTokens      int     `json:"maxTokens"`  // 推理模型要给足，默认 1500
+	UploadMode     string  `json:"uploadMode"` // snapshot / keyframes / clip
+
+	// ---- 分析策略 ----
+	Rules        map[string]bool `json:"rules"`
+	Dedupe       bool            `json:"dedupe"`
+	CacheEnabled bool            `json:"cacheEnabled"`
+
+	// ---- 隐私：设备名 -> 是否允许上云 ----
+	PrivacyCameras map[string]bool `json:"privacyCameras"`
 }
 
 type Config struct {
@@ -86,6 +126,39 @@ func Default() *Config {
 			Classes:       []string{"person", "vehicle"},
 			MaxPerMinute:  12,
 			Threads:       4,
+
+			Mode:           "local",
+			DetectPerson:   true,
+			DetectVehicle:  true,
+			DetectPackage:  true,
+			DetectPet:      false,
+			EmbedEnabled:   false,
+			FrameInterval:  "realtime",
+			ResultKeepDays: 30,
+
+			CloudEnabled:   false,
+			CloudImportant: true,
+			DailyBudgetCNY: 5,
+			BudgetAction:   "alert",
+			ProviderName:   "deepseek",
+			ProviderModel:  "deepseek-v4.1-flash",
+			ProviderURL:    "https://api.deepseek.com/v1",
+			APITimeout:     60,
+			MaxConcurrent:  2,
+			MaxTokens:      1500,
+			UploadMode:     "snapshot",
+
+			Rules: map[string]bool{
+				"door_person":  true,
+				"night_person": true,
+				"linger":       true,
+				"repeat_car":   true,
+				"day_car":      false,
+			},
+			Dedupe:       true,
+			CacheEnabled: true,
+
+			PrivacyCameras: map[string]bool{},
 		},
 		Dev: DevConfig{
 			AllowLAN:   true,
@@ -193,7 +266,6 @@ func (c *Config) SetRecordDir(dir string) error {
 	c.mu.Unlock()
 	return c.SaveSelf()
 }
-
 
 // SetAI 更新 AI 配置并落盘。
 func (c *Config) SetAI(a AIConfig) error {

@@ -85,12 +85,12 @@ func (m *metaStore) GetByDevName(devName string) string {
 // ---- 侦测状态 ----
 
 type motionState struct {
-	mu      sync.Mutex
-	prev    map[string][]uint8    // did -> 上一帧灰度
-	prevAt   map[string]time.Time  // did -> 上次采样的缓存时间戳（用于判断缓存是否更新）
-	lastEvt  map[string]time.Time  // did -> 上次记录事件的时间
-	streak   map[string]int        // 连续触发次数
-	segStart map[string]segInfo    // did -> 当前活动段（用于累计时长）
+	mu       sync.Mutex
+	prev     map[string][]uint8   // did -> 上一帧灰度
+	prevAt   map[string]time.Time // did -> 上次采样的缓存时间戳（用于判断缓存是否更新）
+	lastEvt  map[string]time.Time // did -> 上次记录事件的时间
+	streak   map[string]int       // 连续触发次数
+	segStart map[string]segInfo   // did -> 当前活动段（用于累计时长）
 }
 
 // segInfo 一段连续活动的累积信息
@@ -110,8 +110,8 @@ var motion = &motionState{
 const (
 	motionInterval = 8 * time.Second  // 采样间隔（抓帧本身要 3-9 秒）
 	motionSilence  = 30 * time.Second // 同一设备的静默期（合并连续触发）
-	motionThresh   = 6.0      // 平均绝对差阈值（0-255）
-	motionW        = 160             // 降采样宽度
+	motionThresh   = 6.0              // 平均绝对差阈值（0-255）
+	motionW        = 160              // 降采样宽度
 	motionH        = 90
 )
 
@@ -169,7 +169,9 @@ func (s *Server) detectOnce() {
 			continue
 		}
 		if score < motionThresh {
-			motion.mu.Lock(); motion.streak[d.Did] = 0; motion.mu.Unlock()
+			motion.mu.Lock()
+			motion.streak[d.Did] = 0
+			motion.mu.Unlock()
 			continue
 		}
 
@@ -253,8 +255,8 @@ func (s *Server) detectOnce() {
 			Conf:     evConf,
 			AICls:    aiCls,
 			AIBox:    aiBox,
-		});
-		logf("[motion] %s %s (score=%.1f)", d.Name, evDesc, score);
+		})
+		logf("[motion] %s %s (score=%.1f)", d.Name, evDesc, score)
 	}
 }
 
@@ -313,11 +315,11 @@ func (s *Server) handleDevMeta(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Did     string `json:"did"`
-		Alias   string `json:"alias"`
-		AliasEn string `json:"aliasEn"`
-		Group   string `json:"group"`
-		Favorite *bool `json:"favorite"`
+		Did      string `json:"did"`
+		Alias    string `json:"alias"`
+		AliasEn  string `json:"aliasEn"`
+		Group    string `json:"group"`
+		Favorite *bool  `json:"favorite"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Did == "" {
 		writeErr(w, 400, "参数错误")
@@ -409,15 +411,15 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 
 	// 摄像头（含别名 + 缩略图版本号，便于前端判断要不要重取）
 	type camOut struct {
-		Did       string `json:"did"`
-		Name      string `json:"name"`
-		Alias     string `json:"alias,omitempty"`
-		AliasEn   string `json:"aliasEn,omitempty"`
-		Online    bool   `json:"online"`
-		Shared    bool   `json:"shared,omitempty"`
-		Lenses    int    `json:"lenses,omitempty"`
-		LastSeen  string `json:"lastSeen,omitempty"`
-		ThumbAt   int64  `json:"thumbAt,omitempty"`
+		Did      string `json:"did"`
+		Name     string `json:"name"`
+		Alias    string `json:"alias,omitempty"`
+		AliasEn  string `json:"aliasEn,omitempty"`
+		Online   bool   `json:"online"`
+		Shared   bool   `json:"shared,omitempty"`
+		Lenses   int    `json:"lenses,omitempty"`
+		LastSeen string `json:"lastSeen,omitempty"`
+		ThumbAt  int64  `json:"thumbAt,omitempty"`
 	}
 	var camList []camOut
 	for _, d := range cams {
@@ -453,14 +455,14 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, 200, map[string]any{
-		"online":     online,
-		"total":      len(camList),
-		"storagePct": storagePct,
+		"online":      online,
+		"total":       len(camList),
+		"storagePct":  storagePct,
 		"todayEvents": s.eventStore.CountToday(),
 		"statusText":  statusText,
-		"now":      time.Now().Format("2006-01-02 15:04:05"),
-		"cameras":  camList,
-		"events":   s.eventStore.Query(event.Query{Days: 3, Limit: 5}),
+		"now":         time.Now().Format("2006-01-02 15:04:05"),
+		"cameras":     camList,
+		"events":      s.eventStore.Query(event.Query{Days: 3, Limit: 5}),
 	})
 }
 

@@ -18,11 +18,11 @@ import (
 // aiUsageResp 用量统计
 type aiUsageResp struct {
 	Today struct {
-		LocalAnalyzed int     `json:"localAnalyzed"`
-		CloudAnalyzed int     `json:"cloudAnalyzed"`
-		ImagesUploaded int    `json:"imagesUploaded"`
-		CostCNY       float64 `json:"costCny"`
-		UpdatedAt     string  `json:"updatedAt"`
+		LocalAnalyzed  int     `json:"localAnalyzed"`
+		CloudAnalyzed  int     `json:"cloudAnalyzed"`
+		ImagesUploaded int     `json:"imagesUploaded"`
+		CostCNY        float64 `json:"costCny"`
+		UpdatedAt      string  `json:"updatedAt"`
 	} `json:"today"`
 	Trend []struct {
 		Date  string  `json:"date"`
@@ -86,7 +86,8 @@ func (s *Server) handleAIUsage(w http.ResponseWriter, r *http.Request) {
 		if i == 0 {
 			out.Today.LocalAnalyzed = local
 			out.Today.CloudAnalyzed = cloud
-			out.Today.ImagesUploaded = cloud * 4
+			// 云端分析数 × 实际平均图片数（AI 分析接口会记真实值）
+			out.Today.ImagesUploaded = s.ai.imgToday()
 			out.Today.CostCNY = s.ai.costToday()
 			if out.Today.CostCNY == 0 {
 				out.Today.CostCNY = cost

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <title>小米摄像头</title>
-<meta name="micam-build" content="2026-09-17 00:34:25">
+<meta name="micam-build" content="2026-09-17 01:21:30">
 <!-- 样式内联：飞牛网关会剥前缀，相对路径不可靠（详见 build/assemble-web.js）-->
 <style>
 
@@ -563,6 +563,15 @@ code, pre, kbd {
 }
 .btn:hover { background: var(--surface-hover); border-color: var(--border-strong); }
 .btn:active { transform: translateY(.5px); }
+
+/* 强调按钮（AI 分析）*/
+.btn--accent {
+  background: color-mix(in oklab, var(--accent) 18%, transparent);
+  border-color: color-mix(in oklab, var(--accent) 45%, transparent);
+  color: var(--accent);
+}
+.btn--accent:hover { background: color-mix(in oklab, var(--accent) 26%, transparent); }
+.btn--accent .icon { color: var(--accent); }
 
 .btn--primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 .btn--primary:hover { background: var(--accent-hover); border-color: var(--accent-hover); }
@@ -6251,19 +6260,37 @@ function openEventDetail(ev){
     // 右：信息块
     +   '<div class="evd__right">'
 
-    +     evBlock('zap', 'AI 摘要',
+    +     evBlock('zap', ev.aiSummary ? 'AI 摘要（云端）' : 'AI 摘要',
             esc(ev.aiSummary || ev.desc || '检测到事件。')
-            + (ev.aiSummary ? '' : '<div class="evd__notice">接上云端视觉模型后，这里会给出行为级的描述。</div>'))
+            + (ev.aiSummary
+                ? '<div class="evd__notice">' + esc(ev.aiProvider || 'cloud') + ' · '
+                  + esc((ev.aiModel||'').replace(/^.*\//,'')) + ' · ' + esc(ev.aiPromptVer||'') + '</div>'
+                : '<div class="evd__notice">点底部「AI 深度分析」，让视觉大模型读懂这段画面。</div>'))
 
     +     evBlock('user', '关键对象',
-            '<div class="evd__kv"><span>人员</span><b>' + (ev.type === 'person' ? '1（' + (ev.aiCls||'人员') + '）' : '0') + '</b></div>'
-            + '<div class="evd__kv"><span>车辆</span><b>' + (ev.type === 'vehicle' ? '1（' + (ev.aiCls||'车辆') + '）' : '0') + '</b></div>'
-            + '<div class="evd__kv"><span>包裹</span><b>' + (ev.type === 'package' ? '1' : '0') + '</b></div>')
+            (ev.aiEntities && ev.aiEntities.length)
+              ? ev.aiEntities.map(function(o){ return '<div class="evd__kv"><span>·</span><b>' + esc(o) + '</b></div>'; }).join('')
+              : '<div class="evd__kv"><span>人员</span><b>' + (ev.type === 'person' ? '1（' + (ev.aiCls||'人员') + '）' : '0') + '</b></div>'
+                + '<div class="evd__kv"><span>车辆</span><b>' + (ev.type === 'vehicle' ? '1（' + (ev.aiCls||'车辆') + '）' : '0') + '</b></div>'
+                + '<div class="evd__kv"><span>包裹</span><b>' + (ev.type === 'package' ? '1' : '0') + '</b></div>')
 
     +     evBlock('activity', '行为',
             '<div class="evd__kv"><span>主要行为</span><b>' + esc(ev.aiTitle || aiLocalTitle(ev)) + '</b></div>'
             + '<div class="evd__kv"><span>行为序列</span><b>' + esc((ev.aiActions && ev.aiActions.length) ? ev.aiActions.join(' → ') : '—') + '</b></div>'
-            + '<div class="evd__kv"><span>AI 置信度</span><b>' + (ev.conf ? Math.round(ev.conf) + '%' : '—') + '</b></div>')
+            + '<div class="evd__kv"><span>本地置信度</span><b>' + (ev.conf ? Math.round(ev.conf) + '%' : '—') + '</b></div>'
+            + (ev.importance ? '<div class="evd__kv"><span>重要程度</span><b>' + Math.round(ev.importance*100) + '%</b></div>' : ''))
+
+    +     ((ev.keyMoments && ev.keyMoments.length)
+            ? evBlock('clock', '关键时刻',
+                ev.keyMoments.map(function(m){ return '<div class="evd__kv"><span>·</span><b>' + esc(m) + '</b></div>'; }).join(''))
+            : '')
+
+    +     ((ev.aiTags && ev.aiTags.length)
+            ? evBlock('bookmark', 'AI 标签',
+                '<div class="evd__tags" style="padding:0">'
+                + ev.aiTags.map(function(t){ return '<span class="ev-tag is-custom">' + esc(t) + '</span>'; }).join('')
+                + '</div>')
+            : '')
 
     +     evBlock('device', '设备信息',
             '<div class="evd__kv"><span>摄像头名称</span><b>' + esc(ev.device || '') + '</b></div>'
@@ -6288,6 +6315,7 @@ function openEventDetail(ev){
     +   '<button class="btn" id="evdPlay">' + icon('play',15) + '查看回放</button>'
     +   '<button class="btn" id="evdWatch">' + icon('eye',15) + (mark.watch ? '取消需关注' : '标记需关注') + '</button>'
     +   '<button class="btn" id="evdTag">' + icon('bookmark',15) + '添加标签</button>'
+    +   '<button class="btn btn--accent" id="evdAI">' + icon('zap',15) + (ev.aiSummary ? '重新分析' : 'AI 深度分析') + '</button>'
     +   '<span class="evd__foot-spacer"></span>'
     +   '<button class="btn btn--primary" id="evdExport">' + icon('download',15) + '导出片段</button>'
     + '</div>'
@@ -6326,6 +6354,40 @@ function openEventDetail(ev){
     // 导出片段
     root.querySelector('#evdExport').onclick = function(){
       toast('导出功能在「回放 → 导出管理」里', 'warn');
+    };
+
+    // AI 深度分析
+    root.querySelector('#evdAI').onclick = function(){
+      var btn = this;
+      btn.disabled = true;
+      btn.innerHTML = icon('refresh',15) + '分析中…（约 5-15 秒）';
+      api('/api/ai/analyze', { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ id: ev.id, save: true }) })
+        .then(function(r){
+          if(!r.ok){
+            toast('分析失败：' + (r.error || '未知错误'), 'err');
+            btn.disabled = false;
+            btn.innerHTML = icon('zap',15) + 'AI 深度分析';
+            return;
+          }
+          var a = r.analysis || {};
+          toast('分析完成 · ' + (a.elapsedMs/1000).toFixed(1) + ' 秒 · ¥' + (a.costCny||0).toFixed(5)
+                + (a.cached ? '（命中缓存）' : ''), 'ok');
+          closeModal();
+          // 刷新列表以显示新结果
+          render();
+          // 打开更新后的事件
+          setTimeout(function(){
+            var fresh = null;
+            for(var i=0;i<evData.length;i++){ if(evData[i].id === ev.id) fresh = evData[i]; }
+            if(fresh) openEventDetail(fresh);
+          }, 900);
+        })
+        .catch(function(e){
+          toast('分析失败：' + e.message, 'err');
+          btn.disabled = false;
+          btn.innerHTML = icon('zap',15) + 'AI 深度分析';
+        });
     };
 
     // 关键帧条

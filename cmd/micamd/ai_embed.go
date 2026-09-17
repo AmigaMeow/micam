@@ -16,7 +16,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-	"time"
 
 	"github.com/micam/micam/internal/event"
 )
@@ -60,7 +59,7 @@ func (s *Server) handleAIEmbed(w http.ResponseWriter, r *http.Request) {
 
 	// 收集候选事件缩略图
 	type cand struct {
-		File string
+		File  string
 		Event event.Event
 	}
 	var cands []cand
@@ -161,15 +160,3 @@ func (s *Server) embedCompare(query string, cands []string) (*embedResult, error
 	}
 	return &embedResult{Scores: r.Scores, MS: r.MS}, nil
 }
-
-// handleAIProviderTest 测试外部 Provider 连接。
-func (s *Server) handleAIProviderTest(w http.ResponseWriter, r *http.Request) {
-	if !s.ai.hasProvider() {
-		writeJSON(w, 200, map[string]any{"ok": false, "error": "还没有配置 API 密钥"})
-		return
-	}
-	writeJSON(w, 200, map[string]any{"ok": false, "error": "外部模型调用将在下一阶段实现（接口已就绪）"})
-}
-
-// 保留：将来做真正的 Provider 调用
-var _ = time.Now

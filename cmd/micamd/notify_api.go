@@ -119,7 +119,7 @@ func (s *Server) startDeviceWatcher() {
 	go func() {
 		time.Sleep(30 * time.Second)
 
-		state := map[string]bool{}   // did -> 上次已知在线状态
+		state := map[string]bool{} // did -> 上次已知在线状态
 		first := true
 
 		t := time.NewTicker(60 * time.Second)
@@ -168,15 +168,15 @@ func (s *Server) checkDeviceStates(state map[string]bool, first *bool) {
 // notifyDiskLow 磁盘空间不足通知（供存储守护调用）。
 func (s *Server) notifyDiskLow(freeGB, threshold float64) {
 	s.notify.Send(notify.Event{
-		Type:  notify.EventDiskLow,
-		Level: "error",
-		Title: "磁盘空间不足",
+		Type:    notify.EventDiskLow,
+		Level:   "error",
+		Title:   "磁盘空间不足",
 		Message: "剩余 " + fmtGB(freeGB) + "，已低于阈值 " + fmtGB(threshold) + "，旧录像将被清理",
 		Data: map[string]any{
 			"freeGB":    freeGB,
 			"threshold": threshold,
 		},
-	}, 6*time.Hour)   // 6 小时内不重复
+	}, 6*time.Hour) // 6 小时内不重复
 }
 
 func fmtGB(v float64) string {

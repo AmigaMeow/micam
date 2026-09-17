@@ -31,9 +31,9 @@ const tapToUnlock = 7
 func (s *Server) handleDevStatus(w http.ResponseWriter, r *http.Request) {
 	d := s.cfg.Dev
 	writeJSON(w, 200, map[string]any{
-		"unlocked":   d.Unlocked,
-		"tapCount":   d.TapCount,
-		"tapNeeded":  tapToUnlock,
+		"unlocked":  d.Unlocked,
+		"tapCount":  d.TapCount,
+		"tapNeeded": tapToUnlock,
 		"flags": map[string]any{
 			"cors":       d.CORS,
 			"allowLan":   d.AllowLAN,

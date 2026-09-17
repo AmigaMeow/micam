@@ -1,4 +1,3 @@
-
 package event
 
 // 事件存储与移动侦测。
@@ -35,12 +34,12 @@ import (
 // Event 一条事件。
 type Event struct {
 	ID       string  `json:"id"`
-	Time     string  `json:"time"`          // 2006-01-02 15:04:05
+	Time     string  `json:"time"` // 2006-01-02 15:04:05
 	Did      string  `json:"did"`
-	Device   string  `json:"device"`        // 设备名（快照，避免改名后历史错乱）
-	Type     string  `json:"type"`          // motion / offline / online
+	Device   string  `json:"device"` // 设备名（快照，避免改名后历史错乱）
+	Type     string  `json:"type"`   // motion / offline / online
 	Desc     string  `json:"desc"`
-	Thumb    string  `json:"thumb,omitempty"` // 缩略图文件名
+	Thumb    string  `json:"thumb,omitempty"`    // 缩略图文件名
 	Duration int     `json:"duration,omitempty"` // 持续秒数
 	Score    float64 `json:"score,omitempty"`    // 变化强度
 	Conf     float64 `json:"conf,omitempty"`     // 置信度
@@ -48,16 +47,16 @@ type Event struct {
 	AIBox    []int   `json:"aiBox,omitempty"`    // AI 检测框 [x1,y1,x2,y2]
 
 	// ---- 外部视觉大模型补充的字段（第二阶段）----
-	AISummary    string   `json:"aiSummary,omitempty"`    // 一句话描述（「快递员送达包裹后离开」）
-	AITitle      string   `json:"aiTitle,omitempty"`      // 短标题（「包裹送达」）
-	AITags       []string `json:"aiTags,omitempty"`       // 标签
-	AIEntities   []string `json:"aiEntities,omitempty"`   // 实体（person/box/car）
-	AIActions    []string `json:"aiActions,omitempty"`    // 动作序列
-	KeyMoments   []string `json:"keyMoments,omitempty"`   // 关键时刻（带时间）
-	Importance   float64  `json:"importance,omitempty"`   // 重要度 0~1
-	AIProvider   string   `json:"aiProvider,omitempty"`   // 哪个 Provider 分析的
-	AIModel      string   `json:"aiModel,omitempty"`      // 哪个模型
-	AIPromptVer  string   `json:"aiPromptVer,omitempty"`  // Prompt 版本（便于将来重跑）
+	AISummary   string   `json:"aiSummary,omitempty"`   // 一句话描述（「快递员送达包裹后离开」）
+	AITitle     string   `json:"aiTitle,omitempty"`     // 短标题（「包裹送达」）
+	AITags      []string `json:"aiTags,omitempty"`      // 标签
+	AIEntities  []string `json:"aiEntities,omitempty"`  // 实体（person/box/car）
+	AIActions   []string `json:"aiActions,omitempty"`   // 动作序列
+	KeyMoments  []string `json:"keyMoments,omitempty"`  // 关键时刻（带时间）
+	Importance  float64  `json:"importance,omitempty"`  // 重要度 0~1
+	AIProvider  string   `json:"aiProvider,omitempty"`  // 哪个 Provider 分析的
+	AIModel     string   `json:"aiModel,omitempty"`     // 哪个模型
+	AIPromptVer string   `json:"aiPromptVer,omitempty"` // Prompt 版本（便于将来重跑）
 	// 便于「点事件跳回放」
 	RecFile string  `json:"recFile,omitempty"`
 	RecOff  float64 `json:"recOff,omitempty"`
@@ -72,8 +71,8 @@ const (
 
 // Store 事件库（按天分文件，追加写）。
 type Store struct {
-	mu      sync.Mutex
-	dir     string
+	mu       sync.Mutex
+	dir      string
 	thumbDir string
 	keepDays int
 }
@@ -248,7 +247,6 @@ func (s *Store) Days(limit int) []string {
 	return out
 }
 
-
 // DeleteEvents 从事件库里删除若干事件（按 id）。
 //
 // 实现：读当天文件 -> 过滤 -> 原子重写。
@@ -311,4 +309,81 @@ func (s *Store) DeleteEvents(ids []string) (int, error) {
 		}
 	}
 	return total, nil
+}
+
+// Enrichment 云端分析结果（写回事件用）
+type Enrichment struct {
+	AISummary   string
+	AITitle     string
+	AITags      []string
+	AIEntities  []string
+	AIActions   []string
+	KeyMoments  []string
+	Importance  float64
+	AIProvider  string
+	AIModel     string
+	AIPromptVer string
+}
+
+// Enrich 把云端分析结果合并进已有事件。
+//
+// 实现：找到事件所在的那一天，重写该文件（一天几百条，整体重写没问题）。
+func (s *Store) Enrich(id string, en Enrichment) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	ents, err := os.ReadDir(s.dir)
+	if err != nil {
+		return err
+	}
+	for _, ent := range ents {
+		if ent.IsDir() || !strings.HasSuffix(ent.Name(), ".jsonl") {
+			continue
+		}
+		p := filepath.Join(s.dir, ent.Name())
+		raw, err := os.ReadFile(p)
+		if err != nil {
+			continue
+		}
+		lines := strings.Split(string(raw), "\n")
+		changed := false
+		for i, line := range lines {
+			t := strings.TrimSpace(line)
+			if t == "" {
+				continue
+			}
+			var ev Event
+			if json.Unmarshal([]byte(t), &ev) != nil || ev.ID != id {
+				continue
+			}
+			ev.AISummary = en.AISummary
+			ev.AITitle = en.AITitle
+			ev.AITags = en.AITags
+			ev.AIEntities = en.AIEntities
+			ev.AIActions = en.AIActions
+			ev.KeyMoments = en.KeyMoments
+			ev.Importance = en.Importance
+			ev.AIProvider = en.AIProvider
+			ev.AIModel = en.AIModel
+			ev.AIPromptVer = en.AIPromptVer
+			nb, err := json.Marshal(ev)
+			if err != nil {
+				continue
+			}
+			lines[i] = string(nb)
+			changed = true
+		}
+		if !changed {
+			continue
+		}
+		tmp := p + ".tmp"
+		if err := os.WriteFile(tmp, []byte(strings.Join(lines, "\n")), 0o644); err != nil {
+			return err
+		}
+		if err := os.Rename(tmp, p); err != nil {
+			return err
+		}
+		return nil
+	}
+	return fmt.Errorf("未找到事件 %s", id)
 }

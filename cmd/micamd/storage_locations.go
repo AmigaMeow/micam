@@ -77,7 +77,7 @@ func (s *Server) handleStorageLocations(w http.ResponseWriter, r *http.Request) 
 
 	// 插件数据目录（默认）
 	add(filepath.Join(s.dataDir, "recordings"), "插件数据目录", "appdata",
-		"跟随插件，卸载时可能被清理", "");
+		"跟随插件，卸载时可能被清理", "")
 
 	// 外接/网络存储（如果有）
 	if ents, err := os.ReadDir("/vol02"); err == nil {
@@ -111,7 +111,7 @@ func (s *Server) handleStorageLocations(w http.ResponseWriter, r *http.Request) 
 			return r(out[i]) < r(out[j])
 		}
 		return out[i].Path < out[j].Path
-	});
+	})
 
 	writeJSON(w, 200, map[string]any{
 		"locations": out,

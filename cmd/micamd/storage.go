@@ -157,10 +157,10 @@ func (s *Server) handleCleanupPreview(w http.ResponseWriter, r *http.Request) {
 	deadline := time.Now().AddDate(0, 0, -keepDays)
 
 	type oldFile struct {
-		Name    string `json:"name"`
-		Path    string `json:"path"`
+		Name    string  `json:"name"`
+		Path    string  `json:"path"`
 		SizeMB  float64 `json:"sizeMB"`
-		ModTime string `json:"modTime"`
+		ModTime string  `json:"modTime"`
 	}
 	var files []oldFile
 	var totalMB float64
@@ -195,8 +195,8 @@ func (s *Server) handleCleanupPreview(w http.ResponseWriter, r *http.Request) {
 // startStorageGuard 启动存储守护。
 //
 // 每 10 分钟检查一次：
-//   1. 磁盘剩余低于阈值 -> 立即清理旧文件
-//   2. 超过保留天数 -> 清理
+//  1. 磁盘剩余低于阈值 -> 立即清理旧文件
+//  2. 超过保留天数 -> 清理
 //
 // 设计目标：无人值守时自动腾空间，避免录到磁盘满。
 func (s *Server) startStorageGuard() {

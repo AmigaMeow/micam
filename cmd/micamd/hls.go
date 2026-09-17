@@ -28,14 +28,14 @@ import (
 
 // hlsSession 一个 HLS 转码会话。
 type hlsSession struct {
-	Did       string
-	Dir       string
-	FPS       int
-	Width     int
-	Started   time.Time
-	LastUsed  time.Time
-	mu        sync.Mutex
-	cleanup   func()
+	Did      string
+	Dir      string
+	FPS      int
+	Width    int
+	Started  time.Time
+	LastUsed time.Time
+	mu       sync.Mutex
+	cleanup  func()
 }
 
 var (
@@ -56,8 +56,9 @@ func (s *Server) hlsDir(did string, lens int) string {
 // handleHLS 提供 HLS 播放列表和分片。
 //
 // 路径：
-//   GET /api/live/hls?did=xxx          -> 返回 m3u8 内容（并启动转码）
-//   GET /api/live/hls/seg?did=xxx&f=xx -> 返回分片文件
+//
+//	GET /api/live/hls?did=xxx          -> 返回 m3u8 内容（并启动转码）
+//	GET /api/live/hls/seg?did=xxx&f=xx -> 返回分片文件
 func (s *Server) handleHLS(w http.ResponseWriter, r *http.Request) {
 	did := r.URL.Query().Get("did")
 	if did == "" {
@@ -231,9 +232,9 @@ func (s *Server) ensureHLS(dev *xiaomi.Device, lens, fps, width int) error {
 		"-preset", "veryfast",
 		"-tune", "zerolatency",
 		"-crf", "26",
-		"-g", "15",              // 每 1 秒一个关键帧（15fps * 1）
+		"-g", "15", // 每 1 秒一个关键帧（15fps * 1）
 		"-keyint_min", "15",
-		"-sc_threshold", "0",    // 禁用场景切换检测，保证固定 GOP
+		"-sc_threshold", "0", // 禁用场景切换检测，保证固定 GOP
 	}
 	isHW := false
 	args = append(args, encArgs...)

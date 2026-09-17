@@ -35,7 +35,7 @@ type thumbEntry struct {
 var (
 	thumbMu    sync.Mutex
 	thumbCache = map[string]*thumbEntry{}
-	thumbTTL   = 60 * time.Second  // 超过这个年龄就在后台刷新
+	thumbTTL   = 60 * time.Second // 超过这个年龄就在后台刷新
 )
 
 // handleLiveThumb 返回缓存的实时缩略图。

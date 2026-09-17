@@ -32,8 +32,9 @@ import (
 // lensFromRequest 从请求里取镜头号（1=主，2=第二镜头）。
 //
 // 参数名用 channel，兼容常见习惯：
-//   ?channel=2  第二镜头
-//   缺省或 1    第一镜头
+//
+//	?channel=2  第二镜头
+//	缺省或 1    第一镜头
 func lensFromRequest(r *http.Request) int {
 	v := r.URL.Query().Get("channel")
 	if v == "" {
@@ -229,8 +230,9 @@ func vfScale(fps, width int) string {
 //   - runFFmpegBlocking 用 io.Pipe（阻塞背压）—— 适合 HLS（TS 流不能损坏）
 //
 // 为什么 HLS 不能丢数据：
-//   bufferedPipe 超限时从中间截断，会破坏 TS 包的 188 字节对齐，
-//   导致 ffmpeg 无法解析，表现为「收到数据但不出分片」。
+//
+//	bufferedPipe 超限时从中间截断，会破坏 TS 包的 188 字节对齐，
+//	导致 ffmpeg 无法解析，表现为「收到数据但不出分片」。
 func (s *Server) runFFmpegBlocking(dev *xiaomi.Device, lens int, args []string) (*exec.Cmd, io.ReadCloser, *bytes.Buffer, func(), error) {
 	_, mc, release, err := s.useConnKey(dev, lens)
 	if err != nil {
@@ -450,7 +452,7 @@ func (s *Server) handleMJPEG(w http.ResponseWriter, r *http.Request) {
 		"-flags", "+low_delay",
 		"-f", "mpegts", "-i", "pipe:0",
 		"-vf", vfScale(fps, width),
-		"-c:v", "mjpeg", "-q:v", "3",   // 质量 3（1最好，31最差）
+		"-c:v", "mjpeg", "-q:v", "3", // 质量 3（1最好，31最差）
 		"-f", "image2pipe",
 		"pipe:1",
 	}
@@ -483,8 +485,8 @@ func (s *Server) handleMJPEG(w http.ResponseWriter, r *http.Request) {
 	var pending []byte
 	readBuf := make([]byte, 64*1024)
 	sent := 0
-	decoded := 0   // 解码出的总帧数（含被跳过的）
-	skipN := 3     // 跳过前 N 帧：解码器从流中途开始，前几帧缺参考帧会花屏
+	decoded := 0 // 解码出的总帧数（含被跳过的）
+	skipN := 3   // 跳过前 N 帧：解码器从流中途开始，前几帧缺参考帧会花屏
 
 	// 首帧看门狗。
 	//

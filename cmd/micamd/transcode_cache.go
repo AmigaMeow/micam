@@ -45,9 +45,9 @@ import (
 // ---- 缓存的编码器指纹 ----
 
 var (
-	encFPMu   sync.Mutex
-	encFP     string   // 已确认可用的编码器（进程内缓存）
-	encTried  = map[string]error{}
+	encFPMu  sync.Mutex
+	encFP    string // 已确认可用的编码器（进程内缓存）
+	encTried = map[string]error{}
 )
 
 // pickFileEncoder 选一个实测可用的文件转码编码器。
@@ -239,7 +239,7 @@ func (s *Server) evictCache() {
 		all = append(all, ent{pth, info.Size(), info.ModTime()})
 		total += info.Size()
 		return nil
-	});
+	})
 
 	if total <= s.cacheMaxBytes() {
 		return
@@ -280,15 +280,15 @@ func (s *Server) cacheStats() map[string]any {
 		total += info.Size()
 		count++
 		return nil
-	});
+	})
 	encFPMu.Lock()
 	enc := encFP
 	encFPMu.Unlock()
 	return map[string]any{
-		"dir":       dir,
-		"count":     count,
-		"totalMB":   float64(total) / (1 << 20),
-		"maxMB":     float64(s.cacheMaxBytes()) / (1 << 20),
-		"encoder":   enc,
+		"dir":     dir,
+		"count":   count,
+		"totalMB": float64(total) / (1 << 20),
+		"maxMB":   float64(s.cacheMaxBytes()) / (1 << 20),
+		"encoder": enc,
 	}
 }

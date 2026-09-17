@@ -23,6 +23,34 @@ func aiConfigFromUser(c config.AIConfig) aiConfig {
 		MaxPerMinute:  c.MaxPerMinute,
 		PythonPath:    c.PythonPath,
 		Threads:       c.Threads,
+
+		Mode:           c.Mode,
+		DetectPerson:   c.DetectPerson,
+		DetectVehicle:  c.DetectVehicle,
+		DetectPackage:  c.DetectPackage,
+		DetectPet:      c.DetectPet,
+		EmbedEnabled:   c.EmbedEnabled,
+		FrameInterval:  c.FrameInterval,
+		ResultKeepDays: c.ResultKeepDays,
+
+		CloudEnabled:   c.CloudEnabled,
+		CloudImportant: c.CloudImportant,
+		DailyBudgetCNY: c.DailyBudgetCNY,
+		BudgetAction:   c.BudgetAction,
+		ProviderName:   c.ProviderName,
+		ProviderModel:  c.ProviderModel,
+		ProviderURL:    c.ProviderURL,
+		APITimeout:     c.APITimeout,
+		MaxConcurrent:  c.MaxConcurrent,
+		MaxTokens:      c.MaxTokens,
+		UploadMode:     c.UploadMode,
+
+		Rules:        c.Rules,
+		Dedupe:       c.Dedupe,
+		CacheEnabled: c.CacheEnabled,
+
+		PrivacyCameras: c.PrivacyCameras,
+		ConfSlider:     c.ConfThreshold,
 	}
 }
 
@@ -36,50 +64,179 @@ func aiConfigToUser(a aiConfig) config.AIConfig {
 		MaxPerMinute:  a.MaxPerMinute,
 		PythonPath:    a.PythonPath,
 		Threads:       a.Threads,
+
+		Mode:           a.Mode,
+		DetectPerson:   a.DetectPerson,
+		DetectVehicle:  a.DetectVehicle,
+		DetectPackage:  a.DetectPackage,
+		DetectPet:      a.DetectPet,
+		EmbedEnabled:   a.EmbedEnabled,
+		FrameInterval:  a.FrameInterval,
+		ResultKeepDays: a.ResultKeepDays,
+
+		CloudEnabled:   a.CloudEnabled,
+		CloudImportant: a.CloudImportant,
+		DailyBudgetCNY: a.DailyBudgetCNY,
+		BudgetAction:   a.BudgetAction,
+		ProviderName:   a.ProviderName,
+		ProviderModel:  a.ProviderModel,
+		ProviderURL:    a.ProviderURL,
+		APITimeout:     a.APITimeout,
+		MaxConcurrent:  a.MaxConcurrent,
+		MaxTokens:      a.MaxTokens,
+		UploadMode:     a.UploadMode,
+
+		Rules:        a.Rules,
+		Dedupe:       a.Dedupe,
+		CacheEnabled: a.CacheEnabled,
+
+		PrivacyCameras: a.PrivacyCameras,
 	}
 }
 
-// aiConfigFromReq 把请求转成配置
+// aiConfigFromReq 把请求转成配置（只覆盖请求里出现的字段）
 func aiConfigFromReq(req map[string]any, cur aiConfig) aiConfig {
 	out := cur
-	if v, ok := req["enabled"].(bool); ok {
-		out.Enabled = v
+
+	str := func(k string, dst *string) {
+		if v, ok := req[k].(string); ok {
+			*dst = v
+		}
 	}
-	if v, ok := req["model"].(string); ok && v != "" {
-		out.Model = v
+	bl := func(k string, dst *bool) {
+		if v, ok := req[k].(bool); ok {
+			*dst = v
+		}
 	}
-	if v, ok := req["confThreshold"].(float64); ok && v > 0 && v <= 1 {
-		out.ConfThreshold = v
+	num := func(k string, dst *float64) {
+		if v, ok := req[k].(float64); ok {
+			*dst = v
+		}
 	}
-	if v, ok := req["maxPerMinute"].(float64); ok && v >= 0 {
-		out.MaxPerMinute = int(v)
+	it := func(k string, dst *int) {
+		if v, ok := req[k].(float64); ok {
+			*dst = int(v)
+		}
 	}
-	if v, ok := req["threads"].(float64); ok && v > 0 {
-		out.Threads = int(v)
-	}
-	if v, ok := req["pythonPath"].(string); ok {
-		out.PythonPath = v
-	}
+
+	bl("enabled", &out.Enabled)
+	str("model", &out.Model)
+	num("confThreshold", &out.ConfThreshold)
+	num("confSlider", &out.ConfSlider)
+	it("maxPerMinute", &out.MaxPerMinute)
+	it("threads", &out.Threads)
+	str("pythonPath", &out.PythonPath)
+
+	str("mode", &out.Mode)
+	bl("detectPerson", &out.DetectPerson)
+	bl("detectVehicle", &out.DetectVehicle)
+	bl("detectPackage", &out.DetectPackage)
+	bl("detectPet", &out.DetectPet)
+	bl("embedEnabled", &out.EmbedEnabled)
+	str("frameInterval", &out.FrameInterval)
+	it("resultKeepDays", &out.ResultKeepDays)
+
+	bl("cloudEnabled", &out.CloudEnabled)
+	bl("cloudImportant", &out.CloudImportant)
+	num("dailyBudgetCny", &out.DailyBudgetCNY)
+	str("budgetAction", &out.BudgetAction)
+	str("providerName", &out.ProviderName)
+	str("providerModel", &out.ProviderModel)
+	str("apiBaseUrl", &out.ProviderURL)
+	str("providerUrl", &out.ProviderURL)
+	it("apiTimeout", &out.APITimeout)
+	it("maxConcurrent", &out.MaxConcurrent)
+	it("maxTokens", &out.MaxTokens)
+	str("uploadMode", &out.UploadMode)
+
+	bl("dedupe", &out.Dedupe)
+	bl("cacheEnabled", &out.CacheEnabled)
+
 	if v, ok := req["classes"].([]any); ok {
 		var cs []string
 		for _, x := range v {
-			if s, ok := x.(string); ok && s != "" {
-				cs = append(cs, s)
+			if s2, ok := x.(string); ok && s2 != "" {
+				cs = append(cs, s2)
 			}
 		}
 		out.Classes = cs
 	}
+	if v, ok := req["rules"].(map[string]any); ok {
+		m := map[string]bool{}
+		for k, x := range v {
+			if b, ok := x.(bool); ok {
+				m[k] = b
+			}
+		}
+		out.Rules = m
+	}
+	if v, ok := req["privacyCameras"].(map[string]any); ok {
+		m := map[string]bool{}
+		for k, x := range v {
+			if b, ok := x.(bool); ok {
+				m[k] = b
+			}
+		}
+		out.PrivacyCameras = m
+	}
+
+	// ---- API Key 单独存（不进 config.json）----
+	if v, ok := req["providerKey"].(string); ok && strings.TrimSpace(v) != "" {
+		if err := saveProviderKey(strings.TrimSpace(v)); err == nil {
+			out.ProviderReady = true
+		}
+	}
+	if v, ok := req["clearProviderKey"].(bool); ok && v {
+		_ = saveProviderKey("")
+		out.ProviderReady = false
+	}
+
 	return out
+}
+
+// ---- API Key 安全存储 ----
+//
+// **故意不放在 config.json 里**：
+// config.json 可能被导出/分享给他人排障，密钥混在里面会泄露。
+// 单独一个 0600 的文件，只有 micam 用户能读。
+
+func providerKeyPath() string {
+	dir := dataDirPath
+	if dir == "" {
+		dir = "."
+	}
+	return filepath.Join(dir, "ai-key")
+}
+
+func saveProviderKey(key string) error {
+	p := providerKeyPath()
+	if key == "" {
+		_ = os.Remove(p)
+		return nil
+	}
+	// 0600：只有属主可读写
+	return os.WriteFile(p, []byte(key), 0o600)
+}
+
+func loadProviderKey() string {
+	raw, err := os.ReadFile(providerKeyPath())
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(raw))
 }
 
 // handleAIConfig 读写 AI 配置。
 //
 //	GET  /api/ai/config
-//	POST /api/ai/config  {enabled, model, confThreshold, classes, maxPerMinute, ...}
+//	POST /api/ai/config  {enabled, model, ..., providerKey}
 func (s *Server) handleAIConfig(w http.ResponseWriter, r *http.Request) {
 	if r.Method == http.MethodGet {
+		cfg := s.cfg.AI
 		writeJSON(w, 200, map[string]any{
-			"config": s.cfg.AI,
+			"config": cfg,
+			// 前端只看「配没配」，密钥本身不下发
+			"hasKey": loadProviderKey() != "",
 			"status": s.ai.Status(),
 		})
 		return
@@ -98,6 +255,9 @@ func (s *Server) handleAIConfig(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 500, "保存配置失败: "+err.Error())
 		return
 	}
+
+	// 同步到运行中的客户端
+	s.ai.applyConfig(neu)
 
 	// 重启推理进程以应用新配置
 	if neu.Enabled {

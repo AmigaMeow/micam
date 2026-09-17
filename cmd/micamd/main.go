@@ -40,13 +40,16 @@ const appName = "micam"
 // appVersion 用 var 而非 const：
 // 允许构建时用 -ldflags "-X main.appVersion=x.y.z" 注入，
 // 确保二进制里的版本与 manifest 严格一致（构建脚本会校验）。
+// dataDirPath 数据目录（包级，供其它文件使用）
+var dataDirPath string
+
 // appDestDir 应用安装目录（包级，供其它文件使用）
 var appDestDir string
 
 // startedAt 进程启动时间（状态条显示「运行时间」用）
 var startedAt = time.Now()
 
-var appVersion = "0.31.0"
+var appVersion = "0.32.0"
 
 func main() {
 	var (
@@ -64,6 +67,7 @@ func main() {
 	flag.Parse()
 
 	appDestDir = *appDest
+	dataDirPath = *dataDir
 
 	// --version：打印版本后退出
 	//
@@ -104,6 +108,9 @@ func main() {
 	}
 
 	cfg := config.Load(*configPath)
+
+	// 结果缓存开关（AI 配置里可关）
+	globalCacheEnabled = cfg.AI.CacheEnabled
 	st := store.New(*dataDir)
 
 	// 初始化日志文件（daemon 化后 stdout 会丢）
@@ -480,6 +487,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/ai/usage", s.handleAIUsage)
 	mux.HandleFunc("/api/ai/embed", s.handleAIEmbed)
 	mux.HandleFunc("/api/ai/provider/test", s.handleAIProviderTest)
+	mux.HandleFunc("/api/ai/analyze", s.handleAIAnalyze)
 
 	// 播放
 	mux.HandleFunc("/api/live/source-status", s.handleSourceStatus)

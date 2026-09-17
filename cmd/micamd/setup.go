@@ -32,12 +32,12 @@ type CheckItem struct {
 
 // SetupStatus 整体状态。
 type SetupStatus struct {
-	Version     string      `json:"version"`
-	Stage       string      `json:"stage"` // welcome / ready / error
-	Checks      []CheckItem `json:"checks"`
-	HasAccounts bool        `json:"hasAccounts"`
-	DeviceCount int         `json:"deviceCount"`
-	AccountCount int        `json:"accountCount"`
+	Version      string      `json:"version"`
+	Stage        string      `json:"stage"` // welcome / ready / error
+	Checks       []CheckItem `json:"checks"`
+	HasAccounts  bool        `json:"hasAccounts"`
+	DeviceCount  int         `json:"deviceCount"`
+	AccountCount int         `json:"accountCount"`
 }
 
 // handleSetupCheck 环境自检。

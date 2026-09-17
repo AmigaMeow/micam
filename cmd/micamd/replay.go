@@ -40,7 +40,6 @@ import (
 	"strings"
 	"sync"
 	"time"
-
 )
 
 // ffprobePath 找 ffprobe（与 ffmpeg 同目录）。
@@ -174,8 +173,8 @@ func (s *Server) handleRecDates(w http.ResponseWriter, r *http.Request) {
 	loadRecMeta(root)
 
 	type dayInfo struct {
-		Date  string  `json:"date"`
-		Count int     `json:"count"`
+		Date   string  `json:"date"`
+		Count  int     `json:"count"`
 		SizeMB float64 `json:"sizeMB"`
 	}
 	var out []dayInfo
@@ -222,7 +221,7 @@ func (s *Server) handleRecDates(w http.ResponseWriter, r *http.Request) {
 	for _, v := range agg {
 		out = append(out, *v)
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Date > out[j].Date });
+	sort.Slice(out, func(i, j int) bool { return out[i].Date > out[j].Date })
 
 	writeJSON(w, 200, map[string]any{"dates": out})
 }
@@ -342,10 +341,11 @@ func urlEncode(s string) string {
 // handleRecPlay 把录像转码成 H.264 MP4 流式输出。
 //
 // 参数：
-//   name  设备名
-//   date  日期目录（可空，会自动找）
-//   file  文件名
-//   t     起始秒数（可选，用于拖动进度）
+//
+//	name  设备名
+//	date  日期目录（可空，会自动找）
+//	file  文件名
+//	t     起始秒数（可选，用于拖动进度）
 func (s *Server) handleRecPlay(w http.ResponseWriter, r *http.Request) {
 	name := safeName(r.URL.Query().Get("name"))
 	date := safeName(r.URL.Query().Get("date"))
@@ -367,7 +367,7 @@ func (s *Server) handleRecPlay(w http.ResponseWriter, r *http.Request) {
 		logf("[replay] 缓存命中 %s", filepath.Base(dst))
 		w.Header().Set("Content-Type", "video/mp4")
 		w.Header().Set("Cache-Control", "public, max-age=3600")
-		http.ServeFile(w, r, dst)   // ServeFile 自带 Range 支持
+		http.ServeFile(w, r, dst) // ServeFile 自带 Range 支持
 		return
 	}
 
@@ -441,7 +441,7 @@ func (s *Server) buildCache(src, dst string, encArgs []string, enc, label string
 	args = append(args,
 		"-c:a", "aac", "-b:a", "64k",
 		"-movflags", "+faststart",
-		"-f", "mp4",          // 必须显式指定：临时文件名是 .part，ffmpeg 猜不出格式
+		"-f", "mp4", // 必须显式指定：临时文件名是 .part，ffmpeg 猜不出格式
 		tmp,
 	)
 
@@ -542,7 +542,7 @@ func (s *Server) handleRecThumb(w http.ResponseWriter, r *http.Request) {
 
 	src, err := s.findRecFile(name, date, file)
 	if err != nil {
-		writeErr(w, 404, err.Error());
+		writeErr(w, 404, err.Error())
 		return
 	}
 
@@ -569,7 +569,7 @@ func (s *Server) handleRecThumb(w http.ResponseWriter, r *http.Request) {
 		"-y", dst,
 	)
 	if err := cmd.Run(); err != nil {
-		writeErr(w, 500, "生成缩略图失败");
+		writeErr(w, 500, "生成缩略图失败")
 		return
 	}
 	serveJPEG(w, dst)
@@ -578,7 +578,7 @@ func (s *Server) handleRecThumb(w http.ResponseWriter, r *http.Request) {
 func serveJPEG(w http.ResponseWriter, path string) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		writeErr(w, 404, "读取失败");
+		writeErr(w, 404, "读取失败")
 		return
 	}
 	w.Header().Set("Content-Type", "image/jpeg")
@@ -596,7 +596,7 @@ func (s *Server) handleRecDownload(w http.ResponseWriter, r *http.Request) {
 
 	src, err := s.findRecFile(name, date, file)
 	if err != nil {
-		writeErr(w, 404, err.Error());
+		writeErr(w, 404, err.Error())
 		return
 	}
 	w.Header().Set("Content-Type", "video/x-matroska")
@@ -609,7 +609,7 @@ func (s *Server) handleRecDownload(w http.ResponseWriter, r *http.Request) {
 // handleRecDelete 删除单个录像文件。
 func (s *Server) handleRecDelete(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
-		writeErr(w, 405, "只支持 POST");
+		writeErr(w, 405, "只支持 POST")
 		return
 	}
 	var req struct {
@@ -618,13 +618,13 @@ func (s *Server) handleRecDelete(w http.ResponseWriter, r *http.Request) {
 		File string `json:"file"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		writeErr(w, 400, "参数错误");
+		writeErr(w, 400, "参数错误")
 		return
 	}
 
 	src, err := s.findRecFile(safeName(req.Name), safeName(req.Date), safeName(req.File))
 	if err != nil {
-		writeErr(w, 404, err.Error());
+		writeErr(w, 404, err.Error())
 		return
 	}
 
@@ -634,7 +634,7 @@ func (s *Server) handleRecDelete(w http.ResponseWriter, r *http.Request) {
 		freed = fi.Size()
 	}
 	if err := os.Remove(src); err != nil {
-		writeErr(w, 500, "删除失败: "+err.Error());
+		writeErr(w, 500, "删除失败: "+err.Error())
 		return
 	}
 
@@ -659,7 +659,8 @@ var _ = time.Now
 // POST /api/recordings/config   修改
 //
 // POST body（都可选）：
-//   {"enabled":true,"segmentSec":300,"keepDays":7,"minFreeGB":10,"cacheGB":5}
+//
+//	{"enabled":true,"segmentSec":300,"keepDays":7,"minFreeGB":10,"cacheGB":5}
 func (s *Server) handleRecConfig(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
@@ -754,9 +755,10 @@ func (s *Server) handleRecConfig(w http.ResponseWriter, r *http.Request) {
 // POST /api/recordings/batch-delete
 //
 // body:
-//   {"name":"设备名","before":"2026-09-14"}   删除该日期之前的
-//   {"name":"设备名","date":"2026-09-14"}     删除该日期全部
-//   {"files":[{"name":..,"date":..,"file":..}]}  指定文件列表
+//
+//	{"name":"设备名","before":"2026-09-14"}   删除该日期之前的
+//	{"name":"设备名","date":"2026-09-14"}     删除该日期全部
+//	{"files":[{"name":..,"date":..,"file":..}]}  指定文件列表
 func (s *Server) handleRecBatchDelete(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeErr(w, 405, "只支持 POST")
@@ -859,8 +861,9 @@ func (s *Server) handleRecBatchDelete(w http.ResponseWriter, r *http.Request) {
 // GET /api/recordings/frame?name=&date=&file=&t=30
 //
 // 与 thumb 的区别：
-//   thumb  固定取第 1 秒，用于列表缩略图
-//   frame  取任意时间，用于拖动预览
+//
+//	thumb  固定取第 1 秒，用于列表缩略图
+//	frame  取任意时间，用于拖动预览
 func (s *Server) handleRecFrame(w http.ResponseWriter, r *http.Request) {
 	name := safeName(r.URL.Query().Get("name"))
 	date := safeName(r.URL.Query().Get("date"))
@@ -870,7 +873,9 @@ func (s *Server) handleRecFrame(w http.ResponseWriter, r *http.Request) {
 		t = 0
 	}
 	w0, _ := strconv.Atoi(r.URL.Query().Get("w"))
-	if w0 <= 0 || w0 > 640 {
+	// 上限放到 1600：云端视觉模型看车牌/门牌需要高分辨率，
+	// 而这是本地 ffmpeg 抽帧，不额外花钱。
+	if w0 <= 0 || w0 > 1600 {
 		w0 = 240
 	}
 

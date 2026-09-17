@@ -36,24 +36,25 @@ import (
 
 // exportJob 一个导出任务。
 type exportJob struct {
-	ID        string  `json:"id"`
-	Name      string  `json:"name"`
-	Date      string  `json:"date"`
-	File      string  `json:"file"`
-	Start     float64 `json:"start"`
-	End       float64 `json:"end"`
-	Status    string  `json:"status"` // running / done / failed
-	Progress  int     `json:"progress"`
-	OutPath   string  `json:"-"`
-	SizeMB    float64 `json:"sizeMB"`
-	Duration  float64 `json:"duration"`
-	Error     string  `json:"error,omitempty"`
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	Date      string    `json:"date"`
+	File      string    `json:"file"`
+	Start     float64   `json:"start"`
+	End       float64   `json:"end"`
+	Status    string    `json:"status"` // running / done / failed
+	Progress  int       `json:"progress"`
+	OutPath   string    `json:"-"`
+	SizeMB    float64   `json:"sizeMB"`
+	Duration  float64   `json:"duration"`
+	Error     string    `json:"error,omitempty"`
 	CreatedAt time.Time `json:"createdAt"`
 }
 
 var (
 	exportMu   sync.Mutex
 	exportJobs = map[string]*exportJob{}
+
 // exportDir 导出文件目录
 )
 
@@ -179,9 +180,9 @@ func (s *Server) runExport(job *exportJob, src string) {
 
 	// 通知
 	s.notify.Send(notify.Event{
-		Type:  notify.EventExportDone,
-		Level: "info",
-		Title: "片段导出完成",
+		Type:    notify.EventExportDone,
+		Level:   "info",
+		Title:   "片段导出完成",
 		Message: job.Name + " 的 " + fmtDur2(job.Duration) + " 片段已就绪（" + fmtMB(job.SizeMB) + "）",
 		Data: map[string]any{
 			"id":   job.ID,
