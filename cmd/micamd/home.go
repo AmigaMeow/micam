@@ -377,6 +377,17 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	list := s.eventStore.Query(q)
 
+	// 车牌过滤（阶段 2 B：按车牌检索）
+	if plate := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("plate"))); plate != "" {
+		var only []event.Event
+		for _, e := range list {
+			if strings.ToUpper(e.AIPlate) == plate {
+				only = append(only, e)
+			}
+		}
+		list = only
+	}
+
 	// 附上用户标记（书签/需关注/标签）—— 前端一次拿到，避免 N+1
 	marks := s.marks.list()
 

@@ -282,6 +282,14 @@ func (w *aiWorker) analyzeOne(c *aiProviderClient, e *event.Event, why string) {
 		return
 	}
 
+	// 车辆事件顺带读车牌（本地 LPR，免费）
+	if e.Type == "vehicle" && lprAvailable() {
+		if pr, perr := w.srv.enrichEventPlate(e); perr == nil && pr != nil && pr.Plate != "" {
+			// 车牌结果已写进事件，任务记录里通过 job.Result 展示
+			_ = pr
+		}
+	}
+
 	job.Status = "done"
 	job.CostCNY = res.CostCNY
 	job.ElapsedMS = res.ElapsedMS

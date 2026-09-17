@@ -57,6 +57,12 @@ type Event struct {
 	AIProvider  string   `json:"aiProvider,omitempty"`  // 哪个 Provider 分析的
 	AIModel     string   `json:"aiModel,omitempty"`     // 哪个模型
 	AIPromptVer string   `json:"aiPromptVer,omitempty"` // Prompt 版本（便于将来重跑）
+
+	// ---- 车牌（本地 LPR + 多帧投票）----
+	AIPlate     string   `json:"aiPlate,omitempty"`
+	AIPlateConf float64  `json:"aiPlateConf,omitempty"`
+	AIPlateSrc  string   `json:"aiPlateSrc,omitempty"`
+	AIPlateAlt  []string `json:"aiPlateAlt,omitempty"`
 	// 便于「点事件跳回放」
 	RecFile string  `json:"recFile,omitempty"`
 	RecOff  float64 `json:"recOff,omitempty"`
@@ -323,6 +329,12 @@ type Enrichment struct {
 	AIProvider  string
 	AIModel     string
 	AIPromptVer string
+
+	// 车牌
+	AIPlate     string
+	AIPlateConf float64
+	AIPlateSrc  string
+	AIPlateAlt  []string
 }
 
 // Enrich 把云端分析结果合并进已有事件。
@@ -366,6 +378,10 @@ func (s *Store) Enrich(id string, en Enrichment) error {
 			ev.AIProvider = en.AIProvider
 			ev.AIModel = en.AIModel
 			ev.AIPromptVer = en.AIPromptVer
+			ev.AIPlate = en.AIPlate
+			ev.AIPlateConf = en.AIPlateConf
+			ev.AIPlateSrc = en.AIPlateSrc
+			ev.AIPlateAlt = en.AIPlateAlt
 			nb, err := json.Marshal(ev)
 			if err != nil {
 				continue

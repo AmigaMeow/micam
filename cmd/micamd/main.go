@@ -49,7 +49,7 @@ var appDestDir string
 // startedAt 进程启动时间（状态条显示「运行时间」用）
 var startedAt = time.Now()
 
-var appVersion = "0.34.0"
+var appVersion = "0.35.0"
 
 func main() {
 	var (
@@ -502,6 +502,10 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/ai/find/run", s.handleFindRun)
 	mux.HandleFunc("/api/ai/find/task", s.handleFindTask)
 	mux.HandleFunc("/api/ai/find/tasks", s.handleFindTasks)
+	mux.HandleFunc("/api/ai/plate/read", s.handlePlateRead)
+	mux.HandleFunc("/api/ai/plate/search", s.handlePlateSearch)
+	mux.HandleFunc("/api/ai/plate/status", s.handlePlateStatus)
+	mux.HandleFunc("/api/ai/plate/install", s.handlePlateInstall)
 	mux.HandleFunc("/api/ai/jobs", s.handleAIJobs)
 
 	// 播放
