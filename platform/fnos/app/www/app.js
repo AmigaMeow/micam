@@ -6020,7 +6020,7 @@ function devLogTable(list){
 
 function devToolsCard(){
   var tools = [
-    { ic:'file-video', t:'接口文档',     d:'浏览完整的 OpenAPI 文档', a:'docs',    btn:'查看文档 →' },
+    { ic:'file-video', t:'接口文档',     d:'页内查看完整指南与参考手册', a:'docs', btn:'打开文档 →' },
     { ic:'download',   t:'下载 OpenAPI', d:'下载最新的 API 规范文件', a:'openapi', btn:'下载 JSON' },
     { ic:'cpu',        t:'能力探测',     d:'检测当前可用的接口能力',  a:'caps',    btn:'开始检测' },
     { ic:'refresh-cw', t:'Webhook 测试', d:'模拟发送事件到你的服务',  a:'webhook', btn:'开始测试' },
@@ -6109,9 +6109,31 @@ function bindDevOverview(){
   bindDevTokenActions();
 }
 
+// devDownload 真正触发下载。
+//
+// 不要用 window.open：/api/dev/docs 是 text/markdown、/api/dev/openapi 是
+// application/json，浏览器只会把原始文本铺在标签页里（看着就是"一个文本"）。
+function devDownload(path, filename){
+  var a = document.createElement('a');
+  a.href = apiUrl(path);
+  a.download = filename || '';
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(function(){ if(a.parentNode) a.parentNode.removeChild(a); }, 0);
+  toast('已开始下载' + (filename ? '：' + filename : ''), 'ok');
+}
+
 function devToolAction(a){
-  if(a === 'docs'){ window.open(apiUrl('/api/dev/docs'), '_blank'); return; }
-  if(a === 'openapi'){ window.open(apiUrl('/api/dev/openapi'), '_blank'); return; }
+  // 「接口文档」改成跳页内文档（指南 + 参考手册），而不是打开原始 Markdown
+  if(a === 'docs'){
+    devTab = 'docs';
+    devDocTab = 'guide';
+    if(typeof stopDevTimers === 'function') stopDevTimers();
+    paintDev($('#content'));
+    return;
+  }
+  if(a === 'openapi'){ devDownload('/api/dev/openapi', 'micam-openapi.json'); return; }
   if(a === 'caps'){ devTab = 'docs'; paintDev($('#content')); return; }
   if(a === 'webhook'){ devTab = 'webhook'; paintDev($('#content')); return; }
   if(a === 'diag'){ devTab = 'diag'; paintDev($('#content')); return; }
@@ -6382,9 +6404,9 @@ function devFilterRef(q){
 
 function bindDevDocs(){
   var b1 = document.getElementById('devBtnSpec');
-  if(b1) b1.onclick = function(){ window.open(apiUrl('/api/dev/openapi'), '_blank'); };
+  if(b1) b1.onclick = function(){ devDownload('/api/dev/openapi', 'micam-openapi.json'); };
   var b2 = document.getElementById('devBtnDocs');
-  if(b2) b2.onclick = function(){ window.open(apiUrl('/api/dev/docs'), '_blank'); };
+  if(b2) b2.onclick = function(){ devDownload('/api/dev/docs', 'micam-api-docs.md'); };
   Array.prototype.forEach.call(document.querySelectorAll('[data-doctab]'), function(b){
     b.onclick = function(){
       devDocTab = this.dataset.doctab;
