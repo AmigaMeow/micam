@@ -8266,21 +8266,55 @@ function initTopNav(){
   try { loadTopNavHome(); } catch(e){ console.error('loadTopNavHome 失败', e); }
 }
 
+// _tnHomeNamed 家庭是否「有名字」
+//
+// 小米 API 对未命名的家庭会返回纯数字（常见是 "0" 或 userId）。
+// 直接显示会变成 [0] 0，很难看，所以这类视为未命名。
+function _tnHomeNamed(h){
+  var n = String((h && h.name) || '').trim();
+  if(!n) return false;
+  if(/^\d+$/.test(n)) return false;   // 纯数字 -> 未命名
+  if(/^[0-9a-f]{16,}$/i.test(n)) return false; // 看起来像 id
+  return true;
+}
+
+// _tnHomeLabel 取用于显示的名字
+//
+// 未命名的家庭都叫「我的家」会重名，所以加短 id 后缀区分：
+//   我的家 · 8561
+function _tnHomeLabel(h){
+  if(_tnHomeNamed(h)) return String(h.name).trim();
+  var id = String((h && h.id) || '');
+  // 取尾 4 位（id 通常很长，尾部位区分度够）
+  var tail = id.length > 4 ? id.slice(-4) : id;
+  return tail ? ('我的家 · ' + tail) : '我的家';
+}
+
 // loadTopNavHome 读家庭列表，更新显示
 function loadTopNavHome(){
   _tnApi('/api/homes').then(function(d){
     var hs = (d && d.homes) || (Array.isArray(d) ? d : []);
     if(!hs.length) return;
+
+    // 选「当前家庭」：
+    //   1) 有名字的自己的家庭
+    //   2) 有名字的家庭（含共享）
+    //   3) 自己的第一台
+    //   4) 兜底第一台
     var own = hs.filter(function(h){ return !h.shared; });
-    var cur = own[0] || hs[0];
+    var cur = own.filter(_tnHomeNamed)[0]
+           || hs.filter(_tnHomeNamed)[0]
+           || own[0] || hs[0];
+
     _tnHome.homes = hs;
-    _tnHome.current = cur.name || '我的家';
+    _tnHome.current = _tnHomeLabel(cur);
 
     var el = document.getElementById('userName');
     if(el) el.textContent = _tnHome.current;
     var av = document.getElementById('userAvatar');
+    // 头像用第一个汉字；「我的家」-> 家
     if(av) av.textContent = (_tnHome.current || '家').slice(0, 1);
-  }).catch(function(){ /* 读不到就保持默认文案 */ });
+  }).catch(function(){ /* 读不到就保持 shell 的默认文案 */ });
 }
 
 // bindUserMenu 「我的家」下拉
@@ -8313,10 +8347,11 @@ function bindUserMenu(){
       + (hs.length > 1
           ? '<div class="usermenu__label">家庭</div>'
             + hs.map(function(h){
-                var on = (h.name === _tnHome.current);
+                var label = _tnHomeLabel(h);
+                var on = (label === _tnHome.current);
                 return '<button class="usermenu__item' + (on ? ' is-on' : '') + '" data-tn-home="' + _tnEsc(h.id) + '">'
                   + _tnIcon(on ? 'check' : 'home', 14)
-                  + '<span>' + _tnEsc(h.name || ('家庭 ' + h.id)) + '</span>'
+                  + '<span>' + _tnEsc(label) + '</span>'
                   + (h.shared ? '<em>共享</em>' : '')
                   + '</button>';
               }).join('')
@@ -8343,7 +8378,7 @@ function bindUserMenu(){
         var id = this.dataset.tnHome;
         var h = (_tnHome.homes || []).filter(function(x){ return String(x.id) === String(id); })[0];
         if(h){
-          _tnHome.current = h.name || ('家庭 ' + id);
+          _tnHome.current = _tnHomeLabel(h);
           var el2 = document.getElementById('userName');
           if(el2) el2.textContent = _tnHome.current;
           try { localStorage.setItem('micam.home', JSON.stringify({ id: id, name: _tnHome.current })); } catch(e3){}
