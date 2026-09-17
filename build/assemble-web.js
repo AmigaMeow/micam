@@ -22,7 +22,15 @@ const path = require('path');
 const ROOT = '/root/Deepseek/micam/platform/fnos/app';
 const W = ROOT + '/www';
 const SKEL = ROOT + '/shell.html';
-const JS = '/tmp/final-js.txt';
+// 前端源文件：**优先仓库内**（v0.39.1 起纳管）
+//
+// 背景：原来放在 /tmp/final-js.txt —— /tmp 重启会清空，
+// 而且并发会话互相重写时整份源码会丢。现在以仓库为准。
+//
+// /tmp/final-js.txt 保留为软链接指向本文件，兼容原有工作流。
+const JS_REPO = W + '/app.js';
+const JS_TMP = '/tmp/final-js.txt';
+const JS = fs.existsSync(JS_REPO) ? JS_REPO : JS_TMP;
 
 // 注意：**不再引入 Basecoat CSS**（2026-09-17）
 //
