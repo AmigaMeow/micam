@@ -79,6 +79,41 @@ type AIConfig struct {
 	PrivacyCameras map[string]bool `json:"privacyCameras"`
 }
 
+// UIConfig 界面与播放偏好（设置页「通用」Tab）
+type UIConfig struct {
+	// 外观
+	Theme      string `json:"theme"`      // system / dark / light
+	Language   string `json:"language"`   // zh-CN / en
+	TimeFormat string `json:"timeFormat"` // 24h / 12h
+
+	// 播放默认值
+	DefaultQuality  string `json:"defaultQuality"`  // 2k / hd / sd
+	DefaultProtocol string `json:"defaultProtocol"` // hls / mjpeg
+	AutoplayLive    bool   `json:"autoplayLive"`
+	AutoplayMute    bool   `json:"autoplayMute"`
+
+	// 界面偏好
+	HomeShowCameras   bool   `json:"homeShowCameras"`
+	HomeShowEvents    bool   `json:"homeShowEvents"`
+	HomeShowStorage   bool   `json:"homeShowStorage"`
+	ShowEnglishAlias  bool   `json:"showEnglishAlias"`
+	CompactMode       bool   `json:"compactMode"`
+	EventsDefaultView string `json:"eventsDefaultView"` // grid / list
+
+	// 录像
+	RecordSchedule string `json:"recordSchedule"` // always / custom
+	LoopOverwrite  bool   `json:"loopOverwrite"`
+
+	// 通知
+	QuietFrom    string `json:"quietFrom"` // "22:00"
+	QuietTo      string `json:"quietTo"`   // "07:00"
+	PushEnabled  bool   `json:"pushEnabled"`
+	EmailEnabled bool   `json:"emailEnabled"`
+
+	// 系统
+	AutoUpdate bool `json:"autoUpdate"`
+}
+
 type Config struct {
 	// 默认画质档位：2=标清, 3=2K（推荐）
 	Subtype string `json:"subtype"`
@@ -94,12 +129,18 @@ type Config struct {
 	RecordMinFreeGB int `json:"recordMinFreeGB"`
 	// 转码缓存上限 GB
 	TranscodeCacheGB int `json:"transcodeCacheGB"`
+	// 自动清理过期录像文件
+	RecordAutoClean bool `json:"recordAutoClean"`
+	// 低空间策略：deleteOldest / stopRecording / none
+	RecordLowSpaceMode string `json:"recordLowSpaceMode"`
 	// 事件通知
 	NotifyEnabled bool     `json:"notifyEnabled"`
 	NotifyWebhook string   `json:"notifyWebhook"`
 	NotifyEvents  []string `json:"notifyEvents"`
 	// AI 推理（默认关闭；关闭后事件只依赖帧差侦测）
 	AI AIConfig `json:"ai"`
+	// 界面与播放偏好
+	UI UIConfig `json:"ui"`
 	// 日志级别
 	LogLevel string `json:"logLevel"`
 	// 开放模式
@@ -112,13 +153,15 @@ type Config struct {
 // Default 返回默认配置。
 func Default() *Config {
 	return &Config{
-		Subtype:          "3",
-		RecordEnabled:    false,
-		RecordSegment:    300,
-		RecordKeepDays:   7,
-		RecordMinFreeGB:  10,
-		TranscodeCacheGB: 5,
-		LogLevel:         "info",
+		Subtype:            "3",
+		RecordEnabled:      false,
+		RecordSegment:      300,
+		RecordKeepDays:     7,
+		RecordMinFreeGB:    10,
+		TranscodeCacheGB:   5,
+		RecordAutoClean:    true,
+		RecordLowSpaceMode: "deleteOldest",
+		LogLevel:           "info",
 		AI: AIConfig{
 			Enabled:       false,
 			Model:         "yolov8n",
@@ -263,6 +306,14 @@ func (c *Config) SetNotify(enabled *bool, webhook *string, events *[]string) err
 func (c *Config) SetRecordDir(dir string) error {
 	c.mu.Lock()
 	c.RecordDir = dir
+	c.mu.Unlock()
+	return c.SaveSelf()
+}
+
+// SetUI 更新界面配置并落盘。
+func (c *Config) SetUI(u UIConfig) error {
+	c.mu.Lock()
+	c.UI = u
 	c.mu.Unlock()
 	return c.SaveSelf()
 }

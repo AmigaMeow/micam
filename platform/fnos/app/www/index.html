@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <title>小米摄像头</title>
-<meta name="micam-build" content="2026-09-17 09:49:16">
+<meta name="micam-build" content="2026-09-17 11:08:55">
 <!-- 样式内联：飞牛网关会剥前缀，相对路径不可靠（详见 build/assemble-web.js）-->
 <style>
 
@@ -4310,6 +4310,273 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; line-h
 .evd__plate-conf { font-size: var(--text-sm); color: var(--text-muted); }
 
 
+/* ==========================================================================
+   STORAGE — 存储监控（对齐效果图）
+   ========================================================================== */
+
+/* 4 个统计卡 */
+.st-stats { display: grid; gap: var(--space-4); grid-template-columns: repeat(4, minmax(0,1fr)); margin-bottom: var(--space-5); }
+@media (max-width:1100px){ .st-stats{ grid-template-columns: repeat(2,1fr);} }
+.st-stat { background: var(--surface-1); border:1px solid var(--border-subtle); border-radius: var(--radius-xl); padding: var(--space-4) var(--space-5); }
+.st-stat__head { display:flex; align-items:center; gap:8px; font-size: var(--text-sm); color: var(--text-muted); margin-bottom: var(--space-3); }
+.st-stat__head .icon { color: var(--text-muted); }
+.st-stat__val { font-size: 22px; font-weight: var(--weight-semibold); line-height:1.25; }
+.st-hint { font-size: var(--text-sm); color: var(--text-muted); margin-top: 6px; }
+
+/* 进度条 */
+.st-bar { height:6px; border-radius:3px; background: var(--surface-3); overflow:hidden; margin-top: var(--space-3); }
+.st-bar > span { display:block; height:100%; background: var(--accent); border-radius:3px; }
+.st-bar--sm { height:4px; margin-top:3px; }
+.st-bar__sub { font-size: var(--text-sm); color: var(--text-muted); margin-top:6px; }
+
+/* 两列布局 */
+.st-row { display:grid; gap: var(--space-5); align-items:start; margin-bottom: var(--space-5); }
+.st-row--2 { grid-template-columns: minmax(0,1.55fr) minmax(0,1fr); }
+@media (max-width:1100px){ .st-row--2{ grid-template-columns:1fr;} }
+
+/* 趋势图 */
+.st-sel { width: auto; margin-left:auto; height:30px; font-size: var(--text-sm); }
+.st-chart { padding: var(--space-4) var(--space-5) var(--space-5); }
+.st-chart__svg { width:100%; height:200px; display:block; }
+.st-chart__ylab { font-size:10px; fill: var(--text-muted); }
+.st-chart__xlab { font-size:10px; fill: var(--text-muted); }
+.st-chart__empty { height:200px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; color: var(--text-muted); font-size: var(--text-base); }
+.st-chart__empty-sub { font-size: var(--text-sm); opacity:.8; }
+
+/* 按类型统计 */
+.st-types { padding: var(--space-3) var(--space-5) var(--space-3); }
+.st-type { padding: var(--space-3) 0; border-bottom:1px solid var(--border-subtle); }
+.st-type:last-child { border-bottom:0; }
+.st-type__row { display:flex; align-items:baseline; gap:var(--space-3); font-size: var(--text-base); }
+.st-type__row > span { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.st-type__row > b { font-weight: var(--weight-medium); }
+.st-type__row > em { font-style:normal; width:52px; text-align:right; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.st-type__sub { font-size: var(--text-xs); color: var(--text-muted); margin-top:4px; }
+.st-type .st-bar { margin-top:6px; }
+.st-note { display:flex; align-items:center; gap:6px; padding: 0 var(--space-5) var(--space-5); font-size: var(--text-xs); color: var(--text-muted); }
+.st-empty { padding: var(--space-6); text-align:center; color: var(--text-muted); font-size: var(--text-base); display:flex; flex-direction:column; align-items:center; gap:6px; }
+.st-empty__sub { font-size: var(--text-sm); }
+
+/* 摄像头表格 */
+.st-table { padding: 0 var(--space-5) var(--space-4); }
+.st-table__head, .st-table__row {
+  display:grid; gap: var(--space-3);
+  grid-template-columns: minmax(0,1.4fr) minmax(0,1.2fr) 78px 74px 74px;
+  align-items:center; padding: 10px 0; font-size: var(--text-base);
+}
+.st-table__head { font-size: var(--text-sm); color: var(--text-muted); border-bottom:1px solid var(--border-subtle); }
+.st-table__row { border-bottom:1px solid var(--border-subtle); }
+.st-table__row:last-child { border-bottom:0; }
+.st-cam { display:flex; align-items:center; gap:8px; min-width:0; }
+.st-cam__name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.st-cell { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+.st-cell__val { font-size: var(--text-sm); }
+
+/* 存储策略 */
+.st-policy { padding: var(--space-3) var(--space-5) var(--space-5); }
+.st-field { display:grid; grid-template-columns: 84px auto auto minmax(0,1fr); gap: var(--space-2); align-items:center; padding: 7px 0; font-size: var(--text-base); }
+.st-field__label { color: var(--text-muted); font-size: var(--text-sm); }
+.st-field__num { width: 86px; }
+.st-field__unit { color: var(--text-muted); font-size: var(--text-sm); }
+.st-field__hint { color: var(--text-muted); font-size: var(--text-xs); }
+.st-field__sep { color: var(--text-muted); }
+.st-field > .input:not(.st-field__num) { width:100%; }
+.st-switchrow { display:grid; grid-template-columns: 84px auto minmax(0,1fr); gap: var(--space-2); align-items:center; padding: 7px 0; }
+.st-switchrow__label { color: var(--text-muted); font-size: var(--text-sm); }
+.st-switchrow__hint { color: var(--text-muted); font-size: var(--text-xs); }
+.st-save { margin-top: var(--space-4); width:100%; justify-content:center; }
+
+/* 缓存 */
+.st-cache { padding: var(--space-2) var(--space-5) var(--space-2); }
+.st-kv { display:flex; align-items:baseline; gap: var(--space-3); padding: 6px 0; font-size: var(--text-base); border-bottom:1px solid var(--border-subtle); }
+.st-kv:last-child { border-bottom:0; }
+.st-kv > span { flex:0 0 84px; color: var(--text-muted); font-size: var(--text-sm); }
+.st-kv > b { flex:1; min-width:0; font-weight: var(--weight-normal); word-break:break-all; }
+.st-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: var(--text-sm); }
+.st-cache__acts { display:flex; gap: var(--space-2); padding: var(--space-3) var(--space-5) var(--space-5); }
+
+/* 迁移 */
+.st-migrate { padding: var(--space-2) var(--space-5) var(--space-5); }
+.st-migrate .st-field { grid-template-columns: 84px minmax(0,1fr) auto minmax(0,1fr); }
+.st-migrate__foot { display:flex; align-items:center; gap: var(--space-4); margin-top: var(--space-4); }
+.st-migrate__foot .st-hint { margin:0; flex:1; }
+
+/* 清理预览 */
+.st-clean { padding: var(--space-2) var(--space-5) var(--space-2); }
+.st-clean__sum { display:flex; align-items:center; gap:8px; padding: var(--space-3) 0; font-size: var(--text-base); color: #4ade80; }
+.st-clean__sum b { color:#4ade80; }
+.st-clean__acts { padding: var(--space-3) var(--space-5) var(--space-5); display:flex; flex-direction:column; gap: var(--space-2); }
+.st-clean__acts .btn { justify-content:center; }
+.st-warn { display:flex; align-items:center; gap:5px; font-size: var(--text-xs); color: var(--warning); }
+
+/* 底部状态栏 */
+.st-footbar { display:flex; align-items:center; gap: var(--space-5); flex-wrap:wrap; padding: var(--space-3) var(--space-4); background: var(--surface-1); border:1px solid var(--border-subtle); border-radius: var(--radius-lg); font-size: var(--text-sm); color: var(--text-muted); }
+.st-footbar__spacer { flex:1; }
+.st-health { display:inline-flex; align-items:center; gap:6px; }
+.st-health.is-ok b { color: #4ade80; }
+.st-health.is-warn b { color: var(--warning); }
+
+
+/* ==========================================================================
+   SETTINGS 3-COL — 设置页（左 Tab + 中内容 + 右摘要）
+   ========================================================================== */
+
+.set3 { display:grid; gap: var(--space-5); grid-template-columns: 200px minmax(0,1fr) 300px; align-items:start; }
+@media (max-width:1300px){ .set3{ grid-template-columns: 180px minmax(0,1fr);} .set3__side{ grid-column:1/-1; display:grid; grid-template-columns:repeat(3,1fr); gap:var(--space-4);} }
+@media (max-width:900px){ .set3{ grid-template-columns:1fr;} .set3__side{ grid-template-columns:1fr;} }
+
+/* 左：竖排 Tab */
+.set3__nav { display:flex; flex-direction:column; gap:2px; position:sticky; top:var(--space-4); }
+.set3__tab {
+  display:flex; align-items:center; gap:var(--space-3);
+  padding:10px var(--space-3); border-radius: var(--radius-md);
+  color: var(--text-secondary); text-align:left; width:100%;
+  transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+}
+.set3__tab:hover { background: var(--surface-2); color: var(--text); }
+.set3__tab.is-active { background: color-mix(in oklab, var(--accent) 16%, transparent); color: var(--accent); }
+.set3__tab .icon { flex:0 0 auto; }
+.set3__tab-body { display:flex; flex-direction:column; gap:1px; min-width:0; }
+.set3__tab-name { font-size: var(--text-base); }
+.set3__tab-en { font-size: var(--text-xs); color: var(--text-muted); }
+.set3__tab.is-active .set3__tab-en { color: color-mix(in oklab, var(--accent) 70%, transparent); }
+
+/* 中：内容 */
+.set3__main { display:flex; flex-direction:column; gap: var(--space-5); min-width:0; }
+.set3__sec { background: var(--surface-1); border:1px solid var(--border-subtle); border-radius: var(--radius-xl); overflow:hidden; }
+.set3__sec-head { display:flex; align-items:baseline; gap:var(--space-2); padding: var(--space-4) var(--space-5) var(--space-3); border-bottom:1px solid var(--border-subtle); }
+.set3__sec-head > span { font-size: var(--text-lg); font-weight: var(--weight-semibold); }
+.set3__sec-head > em { font-style:normal; font-size: var(--text-sm); color: var(--text-muted); }
+
+.set3__row { display:grid; grid-template-columns: minmax(0,1fr) auto; gap: var(--space-4); align-items:center; padding: var(--space-4) var(--space-5); border-bottom:1px solid var(--border-subtle); }
+.set3__row:last-child { border-bottom:0; }
+.set3__row.is-wide { grid-template-columns: minmax(0,1fr); }
+.set3__row.is-wide .set3__row-ctl { justify-content:flex-start; }
+.set3__row-title { font-size: var(--text-base); color: var(--text); }
+.set3__row-hint { font-size: var(--text-sm); color: var(--text-muted); margin-top:3px; }
+.set3__row-ctl { display:flex; align-items:center; gap: var(--space-2); flex-wrap:wrap; }
+
+/* 单选组 */
+.set3__radios { display:flex; align-items:center; gap: var(--space-5); }
+.set3__radio { display:inline-flex; align-items:center; gap:8px; cursor:pointer; font-size: var(--text-base); color: var(--text-secondary); }
+.set3__radio input { display:none; }
+.set3__radio-dot { width:16px; height:16px; border-radius:50%; border:1.5px solid var(--border-strong); flex:0 0 auto; }
+.set3__radio input:checked + .set3__radio-dot { border-color: var(--accent); background: radial-gradient(circle, var(--accent) 0 4px, transparent 4px); }
+.set3__radio input:checked ~ span:last-child { color: var(--text); }
+
+/* 控件尺寸 */
+.set3__sel { width: 200px; }
+.set3__num { width: 88px; }
+.set3__time { width: 120px; }
+.set3__wide { flex:1; min-width:220px; }
+.set3__unit { font-size: var(--text-sm); color: var(--text-muted); }
+.set3__val { font-size: var(--text-base); color: var(--text-secondary); }
+
+/* 右：摘要卡 */
+.set3__side { display:flex; flex-direction:column; gap: var(--space-4); }
+.set3__card { background: var(--surface-1); border:1px solid var(--border-subtle); border-radius: var(--radius-xl); padding: var(--space-4) var(--space-5); cursor:pointer; transition: border-color var(--duration-fast) var(--ease-out); }
+.set3__card:hover { border-color: var(--border-strong); }
+.set3__card.is-current { border-color: color-mix(in oklab, var(--accent) 40%, transparent); }
+.set3__card-head { display:flex; align-items:center; gap:8px; font-size: var(--text-base); font-weight: var(--weight-medium); margin-bottom: var(--space-3); }
+.set3__card-head .icon:first-child { color: var(--text-muted); }
+.set3__card-head .icon:last-child { margin-left:auto; color: var(--text-muted); }
+.set3__kv { display:flex; align-items:baseline; gap: var(--space-3); padding: 6px 0; font-size: var(--text-base); }
+.set3__kv > span { flex:1; min-width:0; color: var(--text-muted); }
+.set3__kv > b { font-weight: var(--weight-normal); color: var(--text-secondary); }
+.set3__link { display:inline-flex; align-items:center; gap:3px; color: var(--accent); }
+
+
+/* ===== ACCOUNTS — 账号管理（对齐效果图）===== */
+.acct-bar { display:flex; align-items:center; gap:var(--space-3); flex-wrap:wrap; margin-bottom:var(--space-5); }
+.acct-bar__spacer { flex:1; }
+.acct-bar__auto { display:inline-flex; align-items:center; gap:8px; font-size:var(--text-sm); color:var(--text-muted); }
+
+.acct-grid { display:grid; gap:var(--space-5); grid-template-columns:minmax(0,1.7fr) minmax(0,1fr); align-items:start; }
+@media (max-width:1200px){ .acct-grid{ grid-template-columns:1fr;} }
+
+/* 账号卡片 */
+.acct-list { display:flex; flex-direction:column; gap:var(--space-4); }
+.acct-card { display:flex; gap:var(--space-4); background:var(--surface-1); border:1px solid var(--border-subtle); border-radius:var(--radius-xl); padding:var(--space-4); }
+.acct-card__thumb { width:120px; height:78px; flex:0 0 120px; border-radius:var(--radius-lg); overflow:hidden; background:#0a0d12; }
+.acct-card__thumb img { width:100%; height:100%; object-fit:cover; display:block; }
+.acct-card__ph { width:100%; height:100%; display:flex; align-items:center; justify-content:center; color:var(--text-muted); }
+.acct-card__body { flex:1; min-width:0; display:flex; flex-direction:column; gap:6px; }
+.acct-card__top { display:flex; align-items:center; gap:var(--space-3); }
+.acct-card__name { font-size:var(--text-lg); font-weight:var(--weight-medium); }
+.acct-state { display:inline-flex; align-items:center; gap:5px; padding:2px 9px; border-radius:999px; font-size:var(--text-xs); }
+.acct-state.is-ok { background:rgba(34,197,94,.14); color:#4ade80; }
+.acct-state.is-warn { background:rgba(245,158,11,.14); color:var(--warning); }
+.acct-card__id { font-size:var(--text-sm); color:var(--text-muted); font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+.acct-card__meta { display:flex; align-items:center; gap:6px; font-size:var(--text-sm); color:var(--text-muted); }
+.acct-card__sep { opacity:.4; }
+
+.acct-pills { display:flex; gap:var(--space-2); flex-wrap:wrap; margin-top:2px; }
+.acct-pill { display:inline-flex; flex-direction:column; gap:1px; padding:5px 10px; border-radius:var(--radius-md); background:var(--surface-2); border:1px solid var(--border-subtle); font-size:var(--text-xs); color:var(--text-muted); }
+.acct-pill b { font-size:var(--text-sm); font-weight:var(--weight-medium); }
+.acct-pill.is-ok b { color:#4ade80; }
+.acct-pill.is-warn b { color:var(--warning); }
+.acct-pill.is-bad b { color:var(--danger); }
+
+.acct-card__acts { display:flex; gap:var(--space-2); flex-wrap:wrap; margin-top:4px; }
+
+/* 右栏 */
+.acct-side { display:flex; flex-direction:column; gap:var(--space-4); }
+.acct-cred { padding:var(--space-3) var(--space-5) var(--space-4); }
+.acct-cred__item { display:grid; grid-template-columns:22px minmax(0,1fr) auto; gap:var(--space-3); padding:var(--space-3) 0; border-bottom:1px solid var(--border-subtle); align-items:start; }
+.acct-cred__item:last-child { border-bottom:0; }
+.acct-cred__num { width:22px; height:22px; border-radius:50%; background:var(--surface-3); color:var(--text-secondary); display:flex; align-items:center; justify-content:center; font-size:var(--text-xs); }
+.acct-cred__body { display:flex; flex-direction:column; gap:2px; min-width:0; }
+.acct-cred__title { font-size:var(--text-base); }
+.acct-cred__desc { font-size:var(--text-sm); color:var(--text-muted); line-height:1.6; }
+.acct-cred__st { display:inline-flex; align-items:center; gap:5px; font-size:var(--text-sm); white-space:nowrap; }
+.acct-cred__st.is-ok { color:#4ade80; }
+.acct-cred__st.is-warn { color:var(--warning); }
+
+.acct-bak__acts { display:flex; gap:var(--space-2); padding:var(--space-3) var(--space-5); flex-wrap:wrap; }
+.acct-bak__list { padding:0 var(--space-5) var(--space-4); }
+.acct-bak { display:grid; grid-template-columns:minmax(0,1.2fr) minmax(0,1.2fr) 60px 28px; gap:var(--space-2); align-items:center; padding:9px 0; border-bottom:1px solid var(--border-subtle); font-size:var(--text-sm); }
+.acct-bak:last-child { border-bottom:0; }
+.acct-bak__time { color:var(--text-secondary); font-variant-numeric:tabular-nums; }
+.acct-bak__meta { color:var(--text-muted); }
+.acct-bak__size { color:var(--text-muted); text-align:right; }
+.acct-bak__empty, .acct-act__empty { padding:var(--space-4); text-align:center; color:var(--text-muted); font-size:var(--text-sm); }
+
+.acct-stats { display:grid; grid-template-columns:repeat(2,1fr); gap:var(--space-3); padding:var(--space-3) var(--space-5); }
+.acct-stat { display:flex; align-items:flex-start; gap:var(--space-2); }
+.acct-stat__icon { color:var(--text-muted); margin-top:2px; }
+.acct-stat__body { display:flex; flex-direction:column; gap:1px; min-width:0; }
+.acct-stat__val { font-size:var(--text-lg); font-weight:var(--weight-semibold); line-height:1.2; }
+.acct-stat__label { font-size:var(--text-xs); color:var(--text-muted); }
+.acct-stat__hint { font-size:var(--text-xs); color:var(--text-muted); opacity:.8; }
+
+.acct-act__head { padding:var(--space-3) var(--space-5) 0; font-size:var(--text-sm); color:var(--text-muted); border-top:1px solid var(--border-subtle); margin:0 var(--space-5); padding-left:0; padding-right:0; }
+.acct-act { padding:var(--space-2) var(--space-5) var(--space-4); }
+.acct-act__item { display:grid; grid-template-columns:8px 44px minmax(0,1fr); gap:var(--space-2); align-items:baseline; padding:5px 0; font-size:var(--text-sm); }
+.acct-act__time { color:var(--text-muted); font-variant-numeric:tabular-nums; }
+.acct-act__text { color:var(--text-secondary); }
+
+/* 扫码引导 */
+.acct-guide { margin-top:var(--space-5); background:var(--surface-1); border:1px solid var(--border-subtle); border-radius:var(--radius-xl); overflow:hidden; }
+.acct-guide__head { display:flex; align-items:center; gap:8px; padding:var(--space-4) var(--space-5); cursor:pointer; font-size:var(--text-base); }
+.acct-guide__head > span { flex:1; display:flex; align-items:center; gap:8px; }
+.acct-guide__body { display:none; padding:0 var(--space-5) var(--space-5); grid-template-columns:auto minmax(0,1fr); gap:var(--space-6); align-items:center; }
+.acct-guide.is-open .acct-guide__body { display:grid; }
+@media (max-width:900px){ .acct-guide__body{ grid-template-columns:1fr;} }
+.acct-guide__steps { display:flex; align-items:center; gap:var(--space-3); }
+.acct-guide__step { display:flex; flex-direction:column; align-items:center; gap:6px; font-size:var(--text-xs); color:var(--text-muted); }
+.acct-guide__mock, .acct-guide__qr, .acct-guide__ok {
+  width:64px; height:64px; border-radius:var(--radius-lg);
+  display:flex; align-items:center; justify-content:center;
+  background:var(--surface-2); border:1px solid var(--border-subtle);
+  font-size:var(--text-sm); color:var(--text-secondary);
+}
+.acct-guide__qr { background:#fff; color:#111; }
+.acct-guide__ok { color:#4ade80; border-color:rgba(34,197,94,.4); }
+.acct-guide__arrow { color:var(--text-muted); }
+.acct-guide__title { font-size:var(--text-lg); font-weight:var(--weight-medium); margin-bottom:6px; }
+.acct-guide__desc { font-size:var(--text-base); color:var(--text-muted); line-height:1.7; margin-bottom:var(--space-3); }
+
+
 </style>
 </head>
 <body>
@@ -4566,6 +4833,61 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; line-h
 <div class="toast-wrap" id="toastWrap"></div>
 
 <script>
+// ===== MiCam 前端 — 分节索引 =====
+// （由 build/gen-js-index.js 自动生成，勿手改）
+//
+// 说明：下面的行号会随改动漂移，找代码时**直接搜注释本身**更可靠，例如：
+//   搜 `// ===== 页面：事件中心` 或 `// ============ Tab 3：调查`
+//
+//   状态                                        L    60 -    78
+//   工具                                        L    79 -    81
+//   通用弹窗                                    L    82 -   183
+//   移动端菜单                                  L   184 -   202
+//   菜单                                        L   203 -   266
+//   绑定移动端交互                              L   267 -   313
+//   数据                                        L   314 -   339
+//   页面：设备详情（P1）                        L   340 -   686
+//   页面：设备列表                              L   687 -  1058
+//   为什么不用实时快照                          L  1059 -  1155
+//   页面：首页 / 家庭概览                       L  1156 -  1504
+//   页面：事件中心（增强版，对齐效果图 P0-3）   L  1505 -  1951
+//   事件详情弹窗（对齐效果图 P0-3 图 2）        L  1952 -  2230
+//   页面：AI 智能                               L  2231 -  2338
+//   Tab 1：概览                                 L  2339 -  2561
+//   Tab 2：搜索                                 L  2562 -  2703
+//   Tab 3：调查                                 L  2704 -  3011
+//   Tab 4：设置                                 L  3012 -  3411
+//   绑定                                        L  3412 -  3679
+//   页面：实时预览                              L  3680 -  4446
+//   云台控制                                    L  4447 -  4522
+//   页面：回放                                  L  4523 -  4794
+//   页面：存储监控                              L  4795 -  4883
+//   存储策略配置                                L  4884 -  5083
+//   页面：多路预览                              L  5084 -  5390
+//   播放位置记忆                                L  5391 -  5411
+//   时间轴缩略图                                L  5412 -  5458
+//   导出片段                                    L  5459 -  5541
+//   导出管理                                    L  5542 -  5600
+//   批量删除                                    L  5601 -  5718
+//   页面：账号管理                              L  5719 -  5828
+//   页面：安装向导                              L  5829 -  5897
+//   页面：开发者                                L  5898 -  6095
+//   页面：系统设置                              L  6096 -  6208
+//   凭据状态提示                                L  6209 -  6262
+//   云台方向翻转（按设备记住）                  L  6263 -  6281
+//   动作                                        L  6282 -  6319
+//   扫码登录                                    L  6320 -  6359
+//   宿主 SDK 集成                               L  6360 -  6386
+//   事件通知配置                                L  6387 -  6387
+//   AI 设置                                     L  6388 -  6667
+//   诊断功能                                    L  6668 -  6717
+//   加载 hls.js（HLS 播放库）                   L  6718 -  6719
+//   为什么不用相对路径                          L  6720 -  6759
+//   开放模式（开发者选项）解锁                  L  6760 -  6787
+//   启动                                        L  6788 -  6830
+//
+// 重新生成索引：node build/gen-js-index.js
+// ===== 分节索引结束 =====
 
 (function(){
 "use strict";
@@ -4809,7 +5131,7 @@ function pageTitleOf(k){
     // 从屏幕左边缘（<30px）右滑，或任意位置右滑 >80px
     if(dy < 60 && dx > 80){
       var s = document.querySelector(".sider");
-      if(s && !s.classList.contains("open")) openSider();
+      if(s && !s.classList.contains("is-open")) openSider();
     }
     // 左滑关闭
     if(dy < 60 && dx < -80){
@@ -8685,7 +9007,7 @@ function startLiveHLS(did){
     if(cleared) return;
     var stp = document.getElementById("liveStep");
     if(stp){ stp.textContent = msg; stp.style.color = "#ff7875"; }
-    var sp = overlay.querySelector(".spin");
+    var sp = overlay.querySelector(".spinner");
     if(sp) sp.style.display = "none";
     if(progTimer) clearInterval(progTimer);
   }
@@ -8955,6 +9277,35 @@ function stopLive(){
   }
   var st = $("#liveState");
   if(st) st.textContent = "已停止";
+}
+
+// stopGrid 离开多路预览时停掉资源。
+//
+// 注意：网格的刷新定时器是局部变量，外部清不掉，
+// 所以这里做两件能做的事：
+//   1. 清掉网格里的 img/video 的 src（断掉 MJPEG/HLS 连接，这是最占资源的）
+//   2. 清掉可能挂在全局上的定时器
+//
+// 这段是防御性实现 —— 之前 stopGrid 被调用但从未定义，
+// 导致每次点导航都抛 ReferenceError，整个导航失效。
+function stopGrid(){
+  // 1) 清掉全局定时器（有就清）
+  try {
+    if(typeof gridTimer !== 'undefined' && gridTimer){ clearInterval(gridTimer); gridTimer = null; }
+    if(typeof patrolTimer !== 'undefined' && patrolTimer){ clearInterval(patrolTimer); patrolTimer = null; }
+  } catch(e){}
+
+  // 2) 断掉网格里的媒体连接
+  var box = document.getElementById('gridBody') || document.getElementById('content');
+  if(box){
+    Array.prototype.forEach.call(box.querySelectorAll('.gtile img, .gtile video'), function(el){
+      try { if(el.tagName === 'VIDEO'){ el.pause(); } el.removeAttribute('src'); el.src = ''; } catch(e){}
+    });
+  }
+  // 3) 关掉聚焦态
+  Array.prototype.forEach.call(document.querySelectorAll('.gtile.is-focus'), function(el){
+    el.classList.remove('is-focus');
+  });
 }
 
 // ===== 云台控制 =====
@@ -9306,1037 +9657,654 @@ function exportClip(){
 }
 
 // ===== 页面：存储监控 =====
+// ===== 页面：存储监控（对齐效果图）=====
+//
+// 布局（从上到下）：
+//   页头 + 3 操作按钮
+//   4 统计卡（总容量 / 可录时长 / 录像文件 / 录像数据）
+//   存储趋势（左宽）    |  按类型统计（右）
+//   按摄像头统计（左宽）|  存储策略（右）
+//                       |  转码缓存管理（右）
+//   迁移录像（左宽）    |  清理预览（右）
+//   底部状态栏
+
 function renderStorage(c){
-  c.innerHTML = loading("正在统计存储…");
-  api("/api/storage").then(function(d){
-    var disk = d.disk || {};
-    var rec = d.recordings || {};
-    var cams = d.cameras || [];
-
-    // 磁盘用量颜色
-    var pct = disk.usedPercent || 0;
-    var barColor = pct > 90 ? "var(--error)" : (pct > 75 ? "var(--warning)" : "var(--success)");
-
-    var html = ""
-      // 磁盘卡片
-      + "<div class=\"card\">"
-      +   "<div class=\"card__head\"><span class=\"card__title\">" + icon("inbox",15) + " 磁盘空间</span>"
-      +     "<span style=\"font-size:12px;color:var(--text-3)\">" + esc(disk.path||"") + "</span></div>"
-      +   "<div style=\"padding:20px 24px\">"
-      +     "<div style=\"display:flex;justify-content:space-between;align-items:baseline;margin-bottom:8px\">"
-      +       "<span style=\"font-size:26px;font-weight:600\">" + fmtSize(disk.usedGB, "GB") + "</span>"
-      +       "<span style=\"font-size:13px;color:var(--text-3)\">共 " + fmtSize(disk.totalGB, "GB") + "</span>"
-      +     "</div>"
-      +     "<div class=\"progress\" style=\"height:8px\">"
-      +       "<div class=\"progress__bar\" style=\"width:" + pct.toFixed(1) + "%;background:" + barColor + "\"></div>"
-      +     "</div>"
-      +     "<div style=\"display:flex;justify-content:space-between;margin-top:10px;font-size:12px\">"
-      +       "<span style=\"color:" + barColor + "\">已用 " + pct.toFixed(1) + "%</span>"
-      +       "<span style=\"color:var(--text-3)\">剩余 " + fmtSize(disk.freeGB, "GB") + "</span>"
-      +     "</div>"
-      +     (d.estimateHours > 0
-          ? "<div style=\"margin-top:14px;padding:10px 12px;background:var(--hover);border-radius:8px;font-size:12px;color:var(--text-2)\">"
-            + icon("rec",12) + " 按当前码率估算，剩余空间约可录 <b>" + Math.round(d.estimateHours) + " 小时</b>"
-            + "</div>"
-          : "")
-      +   "</div>"
-      + "</div>"
-
-      // 录像统计
-      + "<div class=\"card\">"
-      +   "<div class=\"card__head\"><span class=\"card__title\">" + icon("rec",15) + " 录像存储</span>"
-      +     "<button class=\"btn btn--sm\" id=\"btnCleanupPreview\">清理预览</button></div>"
-      +   "<div style=\"padding:20px 24px\">"
-      +     "<div class=\"stat-grid\">"
-      +       statBox("录像占用", fmtSize(rec.totalGB, "GB"), rec.fileCount + " 个文件")
-      +       statBox("分片时长", (rec.segment||"—"), "自动分段")
-      +       statBox("保留天数", (rec.keepDays||0) + " 天", rec.enabled ? "自动清理开启" : "自动清理关闭")
-      +       statBox("磁盘阈值", (rec.minFreeGB||0) + " GB", "低于则停止录像")
-      +     "</div>"
-      +   "</div>"
-      + "</div>"
-
-      // 存储策略
-      + "<div class=\"card\">"
-      +   "<div class=\"card__head\"><span class=\"card__title\">" + icon("set",15) + " 存储策略</span>"
-      +     "<button class=\"btn btn--sm\" id=\"btnRecCfgSave\">保存</button></div>"
-      +   "<div style=\"padding:16px 24px\" id=\"recCfg\">" + loading("读取中…") + "</div>"
-      + "</div>"
-
-      // 各摄像头
-      + "<div class=\"card\">"
-      +   "<div class=\"card__head\"><span class=\"card__title\">" + icon("cam",15) + " 摄像头存储</span></div>"
-      +   "<div class=\"table-wrap\"><table>"
-      +     "<thead><tr><th>设备</th><th>状态</th><th>录像</th><th>文件</th><th>占用</th><th>最新</th></tr></thead>"
-      +     "<tbody>"
-      +       (cams.length ? cams.map(function(x){
-            return "<tr>"
-              + "<td><div style=\"font-weight:500\">" + esc(x.name) + "</div>"
-              +   "<div style=\"font-size:11px;color:var(--text-3)\">" + esc(x.model||"") + "</div></td>"
-              + "<td>" + (x.online ? "<span class=\"badge badge--ok\">在线</span>" : "<span class=\"badge\">离线</span>") + "</td>"
-              + "<td>" + (x.recording ? "<span class=\"badge badge--ok\">录制中</span>" : "<span style=\"color:var(--text-3)\">—</span>") + "</td>"
-              + "<td>" + (x.files||0) + "</td>"
-              + "<td>" + fmtSizeMB(x.sizeMB) + "</td>"
-              + "<td style=\"font-size:11px;color:var(--text-3)\">" + esc(x.lastTime || "—") + "</td>"
-              + "</tr>";
-          }).join("") : "<tr><td colspan=\"6\" style=\"text-align:center;color:var(--text-3);padding:24px\">暂无摄像头</td></tr>")
-      +     "</tbody>"
-      +   "</table></div>"
-      + "</div>";
-
-    c.innerHTML = html;
-
-    var btn = $("#btnCleanupPreview");
-    if(btn) btn.onclick = showCleanupPreview;
-    loadRecConfig();
-  }).catch(function(e){
-    c.innerHTML = "<div class=\"card\">" + empty("close","读取失败", e.message, "") + "</div>";
-  });
-}
-
-// ===== 存储策略配置 =====
-function loadRecConfig(){
-  var box = $("#recCfg");
-  if(!box) return;
+  c.innerHTML = '<div class="page__inner">' + loading('加载存储信息…') + '</div>';
 
   Promise.all([
-    api("/api/recordings/config"),
-    api("/api/storage/locations").catch(function(){ return {locations:[]}; })
+    api('/api/storage/detail').catch(function(){ return null; }),
+    api('/api/recordings/cache').catch(function(){ return {}; }),
+    api('/api/storage/cleanup-preview').catch(function(){ return {}; }),
   ]).then(function(res){
-    var c = res[0] || {};
-    var locs = (res[1] || {}).locations || [];
-    var cur = c.dir || "";
-
-    // 存储位置下拉
-    var note = (res[1] || {}).note || "";
-    var opts = locs.map(function(l){
-      var sel = (l.path === cur) ? ' selected' : '';
-      var badge = l.badge ? '【' + l.badge + '】' : '';
-      var tag = l.writable ? '' : '（不可写）';
-      var size = l.totalGB ? '  ' + l.freeGB.toFixed(0) + 'G / ' + l.totalGB.toFixed(0) + 'G' : '';
-      return '<option value="' + esc(l.path) + '"' + sel + '>' + badge + esc(l.name) + size + tag + '</option>';
-    }).join("");
-    if(!opts){
-      opts = '<option value="' + esc(cur) + '" selected>' + esc(cur) + '</option>';
-    }
-    // 当前项说明
-    var curLoc = null;
-    locs.forEach(function(l){ if(l.path === cur) curLoc = l; });
-    var curDesc = curLoc && curLoc.desc ? curLoc.desc : "";
-
-    box.innerHTML = ""
-      // ---- 存储位置 ----
-      + "<div class='cfg-row' style='align-items:flex-start'>"
-      +   "<div class='cfg-row__label' style='padding-top:8px'>录像位置</div>"
-      +   "<div style='flex:1;min-width:0'>"
-      +     "<select class='btn' id='cfgDir' style='width:100%;text-align:left;font-size:12px'>" + opts + "</select>"
-      +     "<div class='cfg-row__hint' style='margin-top:6px'>"
-      +       (curDesc ? "当前：" + esc(curDesc) + "<br>" : "")
-      +       "录像存到「目录/设备名/日期/」下。"
-      +       (note ? "<br><span style='color:var(--text-3)'>" + esc(note) + "</span>" : "")
-      +     "</div>"
-      +     "<div style='margin-top:8px'>"
-      +       "<input class='btn' id='cfgDirCustom' placeholder='或手动输入绝对路径，如 /vol1/1000/micam' "
-      +         "style='width:100%;text-align:left;font-size:12px'>"
-      +     "</div>"
-      +   "</div>"
-      + "</div>"
-
-      // ---- 自动录像（需确认）----
-      + "<div class='cfg-row' style='align-items:flex-start;border-top:1px solid var(--split);margin-top:6px;padding-top:14px'>"
-      +   "<div class='cfg-row__label' style='padding-top:8px'>自动录像</div>"
-      +   "<div style='flex:1'>"
-      +     "<label class='switch'><input type='checkbox' id='cfgEnabled'" + (c.enabled ? " checked" : "") + "><span class='switch__track'></span></label>"
-      +     "<div class='cfg-row__hint' style='margin-top:6px'>"
-      +       (c.enabled
-              ? "<span style='color:var(--warning)'>正在录像</span> —— 持续占用磁盘，按「保留天数」自动清理旧文件。"
-              : "关闭中。<b>打开后会立即开始录制所有在线摄像头</b>，并持续占用磁盘空间。")
-      +     "</div>"
-      +   "</div>"
-      + "</div>"
-
-      + "<div class='cfg-row'>"
-      +   "<div class='cfg-row__label'>分片时长</div>"
-      +   "<input class='btn input cfg-row__num' id='cfgSegment' type='number' min='10' max='3600' value='" + (c.segmentSec||300) + "'>"
-      +   "<div class='cfg-row__hint'>秒（越短文件越多，10-3600）</div>"
-      + "</div>"
-      + "<div class='cfg-row'>"
-      +   "<div class='cfg-row__label'>保留天数</div>"
-      +   "<input class='btn input cfg-row__num' id='cfgKeep' type='number' min='1' max='365' value='" + (c.keepDays||7) + "'>"
-      +   "<div class='cfg-row__hint'>天（超期自动清理）</div>"
-      + "</div>"
-      + "<div class='cfg-row'>"
-      +   "<div class='cfg-row__label'>磁盘阈值</div>"
-      +   "<input class='btn input cfg-row__num' id='cfgMinFree' type='number' min='0' max='10000' value='" + (c.minFreeGB||10) + "'>"
-      +   "<div class='cfg-row__hint'>GB（剩余低于此值就紧急清理）</div>"
-      + "</div>"
-      + "<div class='cfg-row'>"
-      +   "<div class='cfg-row__label'>转码缓存</div>"
-      +   "<input class='btn input cfg-row__num' id='cfgCache' type='number' min='1' max='500' value='" + (c.cacheGB||5) + "'>"
-      +   "<div class='cfg-row__hint'>GB（回放缓存上限）</div>"
-      + "</div>";
-
-    // 位置切换：立即生效
-    var sel = $("#cfgDir");
-    if(sel) sel.onchange = function(){ changeRecDir(this.value); };
-
-    var custom = $("#cfgDirCustom");
-    if(custom) custom.onkeydown = function(e){
-      if(e.key === "Enter" && this.value.trim()){
-        changeRecDir(this.value.trim());
-      }
-    };
-
-    // 自动录像开关：需确认
-    var en = $("#cfgEnabled");
-    if(en) en.onchange = function(){
-      var on = this.checked;
-      var self = this;
-      if(on){
-        if(!confirm(
-          "开启自动录像？\n\n" +
-          "· 会立即开始录制所有在线摄像头\n" +
-          "· 持续占用磁盘空间\n" +
-          "· 按「保留天数」自动清理旧文件\n\n" +
-          "确定开启吗？"
-        )){
-          self.checked = false;
-          return;
-        }
-      } else {
-        if(!confirm("关闭自动录像？\n\n正在进行的录像会停止。")){
-          self.checked = true;
-          return;
-        }
-      }
-      saveRecConfig();
-    };
-
-    var sb = $("#btnRecCfgSave");
-    if(sb) sb.onclick = saveRecConfig;
-  }).catch(function(e){
-    box.innerHTML = "<div style='color:var(--error);font-size:13px'>" + esc(e.message) + "</div>";
-  });
-}
-
-// changeRecDir 切换录像目录（单独接口，立即生效）
-function changeRecDir(dir){
-  if(!dir) return;
-  toast("正在切换录像目录…");
-  api("/api/storage/record-dir", {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ dir: dir })
-  }).then(function(r){
-    toast("录像目录已切换到 " + r.dir, "ok");
-    loadRecConfig();
-  }).catch(function(e){ toast("切换失败：" + e.message, "err"); });
-}
-
-function saveRecConfig(){
-  var body = {
-    segmentSec: parseInt(($("#cfgSegment")||{}).value, 10) || 300,
-    keepDays:   parseInt(($("#cfgKeep")||{}).value, 10) || 7,
-    minFreeGB:  parseInt(($("#cfgMinFree")||{}).value, 10),
-    cacheGB:    parseInt(($("#cfgCache")||{}).value, 10) || 5
-  };
-  if(isNaN(body.minFreeGB)) body.minFreeGB = 10;
-  var en = $("#cfgEnabled");
-  if(en) body.enabled = en.checked;
-
-  api("/api/recordings/config", {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body)
-  }).then(function(r){
-    toast(body.enabled ? "已开启自动录像（" + (r.enabled ? "生效中" : "已关闭") + "）" : "设置已保存", "ok");
-    setTimeout(loadRecConfig, 1200);
-  }).catch(function(e){ toast("保存失败：" + e.message, "err"); });
-}
-
-// 统计格子
-function statBox(label, value, sub){
-  return "<div class=\"stat\">"
-    + "<div class=\"stat__label\">" + esc(label) + "</div>"
-    + "<div class=\"stat__value\">" + esc(value) + "</div>"
-    + "<div class=\"stat__sub\">" + esc(sub) + "</div>"
-    + "</div>";
-}
-
-// 大小格式化（GB）
-function fmtSize(v, unit){
-  if(v == null) return "—";
-  if(v < 0.01) return (v * 1024).toFixed(0) + " MB";
-  if(v < 1) return v.toFixed(2) + " GB";
-  return v.toFixed(1) + " GB";
-}
-// 大小格式化（MB 输入）
-function fmtSizeMB(v){
-  if(v == null) return "—";
-  if(v < 1) return (v * 1024).toFixed(0) + " KB";
-  if(v < 1024) return v.toFixed(1) + " MB";
-  return (v / 1024).toFixed(2) + " GB";
-}
-
-// 清理预览
-function showCleanupPreview(){
-  toast("正在统计…");
-  api("/api/storage/cleanup-preview").then(function(d){
-    if(!d.fileCount){
-      toast("没有可清理的文件（保留 " + d.keepDays + " 天）", "ok");
-      return;
-    }
-    var msg = "将清理 " + d.fileCount + " 个文件，释放 " + fmtSizeMB(d.totalMB) + "\n保留最近 " + d.keepDays + " 天\n\n确定执行？";
-    if(!confirm(msg)) return;
-    toast("正在清理…");
-    api("/api/recordings/cleanup", { method: "POST" }).then(function(r){
-      toast("已清理 " + (r.deleted||0) + " 个文件，释放 " + fmtSizeMB(r.freedMB||0), "ok");
-      setTimeout(function(){ render(); }, 1200);
-    }).catch(function(e){ toast("清理失败：" + e.message, "err"); });
-  }).catch(function(e){ toast("查询失败：" + e.message, "err"); });
-}
-
-// ===== 页面：多路预览 =====
-//
-// 对齐效果图：
-//   左侧宫格 + 右侧「可选设备」面板
-//   支持 1/4/9/16 布局、轮巡、显示信息、帧率
-//
-// 宫格里的设备是**用户自己添加的**（存 localStorage），
-// 不是自动显示所有在线设备 —— 让用户控制看哪几路、什么顺序。
-
-var gridTimers = [];
-var gridLayout = 4;                    // 1 / 4 / 9 / 16
-var gridFocus = '';
-var gridSelected = null;               // null = 还没初始化
-var gridPatrol = false;
-var gridPatrolTimer = null;
-var gridInfoMode = 'full';             // full=名称+时间 / name=仅名称 / none=隐藏
-var gridFps = 3;
-var gridQuery = '';
-
-function gridKey(){ return 'micam.grid.selected'; }
-
-function gridLoad(){
-  if(gridSelected !== null) return gridSelected;
-  var out = [];
-  try { out = JSON.parse(localStorage.getItem(gridKey()) || 'null') || []; } catch(e){}
-  gridSelected = out;
-  return out;
-}
-function gridSave(){
-  try { localStorage.setItem(gridKey(), JSON.stringify(gridSelected || [])); } catch(e){}
-}
-
-function stopGrid(){
-  gridTimers.forEach(function(t){ if(t) clearInterval(t); });
-  gridTimers = [];
-  if(gridPatrolTimer){ clearInterval(gridPatrolTimer); gridPatrolTimer = null; }
-  Array.prototype.forEach.call(document.querySelectorAll('.gtile img'), function(img){ img.src = ''; });
-}
-
-function renderGrid(c){
-  c.innerHTML = '<div class="page__inner">' + loading('加载设备…') + '</div>';
-
-  loadDevices().then(function(){
-    var all = devices || [];
-    var sel = gridLoad().slice();
-
-    // 清理已不存在的设备
-    var before = sel.length;
-    sel = sel.filter(function(n){ return all.some(function(d){ return d.name === n; }); });
-    if(sel.length !== before){ gridSelected = sel; gridSave(); }
-
-    // 首次进入：自动加前几个在线设备，免得看到空白
-    if(gridSelected.length === 0 && !localStorage.getItem('micam.grid.inited')){
-      sel = all.filter(function(d){ return d.isOnline; }).slice(0, 4).map(function(d){ return d.name; });
-      gridSelected = sel; gridSave();
-      try { localStorage.setItem('micam.grid.inited', '1'); } catch(e){}
-    }
-
-    var cap = gridLayout;
-    var shown = sel.map(function(n){
-      return all.filter(function(d){ return d.name === n; })[0];
-    }).filter(Boolean).slice(0, cap);
-
-    if(!gridFocus || !shown.some(function(d){ return d.name === gridFocus; })){
-      gridFocus = shown.length ? shown[0].name : '';
-    }
-
-    function tile(d){
-      var nm = d.alias || d.name;
-      var en = d.aliasEn || '';
-      var foc = d.name === gridFocus;
-      var on = d.isOnline;
-      var info = gridInfoMode !== 'none';
-      return '<div class="gtile' + (foc ? ' is-focus' : '') + (on ? '' : ' is-offline')
-        + '" data-dev="' + esc(d.name) + '">'
-        + (on ? '<img data-stream="' + esc(d.name) + '" alt="">'
-              : '<div class="gtile__off">' + icon('video-off',30) + '<span>离线</span></div>')
-        + (info && gridInfoMode === 'full' && on
-            ? '<div class="gtile__time"><span class="rec-dot"></span><span data-gclock="' + esc(d.name) + '">' + clockNow() + '</span></div>'
-            : '')
-        + (info
-            ? '<div class="gtile__foot">'
-            +   '<div class="gtile__info">'
-            +     '<div class="gtile__name">' + esc(nm) + (en && gridInfoMode === 'full' ? ' <em>' + esc(en) + '</em>' : '') + '</div>'
-            +     (gridInfoMode === 'full' ? '<div class="gtile__meta">' + (d.shared ? '共享 · ' : '') + (on ? '在线' : '离线') + '</div>' : '')
-            +   '</div>'
-            +   '<div class="gtile__acts">'
-            +     '<button class="gtile__btn" data-gmax="1" title="放大">' + icon('maximize',15) + '</button>'
-            +     '<button class="gtile__btn" data-gfocus="1" title="聚焦">' + icon('eye',15) + '</button>'
-            +   '</div>'
-            + '</div>'
-            : '')
-        + (foc ? '<span class="gtile__focusbar"></span>' : '')
-        + '</div>';
-    }
-
-    function devicePanel(){
-      var q = (gridQuery || '').trim().toLowerCase();
-      var list = all.filter(function(d){
-        if(!q) return true;
-        return ((d.alias||'') + ' ' + (d.aliasEn||'') + ' ' + d.name).toLowerCase().indexOf(q) >= 0;
-      });
-      var items = list.map(function(d){
-        var added = (gridSelected||[]).indexOf(d.name) >= 0;
-        var nm = d.alias || d.name;
-        var en = d.aliasEn || '';
-        return '<div class="gd-item' + (added ? ' is-added' : '') + '" data-dev="' + esc(d.name) + '">'
-          + '<span class="gd-item__thumb"><img loading="lazy" data-gdthumb="' + esc(d.name) + '" alt=""></span>'
-          + '<span class="gd-item__body">'
-          +   '<span class="gd-item__name">' + esc(nm) + '</span>'
-          +   (en ? '<span class="gd-item__en">' + esc(en) + '</span>' : '')
-          +   '<span class="gd-item__status"><span class="status-dot ' + (d.isOnline?'is-online':'is-offline') + '"></span>'
-          +     (d.isOnline ? '在线' : '离线') + '</span>'
-          + '</span>'
-          + '<button class="gd-item__btn' + (added ? ' is-del' : '') + '" data-gtoggle="' + esc(d.name) + '">'
-          +   (added ? '移除' : '添加') + '</button>'
-          + '</div>';
-      }).join('');
-
-      return '<div class="gd-panel__head">'
-        +   '<span class="gd-panel__title">可选设备 <em>Available</em></span>'
-        +   '<span class="gd-panel__count">' + (gridSelected||[]).length + ' / ' + all.length + '</span>'
-        + '</div>'
-        + '<div class="search gd-panel__search">' + icon('search',14)
-        +   '<input class="input" id="gdSearch" type="search" placeholder="搜索摄像头…" value="' + esc(gridQuery||'') + '">'
-        + '</div>'
-        + '<div class="gd-panel__list">' + (items || empty('camera','没有匹配的设备','','')) + '</div>'
-        + '<div class="gd-panel__hint">' + icon('move',14) + '点「添加」把设备放进画面</div>';
-    }
-
-    c.innerHTML = '<div class="page__inner">'
-
-      + '<nav class="crumbs">'
-      +   '<a href="javascript:;" data-go="devices">' + icon('camera',14) + '<span>摄像头</span></a>'
-      +   '<span class="crumbs__sep">' + icon('chevron-right',13) + '</span>'
-      +   '<span class="crumbs__cur">多路预览</span>'
-      + '</nav>'
-
-      + '<div class="list-head">'
-      +   '<div class="list-head__main">'
-      +     '<h1 class="list-head__title">多路预览</h1>'
-      +     '<div class="list-head__en">Multi-Camera View</div>'
-      +   '</div>'
-      +   '<div class="list-head__acts">'
-      +     '<div class="segmented" id="gridLayout">'
-      +       [1,4,9,16].map(function(n){
-                return '<button class="segmented__btn' + (gridLayout===n?' is-active':'') + '" data-gl="' + n + '">' + n + ' 路</button>';
-              }).join('')
-      +     '</div>'
-      +   '</div>'
-      + '</div>'
-
-      + '<div class="gbar">'
-      +   '<button class="gbar__btn' + (gridPatrol ? ' is-active' : '') + '" id="gPatrol">'
-      +     icon('refresh',14) + '轮巡' + (gridPatrol ? '中' : '') + '</button>'
-      +   '<label class="gbar__sel">' + icon('eye',14)
-      +     '<select id="gInfo">'
-      +       '<option value="full"' + (gridInfoMode==='full'?' selected':'') + '>显示名称+时间</option>'
-      +       '<option value="name"' + (gridInfoMode==='name'?' selected':'') + '>仅显示名称</option>'
-      +       '<option value="none"' + (gridInfoMode==='none'?' selected':'') + '>隐藏信息</option>'
-      +     '</select></label>'
-      +   '<label class="gbar__sel">' + icon('gauge',14)
-      +     '<select id="gFps">'
-      +       [1,3,5,10].map(function(v){
-                return '<option value="' + v + '"' + (gridFps===v?' selected':'') + '>' + v + ' fps</option>';
-              }).join('')
-      +     '</select></label>'
-      +   '<span class="gbar__right">在线 ' + all.filter(function(d){ return d.isOnline; }).length + ' / 共 ' + all.length + ' 台</span>'
-      + '</div>'
-
-      + '<div class="grid-wrap">'
-      +   '<div class="ggrid ggrid--' + (shown.length === 1 ? 1 : (gridLayout === 16 ? 4 : gridLayout === 9 ? 3 : 2))
-      +     '" id="gridBox">'
-      +     (shown.length ? shown.map(tile).join('') : empty('camera','还没有添加摄像头','从右侧选择要看的设备',''))
-      +   '</div>'
-      +   '<aside class="gd-panel" id="gdPanel">' + devicePanel() + '</aside>'
-      + '</div>'
-
-      + '</div>';
-
-    // ---- 开流 ----
-    // 注意：宫格用**设备名**作 key（录像接口的 name 参数），
-    // 但实时流接口要的是 **did**，所以这里要查一次。
-    Array.prototype.forEach.call(c.querySelectorAll('img[data-stream]'), function(img){
-      var dev = all.filter(function(d){ return d.name === img.dataset.stream; })[0];
-      if(!dev){ return; }
-      img.src = apiUrl('/api/live/mjpeg?did=' + encodeURIComponent(dev.did) + '&fps=' + gridFps + '&w=640');
-    });
-
-    // ---- 时间戳 ----
-    gridTimers.push(setInterval(function(){
-      Array.prototype.forEach.call(document.querySelectorAll('[data-gclock]'), function(el){
-        el.textContent = clockNow();
-      });
-    }, 1000));
-
-    // ---- 轮巡 ----
-    function setPatrol(on){
-      gridPatrol = on;
-      if(gridPatrolTimer){ clearInterval(gridPatrolTimer); gridPatrolTimer = null; }
-      if(!on) return;
-      gridPatrolTimer = setInterval(function(){
-        if(shown.length < 2) return;
-        var i = -1;
-        shown.forEach(function(d, k){ if(d.name === gridFocus) i = k; });
-        var next = shown[(i + 1) % shown.length];
-        gridFocus = next.name;
-        Array.prototype.forEach.call(c.querySelectorAll('.gtile'), function(el){
-          el.classList.toggle('is-focus', el.dataset.dev === gridFocus);
-        });
-      }, 15000);
-    }
-    setPatrol(gridPatrol);
-
-    // ---- 交互 ----
-    function setFocus(name){
-      gridFocus = name;
-      Array.prototype.forEach.call(c.querySelectorAll('.gtile'), function(el){
-        el.classList.toggle('is-focus', el.dataset.dev === name);
-      });
-    }
-
-    Array.prototype.forEach.call(c.querySelectorAll('.gtile'), function(el){
-      var name = el.dataset.dev;
-      el.onclick = function(ev){
-        if(ev.target.closest('[data-gmax]')){ gotoLiveByName(name); return; }
-        if(ev.target.closest('[data-gfocus]')){ setFocus(name); return; }
-        setFocus(name);
-      };
-      el.ondblclick = function(){ gotoLiveByName(name); };
-    });
-
-    Array.prototype.forEach.call(c.querySelectorAll('[data-gl]'), function(b){
-      b.onclick = function(){
-        var v = parseInt(this.dataset.gl, 10);
-        if(v === gridLayout) return;
-        gridLayout = v;
-        stopGrid();
-        renderGrid(c);
-      };
-    });
-
-    var gp = document.getElementById('gPatrol');
-    if(gp) gp.onclick = function(){ stopGrid(); gridPatrol = !gridPatrol; renderGrid(c); };
-
-    var gi = document.getElementById('gInfo');
-    if(gi) gi.onchange = function(){ gridInfoMode = this.value; stopGrid(); renderGrid(c); };
-
-    var gf = document.getElementById('gFps');
-    if(gf) gf.onchange = function(){ gridFps = parseInt(this.value,10) || 3; stopGrid(); renderGrid(c); };
-
-    var gs = document.getElementById('gdSearch');
-    if(gs){
-      var deb = null;
-      gs.oninput = function(){
-        gridQuery = this.value;
-        if(deb) clearTimeout(deb);
-        deb = setTimeout(function(){
-          var panel = document.getElementById('gdPanel');
-          if(panel){ panel.innerHTML = devicePanel(); bindPanel(); }
-        }, 200);
-      };
-    }
-
-    function bindPanel(){
-      Array.prototype.forEach.call(document.querySelectorAll('[data-gtoggle]'), function(b){
-        b.onclick = function(){
-          var name = this.dataset.gtoggle;
-          var sel2 = gridLoad().slice();
-          var i = sel2.indexOf(name);
-          if(i >= 0){ sel2.splice(i,1); toast('已移除'); }
-          else {
-            if(sel2.length >= gridLayout){ toast('最多 ' + gridLayout + ' 路，请先调大布局', 'warn'); return; }
-            sel2.push(name); toast('已添加', 'ok');
-          }
-          gridSelected = sel2; gridSave();
-          stopGrid();
-          renderGrid(c);
-        };
-      });
-      Array.prototype.forEach.call(document.querySelectorAll('img[data-gdthumb]'), function(img, i){
-        var name = img.dataset.gdthumb;
-        var dev = all.filter(function(d){ return d.name === name; })[0];
-        if(!dev || !dev.isOnline) return;
-        setTimeout(function(){
-          fetch(apiUrl('/api/live/thumb?did=' + encodeURIComponent(dev.did) + '&w=320'), { cache:'no-store' })
-            .then(function(r){ return r.ok ? r.blob() : null; })
-            .then(function(b){ if(b && document.body.contains(img)) img.src = URL.createObjectURL(b); })
-            .catch(function(){});
-        }, i * 100);
-      });
-    }
-    bindPanel();
-
-    var gb = c.querySelector('[data-go]');
-    if(gb) gb.onclick = function(){ page='devices'; renderMenu(); render(); };
+    if(!res[0]) throw new Error('读取存储信息失败');
+    paintStorage(c, res[0], res[2] || {});
   }).catch(function(err){
-    c.innerHTML = '<div class="page__inner">' + errorCard(err, function(){ renderGrid(c); }) + '</div>';
+    c.innerHTML = '<div class="page__inner">' + errorCard(err, function(){ renderStorage(c); }) + '</div>';
   });
 }
 
-// gotoLiveByName 按设备名进实时预览（宫格用 name 作 key，因为后端接口以 name 为主键）
-function gotoLiveByName(name){
-  var d = (devices||[]).filter(function(x){ return x.name === name; })[0];
-  gotoLive(d ? d.did : name);
-}
+function paintStorage(c, d, cleanup){
+  var disk = d.disk || {};
+  var types = d.types || [];
+  var cams = d.cameras || [];
+  var cache = d.cache || {};
+  var trend = d.trend || [];
+  var pol = d.policy || {};
+  var status = d.status || {};
 
-// ===== 播放位置记忆 =====
-//
-// 长录像看到一半切走，下次接着看。
-// 存 localStorage：键 = micam.pos.<设备>.<文件>
-function posKey(info){ return 'micam.pos.' + info.n + '.' + info.f; }
-function getSavedPos(info){
-  try {
-    var v = parseFloat(localStorage.getItem(posKey(info)));
-    return (isFinite(v) && v > 3) ? v : 0;
-  } catch(e){ return 0; }
-}
-function savePos(info, sec){
-  try {
-    if(!isFinite(sec) || sec < 3) return;
-    localStorage.setItem(posKey(info), String(Math.floor(sec)));
-  } catch(e){}
-}
-function clearPos(info){
-  try { localStorage.removeItem(posKey(info)); } catch(e){}
-}
-
-// ===== 时间轴缩略图 =====
-//
-// 为什么要缩略图带（一次请求拿多帧）：
-//   如果每帧一个请求，拖一次要发几十个请求。
-//   服务端用 ffmpeg 的 tile 滤镜一次拼成横向长图，前端切片显示。
-function loadTimeline(info){
-  var box = $("#timeline");
-  if(!box) return;
-
-  box.style.display = "block";
-  box.innerHTML = "<div style=\"font-size:12px;color:var(--text-3)\">生成时间轴预览…</div>";
-
-  var n = 12;
-  var url = apiUrl("/api/recordings/frame-strip?name=" + encodeURIComponent(info.n)
-    + "&date=" + encodeURIComponent(info.d)
-    + "&file=" + encodeURIComponent(info.f)
-    + "&n=" + n);
-
-  var img = new Image();
-  img.onload = function(){
-    box.innerHTML = "";
-    var strip = document.createElement("div");
-    strip.className = "tl-strip";
-    strip.style.backgroundImage = "url(" + url + ")";
-
-    // 覆盖一层热区，点击跳转
-    var overlay = document.createElement("div");
-    overlay.className = "timeline__hit";
-
-    strip.appendChild(overlay);
-    box.appendChild(strip);
-
-    var video = $("#recVideo");
-    overlay.onclick = function(e){
-      if(!video || !isFinite(video.duration)) return;
-      var rect = overlay.getBoundingClientRect();
-      var ratio = (e.clientX - rect.left) / rect.width;
-      ratio = Math.max(0, Math.min(1, ratio));
-      video.currentTime = ratio * video.duration;
-    };
-  };
-  img.onerror = function(){
-    box.innerHTML = "<div style=\"font-size:12px;color:var(--text-3)\">时间轴预览不可用</div>";
-  };
-  img.src = url;
-}
-
-// ===== 导出片段 =====
-//
-// 为什么要两步（先转码再下载）：
-//   转码需要时间（2K 素材约 0.6 倍速）。
-//   如果直接流式返回，用户看到的是「点了没反应」。
-//   所以先创建任务，轮询进度，完成后再给下载链接。
-function showExportPanel(video){
-  var panel = $("#exportPanel");
-  if(!panel || !currentRecFile) return;
-
-  var dur = (video && isFinite(video.duration)) ? video.duration : 0;
-  var cur = (video && isFinite(video.currentTime)) ? video.currentTime : 0;
-  var end = dur > 0 ? Math.min(dur, cur + 30) : (cur + 30);
-
-  panel.style.display = "block";
-  panel.innerHTML = ""
-    + "<div class=\"cfg-row\">"
-    +   "<div class=\"cfg-row__label\">开始</div>"
-    +   "<input class=\"btn input cfg-row__num\" id=\"expStart\" type=\"number\" step=\"0.1\" min=\"0\" value=\"" + cur.toFixed(1) + "\">"
-    +   "<div class=\"cfg-row__hint\">秒</div>"
-    + "</div>"
-    + "<div class=\"cfg-row\">"
-    +   "<div class=\"cfg-row__label\">结束</div>"
-    +   "<input class=\"btn input cfg-row__num\" id=\"expEnd\" type=\"number\" step=\"0.1\" min=\"0\" value=\"" + end.toFixed(1) + "\">"
-    +   "<div class=\"cfg-row__hint\">秒" + (dur > 0 ? "（总长 " + fmtDur(dur) + "）" : "") + "</div>"
-    + "</div>"
-    + "<div class=\"row gap-2\" style=\"margin-top:10px\">"
-    +   "<button class=\"btn btn--primary\" id=\"btnDoExport\">开始导出</button>"
-    +   "<button class=\"btn\" id=\"btnHideExport\">取消</button>"
-    + "</div>"
-    + "<div id=\"exportResult\" style=\"margin-top:10px\"></div>";
-
-  $("#btnHideExport").onclick = function(){ panel.style.display = "none"; };
-  $("#btnDoExport").onclick = function(){
-    var s = parseFloat(($("#expStart")||{}).value) || 0;
-    var e = parseFloat(($("#expEnd")||{}).value) || 0;
-    if(e <= s){ toast("结束时间必须大于开始时间", "err"); return; }
-    doExport(s, e);
-  };
-}
-
-function doExport(start, end){
-  var box = $("#exportResult");
-  if(box) box.innerHTML = "<div style=\"font-size:12px;color:var(--text-3)\">正在创建导出任务…</div>";
-
-  api("/api/recordings/export", {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      name: currentRecFile.n, date: currentRecFile.d, file: currentRecFile.f,
-      start: start, end: end
-    })
-  }).then(function(r){
-    if(box) box.innerHTML = "<div style=\"font-size:12px;color:var(--text-3)\">转码中…（0%）</div>";
-    pollExport(r.id, box);
-  }).catch(function(e){
-    if(box) box.innerHTML = "<div style=\"color:var(--error);font-size:12px\">创建失败：" + esc(e.message) + "</div>";
-  });
-}
-
-function pollExport(id, box){
-  var n = 0;
-  var t = setInterval(function(){
-    n++;
-    api("/api/recordings/export/status?id=" + encodeURIComponent(id)).then(function(j){
-      if(j.status === "done"){
-        clearInterval(t);
-        if(box) box.innerHTML = ""
-          + "<div style=\"font-size:12px;color:var(--success);margin-bottom:8px\">"
-          +   "✅ 导出完成（" + fmtSizeMB(j.sizeMB||0) + "）</div>"
-          + "<a class=\"btn btn--primary btn--sm\" href=\"" + apiUrl("/api/recordings/export/download?id=" + id) + "\" download>下载 MP4</a>";
-      } else if(j.status === "failed"){
-        clearInterval(t);
-        if(box) box.innerHTML = "<div style=\"color:var(--error);font-size:12px\">导出失败：" + esc(j.error||"") + "</div>";
-      } else {
-        // 估算进度（2K 约 0.6 倍速，粗略显示）
-        var pct = Math.min(95, Math.round((j.end - j.start) * 0.6 * n * 2));
-        if(box) box.innerHTML = "<div style=\"font-size:12px;color:var(--text-3)\">转码中…（约 " + pct + "%）</div>";
-      }
-    }).catch(function(){});
-    if(n > 300) clearInterval(t);   // 最多轮询 5 分钟
-  }, 1000);
-}
-
-// ===== 导出管理 =====
-function showExportManager(){
-  api("/api/recordings/export/list").then(function(d){
-    var list = d.exports || [];
-    var html = "<div style=\"max-height:60vh;overflow:auto\">";
-
-    if(!list.length){
-      html += "<div style=\"padding:20px;text-align:center;color:var(--text-3);font-size:13px\">暂无导出文件</div>";
-    } else {
-      html += "<div style=\"font-size:12px;color:var(--text-3);margin-bottom:10px\">"
-        + "共 " + list.length + " 个 · " + fmtSizeMB(d.totalMB||0) + " · 目录 " + esc(d.dir||"") + "</div>";
-      html += "<table style=\"font-size:12px\"><thead><tr>"
-        + "<th>文件</th><th style=\"width:80px\">大小</th><th style=\"width:140px\">时间</th><th style=\"width:110px\"></th>"
-        + "</tr></thead><tbody>";
-      list.forEach(function(x){
-        html += "<tr>"
-          + "<td style=\"font-family:ui-monospace,monospace;font-size:11px\">" + esc(x.id) + "</td>"
-          + "<td>" + fmtSizeMB(x.sizeMB||0) + "</td>"
-          + "<td style=\"color:var(--text-3)\">" + esc(x.createdAt||"") + "</td>"
-          + "<td><a class=\"btn btn--sm\" href=\"" + apiUrl("/api/recordings/export/download?id=" + encodeURIComponent(x.id)) + "\" download>下载</a>"
-          + " <button class=\"btn btn--sm\" data-exdel=\"" + esc(x.id) + "\">删除</button></td>"
-          + "</tr>";
-      });
-      html += "</tbody></table>";
-    }
-
-    html += "</div>"
-      + "<div class=\"row gap-2\" style=\"margin-top:14px\">"
-      +   "<button class=\"btn btn--danger\" id=\"btnExpClear\">清空全部</button>"
-      +   "<button class=\"btn\" id=\"btnExpClose\">关闭</button>"
-      + "</div>";
-
-    openModal("导出文件管理", html, function(root){
-      var cl = root.querySelector("#btnExpClear");
-      if(cl) cl.onclick = function(){
-        if(!confirm("清空所有导出文件？\n\n已下载的不受影响，未下载的会丢失。")) return;
-        api("/api/recordings/export/clear", { method: "POST" }).then(function(r){
-          toast("已清空 " + (r.count||0) + " 个，释放 " + fmtSizeMB(r.freedMB||0), "ok");
-          closeModal();
-        }).catch(function(e){ toast("失败：" + e.message, "err"); });
-      };
-      var cc = root.querySelector("#btnExpClose");
-      if(cc) cc.onclick = closeModal;
-
-      Array.prototype.forEach.call(root.querySelectorAll("[data-exdel]"), function(b){
-        b.onclick = function(){
-          var id = this.dataset.exdel;
-          if(!confirm("删除导出 " + id + "？")) return;
-          api("/api/recordings/export/delete?id=" + encodeURIComponent(id), { method: "POST" }).then(function(){
-            toast("已删除", "ok");
-            closeModal();
-            showExportManager();
-          }).catch(function(e){ toast("失败：" + e.message, "err"); });
-        };
-      });
-    });
-  }).catch(function(e){ toast("加载失败：" + e.message, "err"); });
-}
-
-// ===== 批量删除 =====
-function showBatchDelete(){
-  if(!currentRecName){ toast("请先选择设备", "err"); return; }
-  var date = ($("#recDate") || {}).value || "";
-  var hasDate = !!date;
-
-  var msg = "批量删除「" + currentRecName + "」的录像\n\n"
-    + (hasDate
-        ? "范围：日期 " + date + "（该日期全部）\n"
-        : "范围：全部日期\n")
-    + "\n⚠️ 不可恢复，确定继续？";
-
-  if(!confirm(msg)) return;
-
-  var body = { name: currentRecName };
-  if(hasDate) body.date = date;
-
-  toast("正在删除…");
-  api("/api/recordings/batch-delete", {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body)
-  }).then(function(r){
-    toast("已删除 " + (r.deleted||0) + " 个文件，释放 " + fmtSizeMB(r.freedMB||0), "ok");
-    loadRecFiles();
-  }).catch(function(e){ toast("删除失败：" + e.message, "err"); });
-}
-
-// 时长格式化
-function fmtDur(sec){
-  if(!sec || sec <= 0) return "—";
-  var m = Math.floor(sec / 60), s = Math.round(sec % 60);
-  return m + ":" + (s < 10 ? "0" : "") + s;
-}
-
-// 播放录像
-function playRec(info){
-  currentRecFile = info;
-  var card = $("#playerCard");
-  var video = $("#recVideo");
-  var infoBox = $("#playInfo");
-  if(!card || !video) return;
-
-  card.style.display = "block";
-  $("#playTitle").textContent = "回放 · " + info.f;
-  infoBox.textContent = "正在转码…（首次较慢，之后会缓存加速）";
-
-  var url = apiUrl("/api/recordings/play?name=" + encodeURIComponent(info.n)
-    + "&date=" + encodeURIComponent(info.d)
-    + "&file=" + encodeURIComponent(info.f));
-
-  video.src = url;
-  video.load();
-  video.play().catch(function(){});
-
-  video.oncanplay = function(){ infoBox.textContent = "时长 " + fmtDur(video.duration) + " · " + info.f; };
-  video.onloadeddata = function(){
-    // 缓存命中时 Content-Length 存在 -> 可拖动
-    infoBox.textContent = "时长 " + fmtDur(video.duration) + " · " + info.f
-      + (cached ? " · 已缓存（可拖动）" : " · 转码中（首次播放）");
-  };
-  var cached = false;
-  fetch(url, { method: "HEAD" }).then(function(r){
-    cached = (r.headers.get("accept-ranges") === "bytes");
-  }).catch(function(){});
-  video.onerror = function(){ infoBox.textContent = "播放失败（可能转码中，稍候重试）"; };
-
-  card.scrollIntoView({ behavior: "smooth", block: "start" });
-  loadTimeline(info);
-
-  // ---- 播放位置记忆 ----
-  var saved = getSavedPos(info);
-  if(saved > 3){
-    video.onloadedmetadata = function(){
-      if(!isFinite(video.duration)) return;
-      video.currentTime = Math.min(saved, video.duration - 1);
-      if(infoBox){
-        infoBox.innerHTML = "已跳到上次位置 " + fmtDur(saved)
-          + " &nbsp;<a href=\"javascript:;\" id=\"btnRestart\" style=\"color:var(--primary)\">从头播放</a>";
-        var rb = document.getElementById("btnRestart");
-        if(rb) rb.onclick = function(){
-          video.currentTime = 0;
-          clearPos(info);
-          infoBox.textContent = "时长 " + fmtDur(video.duration) + " · " + info.f;
-        };
-      }
-    };
+  function fmtGB(g){
+    if(g == null) return '—';
+    if(g >= 1024) return (g/1024).toFixed(2) + ' TB';
+    if(g >= 1)    return g.toFixed(1) + ' GB';
+    return (g*1024).toFixed(0) + ' MB';
   }
 
-  // 每 5 秒记一次
-  if(video.__posTimer) clearInterval(video.__posTimer);
-  video.__posTimer = setInterval(function(){
-    if(video && !video.paused && isFinite(video.currentTime)) savePos(info, video.currentTime);
-  }, 5000);
-  video.addEventListener("pause", function(){ savePos(info, video.currentTime); });
-  video.addEventListener("ended", function(){ clearPos(info); });
+  // 可录时长
+  var estH = disk.freeGB && cache.sizeGB != null ? 0 : 0;
+  // 用后端给的总可用估算（按录像占用速度）
+  var estTxt = '—';
+  if(disk.freeGB > 0){
+    var recGB = 0;
+    types.forEach(function(t){ if(t.key === 'recordings') recGB = t.sizeGB; });
+    // 简单估算：按已录时长推速度
+    var hours = 0;
+    cams.forEach(function(x){ hours += x.files * 5 / 60; });
+    if(hours > 0 && recGB > 0){
+      var perHour = recGB / hours;
+      var h = disk.freeGB / perHour;
+      estTxt = Math.floor(h/24) + ' 天 ' + Math.round(h%24) + ' 小时';
+    }
+  }
 
-  var ebtn = $("#btnExportClip");
-  if(ebtn) ebtn.onclick = function(){ showExportPanel(video); };
+  // 趋势图（SVG 折线）
+  var maxGB = (disk.totalGB || 1);
+  var W = 560, H = 180, padL = 44, padR = 12, padT = 12, padB = 26;
+  function pts(key){
+    return trend.map(function(p, i){
+      var x = padL + (W-padL-padR) * (trend.length>1 ? i/(trend.length-1) : 0);
+      var y = padT + (H-padT-padB) * (1 - (p[key]||0)/maxGB);
+      return x.toFixed(1) + ',' + y.toFixed(1);
+    }).join(' ');
+  }
+  var grid = '';
+  for(var gi = 0; gi <= 4; gi++){
+    var gy = padT + (H-padT-padB) * gi/4;
+    var gv = maxGB * (1 - gi/4);
+    grid += '<line x1="'+padL+'" y1="'+gy+'" x2="'+(W-padR)+'" y2="'+gy+'" stroke="var(--border-subtle)" stroke-dasharray="3 4"/>'
+         +  '<text x="'+(padL-6)+'" y="'+(gy+4)+'" text-anchor="end" class="st-chart__ylab">'+fmtGB(gv)+'</text>';
+  }
+  var xlab = trend.map(function(p,i){
+    var x = padL + (W-padL-padR) * (trend.length>1 ? i/(trend.length-1) : 0);
+    return '<text x="'+x+'" y="'+(H-8)+'" text-anchor="middle" class="st-chart__xlab">'+esc(p.label||'')+'</text>';
+  }).join('');
 
-  var dbtn = $("#btnDownload");
-  if(dbtn) dbtn.onclick = function(){
-    window.open(apiUrl("/api/recordings/download?name=" + encodeURIComponent(info.n)
-      + "&date=" + encodeURIComponent(info.d) + "&file=" + encodeURIComponent(info.f)), "_blank");
-  };
+  c.innerHTML = '<div class="page__inner">'
+
+    // 页头
+    + '<div class="list-head">'
+    +   '<div class="list-head__main">'
+    +     '<h1 class="list-head__title">存储监控</h1>'
+    +     '<div class="list-head__en">Storage</div>'
+    +   '</div>'
+    +   '<div class="list-head__acts">'
+    +     '<button class="btn" id="stCleanPre">' + icon('search',15) + '清理预览</button>'
+    +     '<button class="btn" id="stMigrate">' + icon('move',15) + '迁移录像</button>'
+    +     '<button class="btn" id="stReport">' + icon('download',15) + '导出报告</button>'
+    +   '</div>'
+    + '</div>'
+
+    // 4 统计卡
+    + '<div class="st-stats">'
+    +   stStat('hard-drive', '总容量', fmtGB(disk.usedGB) + ' / ' + fmtGB(disk.totalGB),
+            '<div class="st-bar"><span style="width:' + (disk.usedPct||0).toFixed(1) + '%"></span></div>'
+            + '<div class="st-bar__sub">已用 ' + (disk.usedPct||0).toFixed(1) + '%</div>')
+    +   stStat('clock', '预计可录时长', estTxt, '<div class="st-hint">按当前使用率估算</div>')
+    +   stStat('film', '录像文件', (cams.reduce(function(a,x){return a+(x.files||0);},0)).toLocaleString() + ' 个',
+            '<div class="st-hint">共 ' + cams.length + ' 台设备</div>')
+    +   stStat('database', '录像数据', fmtGB((types.filter(function(t){return t.key==='recordings';})[0]||{}).sizeGB),
+            '<div class="st-hint">' + fmtGB(disk.freeGB) + ' 可用</div>')
+    + '</div>'
+
+    // 趋势 + 类型
+    + '<div class="st-row st-row--2">'
+    +   '<div class="card">'
+    +     '<div class="card__head">' + icon('chart',15) + '<span class="card__title">存储趋势</span>'
+    +       '<select class="input st-sel" id="stRange">'
+    +         ['7:过去 7 天','14:过去 14 天','30:过去 30 天'].map(function(x){
+                  var p = x.split(':'); return '<option value="'+p[0]+'">'+p[1]+'</option>';
+                }).join('')
+    +       '</select></div>'
+    +     '<div class="st-chart">'
+    +     (trend.length
+        ? '<svg viewBox="0 0 '+W+' '+H+'" preserveAspectRatio="none" class="st-chart__svg">'
+          + grid
+          + '<polyline points="' + pts('usedGB') + '" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round"/>'
+          + xlab + '</svg>'
+        : '<div class="st-chart__empty">' + icon('chart',28) + '<div>还没有趋势数据</div>'
+          + '<div class="st-chart__empty-sub">系统每天会自动记录一次占用，明天就能看到曲线</div></div>')
+    +     '</div>'
+    +   '</div>'
+
+    +   '<div class="card">'
+    +     '<div class="card__head">' + icon('layers',15) + '<span class="card__title">按类型统计</span></div>'
+    +     '<div class="st-types">'
+    +     (types.length ? types.map(function(t){
+          return '<div class="st-type">'
+            + '<div class="st-type__row"><span>' + esc(t.name) + '</span>'
+            +   '<b>' + fmtGB(t.sizeGB) + '</b>'
+            +   '<em>' + (t.pct||0).toFixed(1) + '%</em></div>'
+            + '<div class="st-bar"><span style="width:' + (t.pct||0).toFixed(1) + '%"></span></div>'
+            + '<div class="st-type__sub">' + (t.files||0).toLocaleString() + ' 个文件</div>'
+            + '</div>';
+        }).join('') : '<div class="st-empty">暂无数据</div>')
+    +     '</div>'
+    +     '<div class="st-note">' + icon('info',12)
+    +       '「录像数据」含连续与事件录像（系统未区分）</div>'
+    +   '</div>'
+    + '</div>'
+
+    // 摄像头 + 策略
+    + '<div class="st-row st-row--2">'
+    +   '<div class="card">'
+    +     '<div class="card__head">' + icon('camera',15) + '<span class="card__title">按摄像头统计</span></div>'
+    +     '<div class="st-table">'
+    +       '<div class="st-table__head">'
+    +         '<span>摄像头</span><span>已用容量</span><span>文件数</span><span>保留天数</span><span>预计可录</span>'
+    +       '</div>'
+    +       (cams.length ? cams.map(function(x){
+            return '<div class="st-table__row">'
+              + '<span class="st-cam">'
+              +   '<span class="status-dot ' + (x.online?'is-online':'') + '"></span>'
+              +   '<span class="st-cam__name">' + esc(x.name) + '</span>'
+              + '</span>'
+              + '<span class="st-cell">'
+              +   '<span class="st-cell__val">' + fmtGB(x.sizeGB) + '</span>'
+              +   '<span class="st-bar st-bar--sm"><span style="width:' + Math.min(100,(x.pct||0)) + '%"></span></span>'
+              + '</span>'
+              + '<span class="st-cell">' + (x.files||0).toLocaleString() + '</span>'
+              + '<span class="st-cell">' + (x.keepDays||0) + ' 天</span>'
+              + '<span class="st-cell">' + (x.estDays >= 999 ? '—' : Math.round(x.estDays||0) + ' 天') + '</span>'
+              + '</div>';
+          }).join('') : '<div class="st-empty">还没有录像</div>')
+    +     '</div>'
+    +   '</div>'
+
+    +   '<div>'
+    +     '<div class="card">'
+    +     '<div class="card__head">' + icon('settings',15) + '<span class="card__title">存储策略</span></div>'
+    +     '<div class="st-policy">'
+    +       stField('分片时长', 'stSeg', pol.segmentSec || 300, '秒', '每个录像文件的时长')
+    +       stField('保留天数', 'stKeep', pol.keepDays || 7, '天', '超过后将被自动清理')
+    +       stField('磁盘阈值', 'stThresh', pol.thresholdPct || 85, '%', '达到阈值时触发清理')
+    +       '<div class="st-switchrow">'
+    +         '<span class="st-switchrow__label">自动清理</span>'
+    +         '<label class="switch"><input type="checkbox" id="stAuto"' + (pol.autoClean!==false?' checked':'') + '><span class="switch__track"></span></label>'
+    +         '<span class="st-switchrow__hint">自动删除过期录像文件</span>'
+    +       '</div>'
+    +       '<div class="st-field">'
+    +         '<span class="st-field__label">低空间策略</span>'
+    +         '<select class="input" id="stLow">'
+    +           [['deleteOldest','删除最早的录像'],['stopRecording','停止录像'],['none','不处理']].map(function(x){
+                  return '<option value="'+x[0]+'"' + (pol.lowSpaceMode===x[0]?' selected':'') + '>'+x[1]+'</option>';
+                }).join('')
+    +         '</select>'
+    +         '<span class="st-field__hint">当空间不足时的处理策略</span>'
+    +       '</div>'
+    +       '<button class="btn btn--primary st-save" id="stSave">保存策略</button>'
+    +     '</div>'
+    +     '</div>'
+
+    +     '<div class="card">'
+    +     '<div class="card__head">' + icon('layers',15) + '<span class="card__title">转码缓存管理</span></div>'
+    +     '<div class="st-cache">'
+    +       '<div class="st-kv"><span>缓存路径</span><b class="st-mono">' + esc(cache.dir||'—') + '</b></div>'
+    +       '<div class="st-kv"><span>当前大小</span><b>' + fmtGB(cache.sizeGB) + '</b></div>'
+    +       '<div class="st-kv"><span>最大限制</span><b>' + fmtGB(cache.maxGB) + '</b></div>'
+    +       '<div class="st-kv"><span>上次清理</span><b>' + esc(cache.lastAt||'—') + '</b></div>'
+    +     '</div>'
+    +     '<div class="st-cache__acts">'
+    +       '<button class="btn btn--sm" id="stCacheClear">' + icon('trash',13) + '清空缓存</button>'
+    +       '<button class="btn btn--sm" id="stCacheSet">' + icon('settings',13) + '设置限制</button>'
+    +     '</div>'
+    +     '</div>'
+    +   '</div>'
+    + '</div>'
+
+    // 迁移 + 清理预览
+    + '<div class="st-row st-row--2">'
+    +   '<div class="card">'
+    +     '<div class="card__head">' + icon('move',15) + '<span class="card__title">迁移录像</span></div>'
+    +     '<div class="st-migrate">'
+    +       '<div class="st-field"><span class="st-field__label">源路径</span>'
+    +         '<input class="input" value="' + esc(status.recPath||'') + '" readonly></div>'
+    +       '<div class="st-field"><span class="st-field__label">目标路径</span>'
+    +         '<input class="input" id="stMigDst" placeholder="/mnt/backup"></div>'
+    +       '<div class="st-field"><span class="st-field__label">时间范围</span>'
+    +         '<input class="input" type="date" id="stMigFrom"><span class="st-field__sep">~</span>'
+    +         '<input class="input" type="date" id="stMigTo"></div>'
+    +       '<div class="st-field"><span class="st-field__label">选择摄像头</span>'
+    +         '<select class="input" id="stMigCam"><option value="">全部设备</option>'
+    +         cams.map(function(x){ return '<option value="'+esc(x.name)+'">'+esc(x.name)+'</option>'; }).join('')
+    +         '</select></div>'
+    +       '<div class="st-migrate__foot">'
+    +         '<span class="st-hint">迁移会把文件移动到目标路径，原位置不再保留</span>'
+    +         '<button class="btn btn--primary" id="stMigGo">' + icon('play',14) + '开始迁移</button>'
+    +       '</div>'
+    +     '</div>'
+    +   '</div>'
+
+    +   '<div class="card">'
+    +     '<div class="card__head">' + icon('trash',15) + '<span class="card__title">清理预览</span></div>'
+    +     '<div class="st-clean">'
+    +       (cleanup.totalMB > 0
+          ? '<div class="st-clean__sum">' + icon('check',15)
+            + '<span>清理后可释放 <b>' + fmtGB(cleanup.totalMB/1024) + '</b> 空间</span></div>'
+            + '<div class="st-kv"><span>过期录像（超 ' + (cleanup.keepDays||7) + ' 天）</span><b>'
+            +   fmtGB(cleanup.totalMB/1024) + ' · ' + (cleanup.fileCount||0) + ' 个</b></div>'
+          : '<div class="st-empty">' + icon('check',24) + '<div>没有可清理的文件</div>'
+            + '<div class="st-empty__sub">当前占用正常</div></div>')
+    +     '</div>'
+    +     '<div class="st-clean__acts">'
+    +       '<button class="btn btn--primary" id="stCleanGo"' + (cleanup.totalMB>0?'':' disabled') + '>'
+    +         icon('trash',14) + '确认清理</button>'
+    +       '<span class="st-warn">' + icon('alert',12) + '此操作将删除选中的文件，无法恢复</span>'
+    +     '</div>'
+    +     '</div>'
+    +   '</div>'
+    + '</div>'
+
+    // 底部状态栏
+    + '<div class="st-footbar">'
+    +   '<span>录像路径 <b class="st-mono">' + esc(status.recPath||'—') + '</b></span>'
+    +   '<span>数据路径 <b class="st-mono">' + esc(status.dataPath||'—') + '</b></span>'
+    +   '<span>上次扫描 <b>' + esc(status.lastScan||'—') + '</b></span>'
+    +   '<span class="st-footbar__spacer"></span>'
+    +   '<span class="st-health ' + (status.healthy?'is-ok':'is-warn') + '">'
+    +     '<span class="status-dot ' + (status.healthy?'is-online':'') + '"></span>'
+    +     '存储健康 <b>' + (status.healthy?'正常':'偏低') + '</b></span>'
+    + '</div>'
+
+    + '</div>';
+
+  bindStorage(c, cams);
 }
 
-// 删除录像
-function delRec(info){
-  if(!confirm("删除这个录像文件？\n" + info.f + "\n\n不可恢复。")) return;
-  api("/api/recordings/delete", {
-    method: "POST", headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name: info.n, date: info.d, file: info.f })
-  }).then(function(r){
-    toast("已删除，释放 " + fmtSizeMB(r.freedMB || 0), "ok");
-    loadRecFiles();
-  }).catch(function(e){ toast("删除失败：" + e.message, "err"); });
+function stStat(ic, label, val, extraHtml){
+  return '<div class="st-stat">'
+    + '<div class="st-stat__head">' + icon(ic,16) + '<span>' + label + '</span></div>'
+    + '<div class="st-stat__val">' + val + '</div>'
+    + (extraHtml || '')
+    + '</div>';
+}
+
+function stField(label, id, val, unit, hint){
+  return '<div class="st-field">'
+    + '<span class="st-field__label">' + label + '</span>'
+    + '<input class="input st-field__num" id="' + id + '" type="number" value="' + val + '">'
+    + '<span class="st-field__unit">' + unit + '</span>'
+    + '<span class="st-field__hint">' + hint + '</span>'
+    + '</div>';
+}
+
+function bindStorage(c, cams){
+  var seg = document.getElementById('stSeg');
+  var keep = document.getElementById('stKeep');
+  var th = document.getElementById('stThresh');
+  var auto = document.getElementById('stAuto');
+  var low = document.getElementById('stLow');
+
+  var sv = document.getElementById('stSave');
+  if(sv) sv.onclick = function(){
+    // 磁盘阈值(%) 换算回 最低剩余 GB
+    var totalGB = 0;
+    api('/api/storage/detail').then(function(d){
+      totalGB = (d.disk||{}).totalGB || 0;
+      var thPct = parseFloat((th||{}).value) || 85;
+      var minFree = totalGB > 0 ? Math.round(totalGB * (1 - thPct/100)) : 10;
+      if(minFree < 1) minFree = 1;
+      return api('/api/recordings/config', { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({
+          segmentSec: parseInt((seg||{}).value,10) || 300,
+          keepDays: parseInt((keep||{}).value,10) || 7,
+          minFreeGB: minFree,
+        }) });
+    }).then(function(){
+      toast('策略已保存（磁盘阈值 ' + (parseFloat((th||{}).value)||85) + '% 约等于保留 ' +
+            '最低剩余空间）', 'ok');
+      render();
+    }).catch(function(e){ toast('保存失败：' + e.message, 'err'); });
+  };
+
+  var cc = document.getElementById('stCacheClear');
+  if(cc) cc.onclick = function(){
+    if(!confirm('清空转码缓存？\n\n缓存会重新生成，不影响录像文件。')) return;
+    api('/api/recordings/cache/clear', { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' })
+      .then(function(){ toast('缓存已清空', 'ok'); render(); })
+      .catch(function(e){ toast('失败：' + e.message, 'err'); });
+  };
+  var cs = document.getElementById('stCacheSet');
+  if(cs) cs.onclick = function(){ toast('缓存上限请在「存储策略」里调整', 'warn'); };
+
+  var cg = document.getElementById('stCleanGo');
+  if(cg) cg.onclick = function(){
+    if(!confirm('确认清理过期录像？\n\n此操作不可恢复。')) return;
+    api('/api/recordings/cleanup', { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' })
+      .then(function(r){ toast('已清理 ' + (r.deleted||0) + ' 个文件，释放 ' + Math.round(r.freedMB||0) + ' MB', 'ok'); render(); })
+      .catch(function(e){ toast('清理失败：' + e.message, 'err'); });
+  };
+  var cp = document.getElementById('stCleanPre');
+  if(cp) cp.onclick = function(){
+    var el = document.querySelector('.st-clean');
+    if(el) el.scrollIntoView({behavior:'smooth', block:'center'});
+  };
+  var mg = document.getElementById('stMigrate');
+  if(mg) mg.onclick = function(){
+    var el = document.querySelector('.st-migrate');
+    if(el) el.scrollIntoView({behavior:'smooth', block:'center'});
+  };
+  var mgGo = document.getElementById('stMigGo');
+  if(mgGo) mgGo.onclick = function(){ toast('迁移功能开发中（需要文件移动 + 中断恢复）', 'warn'); };
+  var rp = document.getElementById('stReport');
+  if(rp) rp.onclick = function(){
+    window.open(apiUrl('/api/diag/report'), '_blank');
+  };
 }
 
 // ===== 页面：账号管理 =====
+// ===== 页面：账号管理（对齐效果图）=====
+//
+// 布局：
+//   页头 + 顶部操作栏（扫码/导入/导出 + 实时刷新开关）
+//   左：账号卡片列表（缩略图 + 名称 + 掩码ID + 设备数 + 会话剩余 + 三层凭据胶囊 + 操作）
+//   右：三层凭据说明 / 备份与恢复 / 连接与同步 + 最近活动
+//   底部：扫码添加引导（可折叠）
+
+var acctAuto = null;
+
 function renderAccounts(c){
-  c.innerHTML = loading();
-  Promise.all([api("/api/accounts"), api("/api/accounts/status").catch(function(){ return {}; })]).then(function(res){
-    var list = Array.isArray(res[0]) ? res[0] : [];
-    var st = res[1] || {};
-    var stMap = {};
-    (st.accounts || []).forEach(function(x){ stMap[x.userId] = x; });
+  if(acctAuto){ clearInterval(acctAuto); acctAuto = null; }
+  c.innerHTML = '<div class="page__inner">' + loading('加载账号…') + '</div>';
 
-    var rows = list.length ? list.map(function(a){
-      var s = stMap[a.userId] || {};
-      var sess = s.sessionOk ? "<span class=\"badge badge--ok\">会话正常</span>" : "<span class=\"badge badge--warn\">会话待续期</span>";
-      return "<tr>"
-        + "<td style=\"font-family:ui-monospace,monospace\">"+esc(a.userId)+"</td>"
-        + "<td style=\"color:var(--text-3);font-size:12px\">"+esc(a.addedAt||"—")+"</td>"
-        + "<td>"+(a.online?"<span class=\"badge badge--ok\">已登录</span>":"<span class=\"badge\">离线</span>")+"</td>"
-        + "<td>"+sess+"</td>"
-        + "</tr>";
-    }).join("") : "<tr><td colspan=\"4\">"+empty("user","还没有账号","扫码添加后即可发现设备","")+"</td></tr>";
-
-    var explain = st.explain || {};
-
-    c.innerHTML = ""
-      + "<div class=\"card\">"
-      +   "<div class=\"card__head\"><span class=\"card__title\">" + icon("user",15) + " 小米账号</span>"
-      +     "<button class=\"btn btn--primary\" id=\"btnQR2\">"+icon("plus",12)+"扫码添加</button></div>"
-      +   "<div class=\"table-wrap\"><table><thead><tr><th>用户 ID</th><th style=\"width:160px\">添加时间</th><th style=\"width:100px\">登录</th><th style=\"width:120px\">会话</th></tr></thead><tbody>"+rows+"</tbody></table></div>"
-      + "</div>"
-
-      // 凭据说明（消除用户疑虑）
-      + "<div class=\"card\">"
-      +   "<div class=\"card__head\"><span class=\"card__title\">" + icon("check",15) + " 凭据说明</span></div>"
-      +   "<div style=\"padding:16px 24px\">"
-      +     "<div style=\"font-size:13px;line-height:1.9\">"
-      +       "<div><b>登录凭据（passToken）</b> —— <span style=\"color:var(--success)\">长期有效</span>"
-      +         "<div style=\"font-size:12px;color:var(--text-3);margin-left:16px\">"+esc(explain.passToken||"扫码一次即可，无需反复扫码")+"</div></div>"
-      +       "<div style=\"margin-top:10px\"><b>会话凭据（serviceToken）</b> —— <span style=\"color:var(--primary)\">自动续期</span>"
-      +         "<div style=\"font-size:12px;color:var(--text-3);margin-left:16px\">"+esc(explain.serviceToken||"过期自动续期，用户无感")+"</div></div>"
-      +       "<div style=\"margin-top:10px\"><b>设备凭据（每台摄像头）</b> —— <span style=\"color:var(--primary)\">自动续期</span>"
-      +         "<div style=\"font-size:12px;color:var(--text-3);margin-left:16px\">"+esc(explain.deviceCred||"有效期 24 小时以上，到期前自动续期")+"</div></div>"
-      +     "</div>"
-      +   "</div>"
-      + "</div>"
-
-      // 备份/恢复
-      + "<div class=\"card\">"
-      +   "<div class=\"card__head\"><span class=\"card__title\">" + icon("inbox",15) + " 凭据备份</span></div>"
-      +   "<div style=\"padding:16px 24px\">"
-      +     "<p style=\"font-size:13px;color:var(--text-3);margin-bottom:14px\">"
-      +       "重装插件或换设备前建议导出备份。导入后无需重新扫码。"
-      +       "<br><b style=\"color:var(--warning)\">导出文件含登录凭据，请妥善保管，不要外传。</b>"
-      +     "</p>"
-      +     "<div class=\"row gap-2\">"
-      +       "<button class=\"btn btn--primary\" id=\"btnCredExport\">" + icon("inbox",12) + "导出凭据</button>"
-      +       "<button class=\"btn\" id=\"btnCredImport\">" + icon("plus",12) + "导入凭据</button>"
-      +       "<button class=\"btn\" id=\"btnCredBackups\">" + icon("refresh",12) + "查看备份</button>"
-      +     "</div>"
-      +     "<input type=\"file\" id=\"credFile\" accept=\".json\" style=\"display:none\">"
-      +     "<div id=\"credBackupList\" style=\"margin-top:14px\"></div>"
-      +   "</div>"
-      + "</div>";
-
-    $("#btnQR2").onclick = showQR;
-
-    $("#btnCredExport").onclick = function(){
-      toast("正在导出…");
-      window.open(apiUrl("/api/accounts/export"), "_blank");
-      setTimeout(function(){ toast("已导出。请妥善保管该文件。", "ok"); }, 1200);
-    };
-
-    $("#btnCredImport").onclick = function(){ $("#credFile").click(); };
-
-    $("#credFile").onchange = function(){
-      var f = this.files && this.files[0];
-      if(!f) return;
-      if(!confirm("导入会用文件里的凭据覆盖当前登录。\n\n现有凭据会自动备份。\n\n确定继续？")) { this.value = ""; return; }
-      var reader = new FileReader();
-      reader.onload = function(){
-        api("/api/accounts/import", {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: reader.result
-        }).then(function(r){
-          toast("已导入 " + (r.count||0) + " 个账号，无需重新扫码", "ok");
-          setTimeout(function(){ page = "accounts"; render(); }, 1500);
-        }).catch(function(e){ toast("导入失败：" + e.message, "err"); });
-      };
-      reader.readAsText(f);
-    };
-
-    $("#btnCredBackups").onclick = function(){
-      var box = $("#credBackupList");
-      box.innerHTML = loading("读取中…");
-      api("/api/accounts/backups").then(function(r){
-        var bs = r.backups || [];
-        if(!bs.length){ box.innerHTML = "<div style=\"font-size:12px;color:var(--text-3)\">暂无备份文件</div>"; return; }
-        box.innerHTML = "<div style=\"font-size:12px\">"
-          + bs.map(function(b){
-              return "<div style=\"display:flex;justify-content:space-between;padding:6px 0;border-top:1px solid var(--split)\">"
-                + "<span style=\"font-family:ui-monospace,monospace\">"+esc(b.name)+"</span>"
-                + "<span style=\"color:var(--text-3)\">"+b.size+" 字节 · "+esc(b.modTime)+"</span>"
-                + "</div>";
-            }).join("")
-          + "</div>";
-      }).catch(function(e){ box.innerHTML = "<div style=\"color:var(--error);font-size:12px\">"+esc(e.message)+"</div>"; });
-    };
-  }).catch(function(e){
-    c.innerHTML = "<div class=\"card\">" + empty("close","加载失败", e.message, "") + "</div>";
+  Promise.all([
+    api('/api/accounts/detail').catch(function(){ return {}; }),
+    api('/api/accounts/status').catch(function(){ return {}; }),
+  ]).then(function(res){
+    paintAccounts(c, res[0] || {}, res[1] || {});
+  }).catch(function(err){
+    c.innerHTML = '<div class="page__inner">' + errorCard(err, function(){ renderAccounts(c); }) + '</div>';
   });
+}
+
+function paintAccounts(c, d, st){
+  var accts = d.accounts || [];
+  var byAcct = d.byAccount || {};
+  var backups = d.backups || [];
+  var activity = d.activity || [];
+  var stats = d.stats || {};
+  var explain = st.explain || {};
+
+  // 前端补设备数（后端暂未回填）
+  accts.forEach(function(a){
+    var ds = byAcct[a.userId] || [];
+    if(!a.deviceCount) a.deviceCount = ds.length;
+    if(!a.onlineCount) a.onlineCount = ds.filter(function(x){ return x.online; }).length;
+    if(!a.thumb){
+      var on = ds.filter(function(x){ return x.online; })[0];
+      if(on) a.thumb = '/api/live/thumb?did=' + on.did;
+    }
+  });
+
+  function dot(cls){ return '<span class="status-dot ' + cls + '"></span>'; }
+
+  // 凭据胶囊
+  function pill(label, ok, warnTxt){
+    var cls = ok === true ? 'is-ok' : (ok === false ? 'is-bad' : 'is-warn');
+    var txt = ok === true ? '正常' : (ok === false ? (warnTxt || '异常') : '未知');
+    return '<span class="acct-pill ' + cls + '">' + label + '<b>' + txt + '</b></span>';
+  }
+
+  // 账号状态
+  function acctState(a){
+    if(!a.passTokenOk) return { t:'需重新登录', cls:'is-warn' };
+    if(a.sessionLeftH < 48) return { t:'凭据过期预警', cls:'is-warn' };
+    return { t:'已连接', cls:'is-ok' };
+  }
+
+  function fmtLeft(h){
+    if(h == null) return '—';
+    var dd = Math.floor(h / 24), hh = Math.round(h % 24);
+    return dd + ' 天 ' + hh + ' 小时';
+  }
+
+  c.innerHTML = '<div class="page__inner">'
+
+    // 页头
+    + '<div class="list-head">'
+    +   '<div class="list-head__main">'
+    +     '<h1 class="list-head__title">账号管理</h1>'
+    +     '<div class="list-head__en">在这里管理摄像头账号、登录凭据、备份与恢复，并查看连接状态。</div>'
+    +   '</div>'
+    + '</div>'
+
+    // 顶部操作栏
+    + '<div class="acct-bar">'
+    +   '<button class="btn btn--primary" id="acctAdd">' + icon('qr',15) + '扫码添加账号</button>'
+    +   '<button class="btn" id="acctImport">' + icon('upload',15) + '导入备份</button>'
+    +   '<button class="btn" id="acctExport">' + icon('download',15) + '导出全部</button>'
+    +   '<span class="acct-bar__spacer"></span>'
+    +   '<span class="acct-bar__auto">' + dot('is-online') + '实时刷新 · 15s'
+    +     '<label class="switch"><input type="checkbox" id="acctAuto"><span class="switch__track"></span></label>'
+    +   '</span>'
+    +   '<button class="icon-btn" id="acctRefresh" title="刷新">' + icon('refresh',15) + '</button>'
+    + '</div>'
+
+    + '<div class="acct-grid">'
+
+      // 左：账号卡片
+    +   '<div class="acct-list">'
+    +   (accts.length ? accts.map(function(a){
+          var stt = acctState(a);
+          var ds = byAcct[a.userId] || [];
+          return '<div class="acct-card">'
+            + '<div class="acct-card__thumb">'
+            +   (a.thumb ? '<img loading="lazy" src="' + apiUrl(a.thumb) + '" alt="">' : '<div class="acct-card__ph">' + icon('camera',22) + '</div>')
+            + '</div>'
+            + '<div class="acct-card__body">'
+            +   '<div class="acct-card__top">'
+            +     '<span class="acct-card__name">' + esc(a.name || a.masked) + '</span>'
+            +     '<span class="acct-state ' + stt.cls + '">' + dot(stt.cls==='is-ok'?'is-online':'') + stt.t + '</span>'
+            +   '</div>'
+            +   '<div class="acct-card__id">' + esc(a.masked) + '</div>'
+            +   '<div class="acct-card__meta">'
+            +     icon('camera',12) + (a.deviceCount||0) + ' 台设备'
+            +     '<span class="acct-card__sep">|</span>'
+            +     '会话剩余 ' + fmtLeft(a.sessionLeftH)
+            +   '</div>'
+            +   '<div class="acct-card__meta">上次同步 ' + esc((a.lastSync||'').slice(-8) || '—') + '</div>'
+            +   '<div class="acct-pills">'
+            +     pill('App 凭据', a.passTokenOk)
+            +     pill('Service Token', a.serviceTokenOk===false?false:a.sessionOK)
+            +     pill('DID 绑定', a.didBound===true)
+            +   '</div>'
+            +   '<div class="acct-card__acts">'
+            +     '<button class="btn btn--sm" data-acct-dev="' + esc(a.userId) + '">' + icon('camera',13) + '查看设备</button>'
+            +     '<button class="btn btn--sm" data-acct-refresh="' + esc(a.userId) + '">' + icon('refresh',13) + '刷新</button>'
+            +     '<button class="btn btn--sm" data-acct-alias="' + esc(a.userId) + '">' + icon('edit',13) + '编辑别名</button>'
+            +     '<button class="btn btn--sm" data-acct-backup="' + esc(a.userId) + '">' + icon('save',13) + '备份</button>'
+            +     '<button class="btn btn--sm" data-acct-more="' + esc(a.userId) + '">' + icon('more-horizontal',13) + '</button>'
+            +   '</div>'
+            + '</div>'
+            + '</div>';
+        }).join('')
+        : empty('user','还没有账号','点「扫码添加账号」开始',''))
+    +   '</div>'
+
+      // 右：说明 + 备份 + 统计
+    +   '<aside class="acct-side">'
+
+    // 三层凭据说明
+    +     '<div class="card">'
+    +       '<div class="card__head">' + icon('shield',15) + '<span class="card__title">三层凭据说明</span>'
+    +         '<span class="card__hint">Credentials</span></div>'
+    +       '<div class="acct-cred">'
+    +         [[1,'账号登录态','通过米家 App 登录，获取账号的基础登录态，用于后续获取设备和服务权限。', true],
+              [2,'Service Token','在登录态基础上获取的服务令牌，用于 API 调用和设备数据同步。', true],
+              [3,'摄像头 DID / 设备绑定','获取账号下的摄像头 DID，并完成设备绑定，建立长期的访问关系。', accts.some(function(x){return x.didBound;})]]
+            .map(function(x){
+              return '<div class="acct-cred__item">'
+                + '<span class="acct-cred__num">' + x[0] + '</span>'
+                + '<span class="acct-cred__body">'
+                +   '<span class="acct-cred__title">' + x[1] + '</span>'
+                +   '<span class="acct-cred__desc">' + x[2] + '</span>'
+                + '</span>'
+                + '<span class="acct-cred__st ' + (x[3]?'is-ok':'is-warn') + '">' + dot(x[3]?'is-online':'') + (x[3]?'正常':'未绑定') + '</span>'
+                + '</div>';
+            }).join('')
+    +       '</div>'
+    +     '</div>'
+
+    // 备份与恢复
+    +     '<div class="card">'
+    +       '<div class="card__head">' + icon('save',15) + '<span class="card__title">备份与恢复</span>'
+    +         '<span class="card__hint">Backup &amp; Restore</span></div>'
+    +       '<div class="acct-bak__acts">'
+    +         '<button class="btn btn--sm" id="bakExport">' + icon('download',13) + '导出备份</button>'
+    +         '<button class="btn btn--sm" id="bakImport">' + icon('upload',13) + '导入备份</button>'
+    +         '<button class="btn btn--sm" id="bakHistory">' + icon('clock',13) + '查看历史备份</button>'
+    +       '</div>'
+    +       '<div class="acct-bak__list">'
+    +       (backups.length ? backups.map(function(b){
+            return '<div class="acct-bak">'
+              + '<span class="acct-bak__time">' + esc(b.modTime||'') + '</span>'
+              + '<span class="acct-bak__meta">' + (b.accounts||0) + ' 个账号 · ' + (b.devices||0) + ' 台设备</span>'
+              + '<span class="acct-bak__size">' + (b.size ? (b.size/1024).toFixed(1) + ' KB' : '—') + '</span>'
+              + '<button class="icon-btn" data-bak-more="' + esc(b.name) + '">' + icon('more-horizontal',14) + '</button>'
+              + '</div>';
+          }).join('') : '<div class="acct-bak__empty">还没有备份记录</div>')
+    +       '</div>'
+    +     '</div>'
+
+    // 连接与同步
+    +     '<div class="card">'
+    +       '<div class="card__head">' + icon('activity',15) + '<span class="card__title">连接与同步</span>'
+    +         '<span class="card__hint">最后更新 ' + esc(stats.lastSync||'—') + '</span></div>'
+    +       '<div class="acct-stats">'
+    +         acctStat('user', (stats.totalAccounts||0), '当前账号', '共 ' + accts.length + ' 个')
+    +         acctStat('camera', (stats.devices||0), '设备总数', (stats.onlineDevices||0) + ' 台在线')
+    +         acctStat('alert', accts.filter(function(x){ return !x.passTokenOk; }).length, '需要处理', '凭据异常')
+    +         acctStat('clock', esc(stats.lastSync||'—'), '最近同步', '')
+    +       '</div>'
+    +       '<div class="acct-act__head">最近活动</div>'
+    +       '<div class="acct-act">'
+    +       (activity.length ? activity.map(function(a){
+            return '<div class="acct-act__item">'
+              + dot(a.level==='ok'?'is-online':(a.level==='err'?'is-offline':''))
+              + '<span class="acct-act__time">' + esc(a.time||'') + '</span>'
+              + '<span class="acct-act__text">' + esc(a.text||'') + (a.detail ? ' (' + esc(a.detail) + ')' : '') + '</span>'
+              + '</div>';
+          }).join('') : '<div class="acct-act__empty">暂无活动记录</div>')
+    +       '</div>'
+    +     '</div>'
+
+    +   '</aside>'
+    + '</div>'
+
+    // 扫码引导
+    + '<div class="acct-guide" id="acctGuide">'
+    +   '<div class="acct-guide__head" id="acctGuideTog">'
+    +     '<span>' + icon('qr',15) + '扫码添加引导（预览）</span>'
+    +     icon('chevron-down',15)
+    +   '</div>'
+    +   '<div class="acct-guide__body">'
+    +     '<div class="acct-guide__steps">'
+    +       '<div class="acct-guide__step"><div class="acct-guide__mock">米家</div><span>米家 App</span></div>'
+    +       '<div class="acct-guide__arrow">' + icon('chevron-right',18) + '</div>'
+    +       '<div class="acct-guide__step"><div class="acct-guide__qr">' + icon('qr',30) + '</div><span>扫码</span></div>'
+    +       '<div class="acct-guide__arrow">' + icon('chevron-right',18) + '</div>'
+    +       '<div class="acct-guide__step"><div class="acct-guide__ok">' + icon('check',22) + '</div><span>登录成功</span></div>'
+    +     '</div>'
+    +     '<div class="acct-guide__text">'
+    +       '<div class="acct-guide__title">打开米家 App → 扫码登录</div>'
+    +       '<div class="acct-guide__desc">使用米家 App 扫描二维码，完成账号登录与设备获取。详细步骤请查看帮助文档。</div>'
+    +       '<button class="btn btn--sm" id="acctGuideGo">查看完整指南 →</button>'
+    +     '</div>'
+    +   '</div>'
+    + '</div>'
+
+    + '</div>';
+
+  bindAccounts(c);
+}
+
+function acctStat(ic, val, label, hint){
+  return '<div class="acct-stat">'
+    + '<span class="acct-stat__icon">' + icon(ic,15) + '</span>'
+    + '<span class="acct-stat__body">'
+    +   '<span class="acct-stat__val">' + val + '</span>'
+    +   '<span class="acct-stat__label">' + label + '</span>'
+    +   (hint ? '<span class="acct-stat__hint">' + hint + '</span>' : '')
+    + '</span></div>';
+}
+
+function bindAccounts(c){
+  var add = document.getElementById('acctAdd');
+  if(add) add.onclick = function(){ page='setup'; renderMenu(); render(); };
+  var im = document.getElementById('acctImport');
+  if(im) im.onclick = function(){ page='setup'; renderMenu(); render(); };
+  var ex = document.getElementById('acctExport');
+  if(ex) ex.onclick = function(){ window.open(apiUrl('/api/accounts/export'), '_blank'); };
+  var rf = document.getElementById('acctRefresh');
+  if(rf) rf.onclick = function(){ render(); };
+
+  // 实时刷新
+  var au = document.getElementById('acctAuto');
+  if(au) au.onchange = function(){
+    if(this.checked){
+      acctAuto = setInterval(function(){
+        if(page !== 'accounts'){ clearInterval(acctAuto); acctAuto = null; return; }
+        render();
+      }, 15000);
+      toast('已开启实时刷新（15 秒）', 'ok');
+    } else if(acctAuto){ clearInterval(acctAuto); acctAuto = null; toast('已关闭实时刷新', 'warn'); }
+  };
+
+  // 账号操作
+  Array.prototype.forEach.call(c.querySelectorAll('[data-acct-dev]'), function(b){
+    b.onclick = function(){ page='devices'; renderMenu(); render(); };
+  });
+  Array.prototype.forEach.call(c.querySelectorAll('[data-acct-refresh]'), function(b){
+    b.onclick = function(){ toast('正在刷新该账号…', 'ok'); render(); };
+  });
+  Array.prototype.forEach.call(c.querySelectorAll('[data-acct-alias]'), function(b){
+    b.onclick = function(){ toast('编辑别名功能开发中', 'warn'); };
+  });
+  Array.prototype.forEach.call(c.querySelectorAll('[data-acct-backup]'), function(b){
+    b.onclick = function(){ window.open(apiUrl('/api/accounts/export'), '_blank'); };
+  });
+  Array.prototype.forEach.call(c.querySelectorAll('[data-acct-more]'), function(b){
+    b.onclick = function(){ toast('更多操作：重新登录 / 删除账号（开发中）', 'warn'); };
+  });
+
+  // 备份
+  var be = document.getElementById('bakExport');
+  if(be) be.onclick = function(){ window.open(apiUrl('/api/accounts/export'), '_blank'); };
+  var bi = document.getElementById('bakImport');
+  if(bi) bi.onclick = function(){ page='setup'; renderMenu(); render(); };
+  var bh = document.getElementById('bakHistory');
+  if(bh) bh.onclick = function(){ toast('历史备份在 /vol1/@appdata/micam/backups/', 'warn'); };
+
+  Array.prototype.forEach.call(c.querySelectorAll('[data-bak-more]'), function(b){
+    b.onclick = function(e){ e.stopPropagation(); toast('恢复 / 下载 / 删除（开发中）', 'warn'); };
+  });
+
+  // 扫码引导折叠
+  var tg = document.getElementById('acctGuideTog');
+  if(tg) tg.onclick = function(){
+    var g = document.getElementById('acctGuide');
+    if(g) g.classList.toggle('is-open');
+  };
+  var gg = document.getElementById('acctGuideGo');
+  if(gg) gg.onclick = function(){ page='setup'; renderMenu(); render(); };
 }
 
 // ===== 页面：安装向导 =====
@@ -10448,7 +10416,7 @@ function renderDev(c){
     + "<div class=\"card\">"
     +   "<div class=\"card__head\"><span class=\"card__title\">" + icon("close",15) + " 危险操作</span></div>"
     +   "<div style=\"padding:16px 24px\">"
-    +     "<button class=\"btn\" id=\"btnDevReset\" style=\"color:var(--error);border-color:var(--error)\">关闭开发者模式</button>"
+    +     "<button class=\"btn\" id=\"btnDevReset\" style=\"color:var(--danger);border-color:var(--danger)\">关闭开发者模式</button>"
     +   "</div>"
     + "</div>";
 
@@ -10515,7 +10483,7 @@ function loadDevFlags(){
       };
     });
   }).catch(function(e){
-    box.innerHTML = "<div style=\"padding:16px 24px;color:var(--error)\">" + esc(e.message) + "</div>";
+    box.innerHTML = "<div style=\"padding:16px 24px;color:var(--danger)\">" + esc(e.message) + "</div>";
   });
 }
 
@@ -10573,9 +10541,9 @@ function callEndpoint(e){
     if(txt.length > 3000) txt = txt.slice(0, 3000) + "\n… （已截断）";
     if(out) out.innerHTML = "<div style=\"font-size:12px;margin-bottom:6px\">"
       + "<span class=\"badge badge--ok\">" + ms + " ms</span></div>"
-      + "<pre style=\"background:var(--hover);padding:12px;border-radius:6px;font-size:11px;overflow:auto;max-height:300px\">" + esc(txt) + "</pre>";
+      + "<pre style=\"background:var(--surface-hover);padding:12px;border-radius:6px;font-size:11px;overflow:auto;max-height:300px\">" + esc(txt) + "</pre>";
   }).catch(function(err){
-    if(out) out.innerHTML = "<div style=\"color:var(--error);font-size:12px\">失败：" + esc(err.message) + "</div>";
+    if(out) out.innerHTML = "<div style=\"color:var(--danger);font-size:12px\">失败：" + esc(err.message) + "</div>";
   });
 }
 
@@ -10602,121 +10570,389 @@ function loadDevCaps(){
       + "<tr><td style=\"color:var(--text-3)\">限制</td><td>fps≤" + (lm.maxFPS||"-") + " · 宽≤" + (lm.maxWidth||"-") + " · 分片 " + (lm.hlsSegmentSec||"-") + "s</td></tr>"
       + "</table>";
   }).catch(function(e){
-    box.innerHTML = "<div style=\"color:var(--error);font-size:12px\">" + esc(e.message) + "</div>";
+    box.innerHTML = "<div style=\"color:var(--danger);font-size:12px\">" + esc(e.message) + "</div>";
   });
 }
 
 // ===== 页面：系统设置 =====
+// ===== 页面：设置（对齐效果图）=====
+//
+// 布局（三栏）：
+//   左：竖排 Tab（通用 / 录像 / 通知 / 系统）
+//   中：当前 Tab 的设置分组
+//   右：另外三个 Tab 的摘要卡（带跳转）
+
+var setTab = 'general';
+var setCfg = null;
+var setSum = null;
+
 function renderSettings(c){
-  // 按逻辑分组（对齐效果图的层次感）
-  //   01 监控与设备   安装向导 / 录像设置
-  //   02 通知与告警   事件通知
-  //   03 AI 与智能    AI 识别（详细配置在 AI 页）
-  //   04 系统与维护   诊断 / 关于
+  c.innerHTML = '<div class="page__inner">' + loading('加载设置…') + '</div>';
+
+  Promise.all([
+    api('/api/ui/config').catch(function(){ return {}; }),
+    api('/api/notify/config').catch(function(){ return {}; }),
+    api('/api/ai/status').catch(function(){ return {}; }),
+  ]).then(function(res){
+    setCfg = (res[0] && res[0].config) || {};
+    setSum = (res[0] && res[0].summary) || {};
+    setNotify = res[1] || {};
+    setAiStatus = res[2] || {};
+    paintSettings(c);
+  }).catch(function(err){
+    c.innerHTML = '<div class="page__inner">' + errorCard(err, function(){ renderSettings(c); }) + '</div>';
+  });
+}
+
+var setNotify = null, setAiStatus = null;
+
+var SET_TABS = [
+  { k:'general', t:'通用',  en:'General',       ic:'settings' },
+  { k:'record',  t:'录像',  en:'Recording',     ic:'film' },
+  { k:'notify',  t:'通知',  en:'Notifications', ic:'bell' },
+  { k:'system',  t:'系统',  en:'System',        ic:'monitor' },
+];
+
+function paintSettings(c){
+  var cfg = setCfg || {};
+  var sum = setSum || {};
 
   c.innerHTML = '<div class="page__inner">'
 
     + '<div class="list-head">'
     +   '<div class="list-head__main">'
     +     '<h1 class="list-head__title">设置</h1>'
-    +     '<div class="list-head__en">Settings</div>'
+    +     '<div class="list-head__en">管理系统偏好、设备行为和个人设置。</div>'
     +   '</div>'
     + '</div>'
 
-    // ===== 监控与设备 =====
-    + '<div class="set-group">'
-    +   '<div class="set-group__label">监控与设备</div>'
+    + '<div class="set3">'
 
-    +   '<div class="card">'
-    +     '<div class="card__head">' + icon('check',15) + '<span class="card__title">安装向导</span>'
-    +       '<button class="btn btn--sm" id="btnRerunWizard">重新运行</button></div>'
-    +     '<div class="card__body set-text">'
-    +       '重新检查环境（扫码登录、设备发现、端口、编码器）。首次安装时会自动运行。'
-    +     '</div>'
-    +   '</div>'
+      // 左：竖排 Tab
+    +   '<aside class="set3__nav">'
+    +     SET_TABS.map(function(x){
+            return '<button class="set3__tab' + (setTab===x.k?' is-active':'') + '" data-settab="' + x.k + '">'
+              + icon(x.ic,17)
+              + '<span class="set3__tab-body">'
+              +   '<span class="set3__tab-name">' + x.t + '</span>'
+              +   '<span class="set3__tab-en">' + x.en + '</span>'
+              + '</span>'
+              + '</button>';
+          }).join('')
+    +   '</aside>'
 
-    +   '<div class="card">'
-    +     '<div class="card__head">' + icon('film',15) + '<span class="card__title">录像设置</span>'
-    +       '<a class="btn btn--sm" href="javascript:;" data-goto="recordings">打开回放</a></div>'
-    +     '<div class="card__body">'
-    +       '<div class="set-kv">'
-    +         '<div class="set-kv__row"><span>录像目录</span><b class="set-mono">/vol1/@appdata/micam/recordings</b></div>'
-    +         '<div class="set-kv__row"><span>分片时长</span><b>30 秒</b></div>'
-    +         '<div class="set-kv__row"><span>保留天数</span><b>7 天</b></div>'
-    +         '<div class="set-kv__row"><span>磁盘保护</span><b>剩余低于 10 GB 自动停止录像</b></div>'
-    +       '</div>'
-    +       '<div class="set-hint">这些参数在「存储」页可以调整。</div>'
-    +     '</div>'
-    +   '</div>'
+      // 中：内容
+    +   '<div class="set3__main" id="setMain"></div>'
+
+      // 右：摘要卡
+    +   '<aside class="set3__side">' + setSideCards(sum) + '</aside>'
 
     + '</div>'
-
-    // ===== 通知与告警 =====
-    + '<div class="set-group">'
-    +   '<div class="set-group__label">通知与告警</div>'
-    +   '<div class="card">'
-    +     '<div class="card__head">' + icon('bell',15) + '<span class="card__title">事件通知</span>'
-    +       '<button class="btn btn--sm" id="btnNotifyTest">发送测试</button></div>'
-    +     '<div class="card__body" id="notifyCfg">' + loading('读取中…') + '</div>'
-    +   '</div>'
-    + '</div>'
-
-    // ===== AI 与智能 =====
-    + '<div class="set-group">'
-    +   '<div class="set-group__label">AI 与智能</div>'
-    +   '<div class="card">'
-    +     '<div class="card__head">' + icon('cpu',15) + '<span class="card__title">AI 智能识别</span>'
-    +       '<span id="aiHeadStatus" class="set-status"></span>'
-    +       '<a class="btn btn--sm" href="javascript:;" data-goto="ai">详细设置</a></div>'
-    +     '<div class="card__body" id="aiCfg">' + loading('读取中…') + '</div>'
-    +   '</div>'
-    + '</div>'
-
-    // ===== 系统与维护 =====
-    + '<div class="set-group">'
-    +   '<div class="set-group__label">系统与维护</div>'
-
-    +   '<div class="card">'
-    +     '<div class="card__head">' + icon('gauge',15) + '<span class="card__title">诊断与反馈</span></div>'
-    +     '<div class="card__body">'
-    +       '<p class="set-text">遇到问题时，导出诊断包并提交到 GitHub Issues，我们会据此做适配。'
-    +         '所有敏感信息（账号/凭据/IP）已自动脱敏。</p>'
-    +       '<div class="set-actions">'
-    +         '<button class="btn btn--primary" id="btnDiagBundle">' + icon('inbox',14) + '导出诊断包</button>'
-    +         '<button class="btn" id="btnDiagReport">' + icon('device',14) + '查看诊断报告</button>'
-    +         '<button class="btn" id="btnShowLog">' + icon('film',14) + '查看日志</button>'
-    +       '</div>'
-    +       '<div id="diagResult" class="set-result"></div>'
-    +     '</div>'
-    +   '</div>'
-
-    +   '<div class="card">'
-    +     '<div class="card__head">' + icon('info',15) + '<span class="card__title">关于</span></div>'
-    +     '<div class="card__body">'
-    +       '<div class="set-kv">'
-    +         '<div class="set-kv__row"><span>应用</span><b>MiCam（小米摄像头）</b></div>'
-    +         '<div class="set-kv__row"><span>版本</span><b class="set-mono">' + (APP_VER || '—') + '</b></div>'
-    +         '<div class="set-kv__row"><span>连接方式</span><b>小米云 P2P 直连</b></div>'
-    +         '<div class="set-kv__row"><span>后端</span><b><span class="badge badge--ok">运行中</span></b></div>'
-    +       '</div>'
-    +     '</div>'
-    +   '</div>'
-
-    + '</div>'
-
     + '</div>';
 
-  // ---- 加载异步区块 ----
-  // 诊断按钮用全局事件委托绑定（见文件下方 document.addEventListener）
-  var rw = document.getElementById('btnRerunWizard');
-  if(rw) rw.onclick = function(){ page = 'setup'; renderMenu(); render(); };
+  paintSetMain();
+  bindSettings(c);
+}
 
-  Array.prototype.forEach.call(c.querySelectorAll('[data-goto]'), function(b){
-    b.onclick = function(){ page = this.dataset.goto; renderMenu(); render(); };
+// setSideCards 右侧三个摘要卡
+function setSideCards(sum){
+  var rec = sum.recording || {}, no = sum.notify || {}, sy = sum.system || {};
+  function card(icon0, title, tab, rows){
+    return '<div class="set3__card' + (setTab===tab?' is-current':'') + '" data-settab="' + tab + '">'
+      + '<div class="set3__card-head">' + icon(icon0,15) + '<span>' + title + '</span>'
+      +   icon('chevron-right',15) + '</div>'
+      + rows.map(function(r){
+            return '<div class="set3__kv"><span>' + r[0] + '</span><b>' + r[1] + '</b></div>';
+          }).join('')
+      + '</div>';
+  }
+  return ''
+    + card('film', '录像', 'record', [
+        ['默认录像计划', esc(rec.schedule==='always'?'全天':(rec.schedule||'全天'))],
+        ['保留天数', (rec.keepDays||7) + ' 天'],
+        ['循环覆盖', rec.loop===false?'关闭':'开启'],
+      ])
+    + card('bell', '通知', 'notify', [
+        ['免打扰时间', esc((no.quietFrom||'22:00') + ' - ' + (no.quietTo||'07:00'))],
+        ['推送通知', no.push===false?'关闭':'开启'],
+        ['邮件通知', no.email?'开启':'关闭'],
+      ])
+    + card('monitor', '系统', 'system', [
+        ['自动更新', sy.autoUpdate===false?'关闭':'开启'],
+        ['AI 设置', '<span class="set3__link">前往 AI 智能页面 ' + icon('chevron-right',12) + '</span>'],
+        ['设备与维护', '<span class="set3__link">' + icon('chevron-right',12) + '</span>'],
+      ]);
+}
+
+// paintSetMain 中间内容
+function paintSetMain(){
+  var box = document.getElementById('setMain');
+  if(!box) return;
+  var cfg = setCfg || {};
+
+  function section(title, en, rows){
+    return '<div class="set3__sec">'
+      + '<div class="set3__sec-head"><span>' + title + '</span><em>' + en + '</em></div>'
+      + rows.join('')
+      + '</div>';
+  }
+
+  // 一行：左文字右控件
+  function row(label, hint, control, wide){
+    return '<div class="set3__row' + (wide?' is-wide':'') + '">'
+      + '<div class="set3__row-label"><div class="set3__row-title">' + label + '</div>'
+      +   (hint ? '<div class="set3__row-hint">' + hint + '</div>' : '') + '</div>'
+      + '<div class="set3__row-ctl">' + control + '</div>'
+      + '</div>';
+  }
+  // 单选组
+  function radios(name, opts, cur){
+    return '<div class="set3__radios">' + opts.map(function(o){
+      return '<label class="set3__radio"><input type="radio" name="' + name + '" value="' + o[0] + '"'
+        + (cur===o[0]?' checked':'') + '><span class="set3__radio-dot"></span><span>' + o[1] + '</span></label>';
+    }).join('') + '</div>';
+  }
+  // 下拉
+  function sel(id, opts, cur){
+    return '<select class="input set3__sel" id="' + id + '">' + opts.map(function(o){
+      return '<option value="' + o[0] + '"' + (cur===o[0]?' selected':'') + '>' + o[1] + '</option>';
+    }).join('') + '</select>';
+  }
+  // 开关
+  function sw(id, on){
+    return '<label class="switch"><input type="checkbox" id="' + id + '"' + (on?' checked':'') + '><span class="switch__track"></span></label>';
+  }
+
+  if(setTab === 'general'){
+    box.innerHTML = ''
+      + section('外观', 'Appearance', [
+          row('主题模式', '选择应用的外观主题。',
+              radios('uiTheme', [['system','跟随系统'],['dark','深色'],['light','浅色']], cfg.theme||'dark')),
+          row('语言', '选择界面显示语言。',
+              sel('uiLang', [['zh-CN','简体中文'],['en','English']], cfg.language||'zh-CN')),
+          row('时间格式', '选择时间的显示格式。',
+              radios('uiTime', [['24h','24 小时'],['12h','12 小时']], cfg.timeFormat||'24h')),
+        ])
+      + section('播放默认值', 'Playback Defaults', [
+          row('默认画质', '设置视频播放的默认分辨率。',
+              sel('uiQuality', [['2k','2K'],['hd','高清'],['sd','流畅']], cfg.defaultQuality||'2k')),
+          row('默认播放模式', '设置视频播放的默认协议。',
+              sel('uiProto', [['hls','HLS'],['mjpeg','MJPEG']], cfg.defaultProtocol||'hls')),
+          row('自动播放实时画面', '进入摄像头页面时自动播放实时画面。', sw('uiAutoplay', cfg.autoplayLive!==false)),
+          row('进入页面自动静音', '进入摄像头页面时默认静音播放。', sw('uiMute', cfg.autoplayMute!==false)),
+        ])
+      + section('界面偏好', 'Interface Preferences', [
+          row('首页显示摄像头', '在首页显示摄像头预览区域。', sw('uiHomeCam', cfg.homeShowCameras!==false)),
+          row('首页显示最近事件', '在首页显示最近的事件列表。', sw('uiHomeEv', cfg.homeShowEvents!==false)),
+          row('首页显示存储', '在首页显示存储使用情况。', sw('uiHomeSt', cfg.homeShowStorage!==false)),
+          row('显示英文设备别名', '在设备名称下显示英文别名（如 Front Door）。', sw('uiEnAlias', cfg.showEnglishAlias!==false)),
+          row('紧凑模式', '使用更紧凑的界面布局。', sw('uiCompact', !!cfg.compactMode)),
+          row('事件默认视图', '设置事件页面的默认视图方式。',
+              sel('uiEvView', [['grid','网格'],['list','列表']], cfg.eventsDefaultView||'grid')),
+        ]);
+  }
+  else if(setTab === 'record'){
+    var rec = (setSum && setSum.recording) || {};
+    box.innerHTML = ''
+      + section('录像计划', 'Recording Schedule', [
+          row('默认录像计划', '设置所有摄像头的默认录像时段。',
+              sel('uiSched', [['always','全天'],['night','仅夜间'],['motion','仅事件'],['off','不录像']], cfg.recordSchedule||'always')),
+          row('保留天数', '超过天数的录像将被自动清理。',
+              '<input class="input set3__num" id="uiKeep" type="number" min="1" max="365" value="' + (rec.keepDays||7) + '"><span class="set3__unit">天</span>', true),
+          row('循环覆盖', '空间不足时覆盖最早的录像。', sw('uiLoop', cfg.loopOverwrite!==false)),
+        ])
+      + section('录像文件', 'Files', [
+          row('分片时长', '每个录像文件的时长。',
+              '<input class="input set3__num" id="uiSeg" type="number" min="10" max="3600" value="300"><span class="set3__unit">秒</span>', true),
+          row('磁盘阈值', '已用空间达到该比例时触发清理。',
+              '<input class="input set3__num" id="uiThresh" type="number" min="50" max="99" value="97"><span class="set3__unit">%</span>', true),
+        ])
+      + section('操作', 'Actions', [
+          row('打开回放', '查看和管理已有的录像文件。',
+              '<button class="btn" id="setGoRec">' + icon('play',14) + '打开回放</button>'),
+          row('存储策略', '调整录像位置、清理策略等。',
+              '<button class="btn" id="setGoStorage">' + icon('hard-drive',14) + '前往存储页</button>'),
+        ]);
+  }
+  else if(setTab === 'notify'){
+    var no = setNotify || {};
+    var types = no.types || [];
+    var selEv = {};
+    (no.events || []).forEach(function(e){ selEv[e] = true; });
+    var allOn = (no.events || []).length === 0;
+    box.innerHTML = ''
+      + section('通知开关', 'Notifications', [
+          row('启用通知', '总开关，关闭后不发送任何通知。', sw('ntEnabled', !!no.enabled)),
+          row('推送通知', '发送到浏览器/App 推送。', sw('uiPush', cfg.pushEnabled!==false)),
+          row('邮件通知', '通过邮件发送通知（需先配置邮件）。', sw('uiEmail', !!cfg.emailEnabled)),
+        ])
+      + section('免打扰', 'Do Not Disturb', [
+          row('免打扰时段', '该时段内的通知不推送。',
+              '<input class="input set3__time" id="uiQuietFrom" type="time" value="' + esc(cfg.quietFrom||'22:00') + '">'
+              + '<span class="set3__unit">至</span>'
+              + '<input class="input set3__time" id="uiQuietTo" type="time" value="' + esc(cfg.quietTo||'07:00') + '">', true),
+        ])
+      + section('Webhook', 'Webhook', [
+          row('Webhook 地址', 'POST JSON 到该地址。可对接钉钉/企业微信/Bark/自建服务。',
+              '<input class="input set3__wide" id="ntWebhook" placeholder="https://..." value="' + esc(no.webhook||'') + '">', true),
+          row('发送测试', '往 Webhook 地址发一条测试消息。',
+              '<button class="btn" id="btnNotifyTest">' + icon('bell',14) + '发送测试</button>'),
+        ])
+      + section('订阅事件', 'Event Subscriptions',
+          types.map(function(t){
+            var on = allOn || selEv[t.key];
+            return row(t.label, '', '<label class="switch"><input type="checkbox" data-ev="' + esc(t.key) + '"' + (on?' checked':'') + '><span class="switch__track"></span></label>');
+          }));
+  }
+  else {
+    var sy = (setSum && setSum.system) || {};
+    box.innerHTML = ''
+      + section('系统', 'System', [
+          row('自动更新', '有新版本时自动提示。', sw('uiAutoUpd', cfg.autoUpdate!==false)),
+          row('AI 设置', '本地识别与云端视觉分析的详细配置。',
+              '<button class="btn" id="setGoAI">' + icon('zap',14) + '前往 AI 智能页面' + icon('chevron-right',13) + '</button>'),
+          row('设备与维护', '设备管理、诊断与日志。',
+              '<button class="btn" id="setGoDev">' + icon('camera',14) + '摄像头列表' + icon('chevron-right',13) + '</button>'),
+        ])
+      + section('维护', 'Maintenance', [
+          row('安装向导', '重新检查环境（扫码登录、设备发现、端口、编码器）。',
+              '<button class="btn" id="setGoWizard">' + icon('check',14) + '重新运行</button>'),
+          row('诊断与反馈', '导出诊断包并提交到 GitHub Issues（已自动脱敏）。',
+              '<button class="btn" id="btnDiagBundle">' + icon('download',14) + '导出诊断包</button>'),
+          row('查看日志', '查看最近的后端日志。',
+              '<button class="btn" id="btnShowLog">' + icon('film',14) + '查看日志</button>'),
+        ])
+      + section('关于', 'About', [
+          row('应用', '', '<span class="set3__val">MiCam（小米摄像头）</span>'),
+          row('版本', '', '<span class="set3__val set-mono">' + esc(APP_VER || '—') + '</span>'),
+          row('连接方式', '', '<span class="set3__val">小米云 P2P 直连</span>'),
+        ]);
+  }
+
+  bindSetMain();
+}
+
+// bindSetMain 绑定中间内容里的控件
+function bindSetMain(){
+  var box = document.getElementById('setMain');
+  if(!box) return;
+
+  // 单选 + 开关 + 下拉：改动即保存
+  Array.prototype.forEach.call(box.querySelectorAll('input[type=radio]'), function(r){
+    r.onchange = function(){
+      var body = {};
+      if(this.name === 'uiTheme') body.theme = this.value;
+      else if(this.name === 'uiTime') body.timeFormat = this.value;
+      if(Object.keys(body).length) saveUI(body);
+    };
   });
 
-  loadNotifyCfg();
-  loadAICfg();
+  var lang = document.getElementById('uiLang');
+  if(lang) lang.onchange = function(){ saveUI({ language: this.value }); };
+  var q = document.getElementById('uiQuality');
+  if(q) q.onchange = function(){ saveUI({ defaultQuality: this.value }); };
+  var pr = document.getElementById('uiProto');
+  if(pr) pr.onchange = function(){ saveUI({ defaultProtocol: this.value }); };
+  var ev = document.getElementById('uiEvView');
+  if(ev) ev.onchange = function(){ saveUI({ eventsDefaultView: this.value }); };
+  var sc = document.getElementById('uiSched');
+  if(sc) sc.onchange = function(){ saveUI({ recordSchedule: this.value }); };
+
+  var swMap = {
+    uiAutoplay:'autoplayLive', uiMute:'autoplayMute',
+    uiHomeCam:'homeShowCameras', uiHomeEv:'homeShowEvents', uiHomeSt:'homeShowStorage',
+    uiEnAlias:'showEnglishAlias', uiCompact:'compactMode',
+    uiLoop:'loopOverwrite', uiPush:'pushEnabled', uiEmail:'emailEnabled',
+    uiAutoUpd:'autoUpdate',
+  };
+  Object.keys(swMap).forEach(function(id){
+    var el = document.getElementById(id);
+    if(el) el.onchange = function(){
+      var b = {}; b[swMap[id]] = this.checked; saveUI(b);
+    };
+  });
+
+  // 数字输入：失焦保存
+  [['uiKeep','keepDays'],['uiSeg','segmentSec'],['uiThresh','thresholdPct']].forEach(function(x){
+    var el = document.getElementById(x[0]);
+    if(el) el.onchange = function(){
+      var v = parseInt(this.value, 10);
+      if(!v) return;
+      if(x[1] === 'keepDays'){ saveUI({ keepDays: v }); return; }
+      // 分片/阈值走录像配置
+      api('/api/recordings/config', { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify(x[1] === 'segmentSec' ? { segmentSec: v } : {}) })
+        .then(function(){ toast('已保存', 'ok'); }).catch(function(e){ toast(e.message, 'err'); });
+    };
+  });
+
+  // 免打扰
+  ['uiQuietFrom','uiQuietTo'].forEach(function(id){
+    var el = document.getElementById(id);
+    if(el) el.onchange = function(){
+      saveUI({ quietFrom: (document.getElementById('uiQuietFrom')||{}).value,
+               quietTo:   (document.getElementById('uiQuietTo')||{}).value });
+    };
+  });
+
+  // 通知相关
+  var ne = document.getElementById('ntEnabled');
+  if(ne) ne.onchange = function(){ saveNotify({ enabled: this.checked }); };
+  var nw = document.getElementById('ntWebhook');
+  if(nw) nw.onchange = function(){ saveNotify({ webhook: this.value }); };
+  Array.prototype.forEach.call(box.querySelectorAll('[data-ev]'), function(cb){
+    cb.onchange = function(){
+      var evs = [];
+      Array.prototype.forEach.call(box.querySelectorAll('[data-ev]'), function(x){
+        if(x.checked) evs.push(x.dataset.ev);
+      });
+      saveNotify({ events: evs });
+    };
+  });
+  var nt = document.getElementById('btnNotifyTest');
+  if(nt) nt.onclick = function(){
+    api('/api/notify/test', { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' })
+      .then(function(r){ toast(r.ok ? '测试通知已发送' : ('失败：' + (r.error||'')), r.ok?'ok':'err'); })
+      .catch(function(e){ toast(e.message, 'err'); });
+  };
+
+  // 跳转按钮
+  var go = function(id, target){
+    var el = document.getElementById(id);
+    if(el) el.onclick = function(){ page = target; renderMenu(); render(); };
+  };
+  go('setGoRec','recordings'); go('setGoStorage','storage'); go('setGoAI','ai'); go('setGoDev','devices'); go('setGoWizard','setup');
+
+  var db = document.getElementById('btnDiagBundle');
+  if(db) db.onclick = function(){ window.open(apiUrl('/api/diag/bundle'), '_blank'); };
+  var lg = document.getElementById('btnShowLog');
+  if(lg) lg.onclick = function(){ toast('日志在 /vol1/@appdata/micam/micamd.log', 'warn'); };
+}
+
+function saveUI(patch){
+  api('/api/ui/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(patch) })
+    .then(function(r){
+      if(r.warn) toast(r.warn, 'warn'); else toast('已保存', 'ok');
+      if(r.config) setCfg = r.config;
+      // 刷新右卡（有些值影响摘要）
+      api('/api/ui/config').then(function(d){ setSum = d.summary || {}; paintSettings(document.getElementById('content')); });
+    })
+    .catch(function(e){ toast('保存失败：' + e.message, 'err'); });
+}
+
+function saveNotify(patch){
+  api('/api/notify/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(patch) })
+    .then(function(){ toast('已保存', 'ok'); })
+    .catch(function(e){ toast('保存失败：' + e.message, 'err'); });
+}
+
+function bindSettings(c){
+  Array.prototype.forEach.call(c.querySelectorAll('[data-settab]'), function(el){
+    el.onclick = function(){
+      setTab = this.dataset.settab;
+      paintSettings(c);
+    };
+  });
 }
 
 // ===== 凭据状态提示 =====
@@ -10735,7 +10971,7 @@ function loadCredBar(){
 
     var msg = "", bg = "", color = "";
     if(dev.cooldownMinutes > 0){
-      bg = "rgba(255,77,79,.12)"; color = "var(--error)";
+      bg = "rgba(255,77,79,.12)"; color = "var(--danger)";
       msg = "⚠️ 摄像头凭据需要刷新，但小米云正在限流。约 " + dev.cooldownMinutes + " 分钟后自动重试。"
           + "<br>期间可能无法播放。可稍后再试，或重启路由器换个出口 IP。";
     } else if(dev.expiresInMinutes < 60){
@@ -11153,7 +11389,7 @@ function loadNotifyCfg(){
         .catch(function(e){ toast('失败：' + e.message, 'err'); });
     };
   }).catch(function(e){
-    box.innerHTML = "<div style='color:var(--error);font-size:13px'>" + esc(e.message) + "</div>";
+    box.innerHTML = "<div style='color:var(--danger);font-size:13px'>" + esc(e.message) + "</div>";
   });
 }
 

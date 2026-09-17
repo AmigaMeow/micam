@@ -296,7 +296,7 @@ function pageTitleOf(k){
     // 从屏幕左边缘（<30px）右滑，或任意位置右滑 >80px
     if(dy < 60 && dx > 80){
       var s = document.querySelector(".sider");
-      if(s && !s.classList.contains("open")) openSider();
+      if(s && !s.classList.contains("is-open")) openSider();
     }
     // 左滑关闭
     if(dy < 60 && dx < -80){
@@ -4172,7 +4172,7 @@ function startLiveHLS(did){
     if(cleared) return;
     var stp = document.getElementById("liveStep");
     if(stp){ stp.textContent = msg; stp.style.color = "#ff7875"; }
-    var sp = overlay.querySelector(".spin");
+    var sp = overlay.querySelector(".spinner");
     if(sp) sp.style.display = "none";
     if(progTimer) clearInterval(progTimer);
   }
@@ -5581,7 +5581,7 @@ function renderDev(c){
     + "<div class=\"card\">"
     +   "<div class=\"card__head\"><span class=\"card__title\">" + icon("close",15) + " 危险操作</span></div>"
     +   "<div style=\"padding:16px 24px\">"
-    +     "<button class=\"btn\" id=\"btnDevReset\" style=\"color:var(--error);border-color:var(--error)\">关闭开发者模式</button>"
+    +     "<button class=\"btn\" id=\"btnDevReset\" style=\"color:var(--danger);border-color:var(--danger)\">关闭开发者模式</button>"
     +   "</div>"
     + "</div>";
 
@@ -5648,7 +5648,7 @@ function loadDevFlags(){
       };
     });
   }).catch(function(e){
-    box.innerHTML = "<div style=\"padding:16px 24px;color:var(--error)\">" + esc(e.message) + "</div>";
+    box.innerHTML = "<div style=\"padding:16px 24px;color:var(--danger)\">" + esc(e.message) + "</div>";
   });
 }
 
@@ -5706,9 +5706,9 @@ function callEndpoint(e){
     if(txt.length > 3000) txt = txt.slice(0, 3000) + "\n… （已截断）";
     if(out) out.innerHTML = "<div style=\"font-size:12px;margin-bottom:6px\">"
       + "<span class=\"badge badge--ok\">" + ms + " ms</span></div>"
-      + "<pre style=\"background:var(--hover);padding:12px;border-radius:6px;font-size:11px;overflow:auto;max-height:300px\">" + esc(txt) + "</pre>";
+      + "<pre style=\"background:var(--surface-hover);padding:12px;border-radius:6px;font-size:11px;overflow:auto;max-height:300px\">" + esc(txt) + "</pre>";
   }).catch(function(err){
-    if(out) out.innerHTML = "<div style=\"color:var(--error);font-size:12px\">失败：" + esc(err.message) + "</div>";
+    if(out) out.innerHTML = "<div style=\"color:var(--danger);font-size:12px\">失败：" + esc(err.message) + "</div>";
   });
 }
 
@@ -5735,7 +5735,7 @@ function loadDevCaps(){
       + "<tr><td style=\"color:var(--text-3)\">限制</td><td>fps≤" + (lm.maxFPS||"-") + " · 宽≤" + (lm.maxWidth||"-") + " · 分片 " + (lm.hlsSegmentSec||"-") + "s</td></tr>"
       + "</table>";
   }).catch(function(e){
-    box.innerHTML = "<div style=\"color:var(--error);font-size:12px\">" + esc(e.message) + "</div>";
+    box.innerHTML = "<div style=\"color:var(--danger);font-size:12px\">" + esc(e.message) + "</div>";
   });
 }
 
@@ -6136,7 +6136,7 @@ function loadCredBar(){
 
     var msg = "", bg = "", color = "";
     if(dev.cooldownMinutes > 0){
-      bg = "rgba(255,77,79,.12)"; color = "var(--error)";
+      bg = "rgba(255,77,79,.12)"; color = "var(--danger)";
       msg = "⚠️ 摄像头凭据需要刷新，但小米云正在限流。约 " + dev.cooldownMinutes + " 分钟后自动重试。"
           + "<br>期间可能无法播放。可稍后再试，或重启路由器换个出口 IP。";
     } else if(dev.expiresInMinutes < 60){
@@ -6554,7 +6554,7 @@ function loadNotifyCfg(){
         .catch(function(e){ toast('失败：' + e.message, 'err'); });
     };
   }).catch(function(e){
-    box.innerHTML = "<div style='color:var(--error);font-size:13px'>" + esc(e.message) + "</div>";
+    box.innerHTML = "<div style='color:var(--danger);font-size:13px'>" + esc(e.message) + "</div>";
   });
 }
 

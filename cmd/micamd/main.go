@@ -476,6 +476,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/accounts/import", s.handleCredImport)
 	mux.HandleFunc("/api/accounts/backups", s.handleCredBackup)
 	mux.HandleFunc("/api/accounts/status", s.handleAccountStatus)
+	mux.HandleFunc("/api/accounts/detail", s.handleAccountsDetail)
 
 	// 设备
 	mux.HandleFunc("/api/devices", s.handleDevices)
@@ -493,6 +494,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 
 	// AI 推理
 	mux.HandleFunc("/api/ai/config", s.handleAIConfig)
+	mux.HandleFunc("/api/ui/config", s.handleUIConfig)
 	mux.HandleFunc("/api/ai/status", s.handleAIStatus)
 	mux.HandleFunc("/api/ai/model", s.handleAIModel)
 	mux.HandleFunc("/api/ai/test", s.handleAITest)
@@ -560,6 +562,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	// 录像
 	// 存储监控
 	mux.HandleFunc("/api/storage", s.handleStorage)
+	mux.HandleFunc("/api/storage/detail", s.handleStorageDetail)
 	mux.HandleFunc("/api/storage/cleanup-preview", s.handleCleanupPreview)
 
 	mux.HandleFunc("/api/recordings", s.handleRecordings)            // GET 列表 / POST 开始
