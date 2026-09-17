@@ -32,24 +32,24 @@
 //   页面：账号管理（对齐效果图）                L  5180 -  5483
 //   页面：安装向导                              L  5484 -  5552
 //   页面：开发者                                L  5553 -  5553
-//   页面：开发者（对齐效果图：7 个 Tab）        L  5554 -  6666
-//   页面：系统设置                              L  6667 -  6667
-//   页面：设置（对齐效果图）                    L  6668 -  7017
-//   凭据状态提示                                L  7018 -  7071
-//   云台方向翻转（按设备记住）                  L  7072 -  7090
-//   动作                                        L  7091 -  7128
-//   扫码登录                                    L  7129 -  7168
-//   宿主 SDK 集成                               L  7169 -  7195
-//   事件通知配置                                L  7196 -  7196
-//   AI 设置                                     L  7197 -  7476
-//   诊断功能                                    L  7477 -  7526
-//   加载 hls.js（HLS 播放库）                   L  7527 -  7528
-//   为什么不用相对路径                          L  7529 -  7568
-//   开放模式（开发者选项）解锁                  L  7569 -  7596
-//   启动                                        L  7597 -  7636
-//                                               L  7637 -  7648
-//                                               L  7649 -  8176
-//   顶栏右上角：用户菜单 + 全局搜索             L  8177 -  8414
+//   页面：开发者（对齐效果图：7 个 Tab）        L  5554 -  6808
+//   页面：系统设置                              L  6809 -  6809
+//   页面：设置（对齐效果图）                    L  6810 -  7159
+//   凭据状态提示                                L  7160 -  7213
+//   云台方向翻转（按设备记住）                  L  7214 -  7232
+//   动作                                        L  7233 -  7270
+//   扫码登录                                    L  7271 -  7310
+//   宿主 SDK 集成                               L  7311 -  7337
+//   事件通知配置                                L  7338 -  7338
+//   AI 设置                                     L  7339 -  7618
+//   诊断功能                                    L  7619 -  7668
+//   加载 hls.js（HLS 播放库）                   L  7669 -  7670
+//   为什么不用相对路径                          L  7671 -  7710
+//   开放模式（开发者选项）解锁                  L  7711 -  7738
+//   启动                                        L  7739 -  7778
+//                                               L  7779 -  7790
+//                                               L  7791 -  8318
+//   顶栏右上角：用户菜单 + 全局搜索             L  8319 -  8556
 //
 // 重新生成索引：node build/gen-js-index.js
 // ===== 分节索引结束 =====
@@ -6107,31 +6107,168 @@ function devToolAction(a){
 
 function devDocsTab(){
   return '<div class="card">'
-    + '<div class="card__head">' + icon('code',15) + '<span class="card__title">接口文档</span>'
-    +   '<div class="card__actions">'
-    +     '<button class="btn btn--sm" id="devBtnSpec">OpenAPI JSON</button>'
-    +     '<button class="btn btn--sm" id="devBtnDocs">Markdown</button>'
-    +   '</div>'
+    + devCardHead('file-video', '接口文档', '完整接入文档：快速开始、播放、云台、录像、错误处理、共享连接与性能特征。',
+        '<button class="btn btn--sm" id="devBtnSpec">' + icon('download',13) + 'OpenAPI</button>'
+        + '<button class="btn btn--sm" id="devBtnDocs">' + icon('download',13) + 'Markdown</button>'
+        + '<button class="btn btn--sm" data-copy-el="devDocBox">' + icon('copy',13) + '复制全文</button>')
+    + '<div class="dev-doc">'
+    +   '<aside class="dev-doc__toc" id="devDocToc"></aside>'
+    +   '<div class="dev-md" id="devDocBox">' + loading('加载文档…') + '</div>'
     + '</div>'
-    + '<div class="api-list">'
-    + DEV_ENDPOINTS.map(function(e, i){
-        return '<div class="api-row">'
-          + '<span class="api-method ' + (e.m === 'GET' ? 'is-get' : 'is-post') + '">' + e.m + '</span>'
-          + '<span class="api-path">' + esc(e.p) + '</span>'
-          + '<span class="api-desc">' + esc(e.t) + '</span>'
-          + '<button class="btn btn--sm" data-call="' + i + '">调用</button>'
-          + '</div>';
-      }).join('')
     + '</div>'
+
+    + '<div class="card">'
+    + devCardHead('code', '接口清单', '按分组列出全部接口，点「调用」可直接请求。',
+        '<input class="input dev-doc__search" id="devApiSearch" placeholder="搜索路径 / 说明">')
+    + '<div class="api-list" id="devApiList">' + loading('加载中…') + '</div>'
     + '<div class="card__body" id="devResult"></div>'
     + '</div>'
 
     + '<div class="card">'
-    + '<div class="card__head">' + icon('cpu',15) + '<span class="card__title">能力探测</span>'
-    +   '<div class="card__actions"><button class="btn btn--sm" id="devCapsRefresh">刷新</button></div>'
-    + '</div>'
+    + devCardHead('cpu', '能力探测', '当前硬件、可用编码器与接口限制。',
+        '<button class="btn btn--sm" id="devCapsRefresh">刷新</button>')
     + '<div class="card__body" id="devCapsBox">' + loading('读取中…') + '</div>'
     + '</div>';
+}
+
+// devRenderMarkdown 极简 Markdown 渲染（零依赖、无构建步骤）
+//
+// 只覆盖 /api/dev/docs 实际用到的语法：标题(#~####)、4 空格缩进代码块、
+// 无序列表、分隔线、段落，以及行内 **粗体** / 反引号 code / 链接。
+// 返回 { html, toc }，toc 供左侧目录使用。
+function devRenderMarkdown(md){
+  var lines = String(md || '').replace(/\r\n/g, '\n').split('\n');
+  var out = [], toc = [], i = 0, slug = 0;
+  var BT = String.fromCharCode(96);
+
+  function inline(s){
+    return esc(s)
+      .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+      .replace(new RegExp(BT + '([^' + BT + ']+)' + BT, 'g'), '<code class="dev-md-code">$1</code>')
+      .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  }
+
+  while (i < lines.length){
+    var ln = lines[i];
+
+    // 4 空格缩进代码块（后端文档主要用这种）
+    if (/^ {4}\S/.test(ln)){
+      var code = [];
+      while (i < lines.length && (/^ {4}/.test(lines[i]) || lines[i].trim() === '')){
+        if (lines[i].trim() === '' && !/^ {4}\S/.test(lines[i + 1] || '')) break;
+        code.push(lines[i].replace(/^ {4}/, ''));
+        i++;
+      }
+      out.push('<pre class="dev-md-pre">' + esc(code.join('\n')) + '</pre>');
+      continue;
+    }
+
+    var h = ln.match(/^(#{1,4})\s+(.*)$/);
+    if (h){
+      var lv = h[1].length, txt = h[2].trim(), id = 'devmd' + (++slug);
+      if (lv === 2 || lv === 3) toc.push({ level: lv, text: txt, id: id });
+      out.push('<h' + (lv + 1) + ' class="dev-md-h dev-md-h' + lv + '" id="' + id + '">' + inline(txt) + '</h' + (lv + 1) + '>');
+      i++;
+      continue;
+    }
+
+    if (/^- /.test(ln)){
+      var items = [];
+      while (i < lines.length && /^- /.test(lines[i])){
+        items.push('<li>' + inline(lines[i].slice(2)) + '</li>');
+        i++;
+      }
+      out.push('<ul class="dev-md-ul">' + items.join('') + '</ul>');
+      continue;
+    }
+
+    if (/^---+\s*$/.test(ln)){ out.push('<hr class="dev-md-hr">'); i++; continue; }
+    if (ln.trim() === ''){ i++; continue; }
+
+    var para = [ln];
+    i++;
+    while (i < lines.length && lines[i].trim() !== '' && !/^(#{1,4}\s| {4}\S|- |---+\s*$)/.test(lines[i])){
+      para.push(lines[i]);
+      i++;
+    }
+    out.push('<p class="dev-md-p">' + inline(para.join(' ')) + '</p>');
+  }
+  return { html: out.join('\n'), toc: toc };
+}
+
+// devLoadDoc 拉 Markdown 并渲染（注意：这个接口返回 text/markdown，不能用 api()）
+function devLoadDoc(){
+  var box = document.getElementById('devDocBox');
+  if(!box) return;
+  fetch(apiUrl('/api/dev/docs')).then(function(r){ return r.text(); }).then(function(md){
+    var res = devRenderMarkdown(md);
+    box.innerHTML = res.html;
+    var toc = document.getElementById('devDocToc');
+    if(toc){
+      toc.innerHTML = res.toc.length
+        ? '<div class="dev-doc__toc-title">目录</div>' + res.toc.map(function(t){
+            return '<button class="dev-doc__toc-item dev-doc__toc-item--h' + t.level + '" data-doctoc="' + t.id + '">' + esc(t.text) + '</button>';
+          }).join('')
+        : '';
+      Array.prototype.forEach.call(toc.querySelectorAll('[data-doctoc]'), function(b){
+        b.onclick = function(){
+          var el = document.getElementById(this.dataset.doctoc);
+          if(el) el.scrollIntoView({ behavior:'smooth', block:'start' });
+        };
+      });
+    }
+  }).catch(function(e){
+    box.innerHTML = '<div class="dev-err">文档加载失败：' + esc(e.message) + '</div>';
+  });
+}
+
+// devLoadApiList 由 OpenAPI 规格生成分组接口清单
+function devLoadApiList(){
+  var box = document.getElementById('devApiList');
+  if(!box) return;
+  fetch(apiUrl('/api/dev/openapi')).then(function(r){ return r.json(); }).then(function(spec){
+    var ps = spec.paths || {}, groups = {}, order = [];
+    Object.keys(ps).forEach(function(p){
+      Object.keys(ps[p]).forEach(function(m){
+        var op = ps[p][m] || {};
+        var tag = (op.tags && op.tags[0]) || '其它';
+        if(!groups[tag]){ groups[tag] = []; order.push(tag); }
+        groups[tag].push({ m: m.toUpperCase(), p: '/api' + p, t: op.summary || '' });
+      });
+    });
+    box.innerHTML = order.map(function(tag){
+      return '<div class="dev-api-group">'
+        + '<div class="dev-api-group__head">' + esc(tag) + '<em>' + groups[tag].length + '</em></div>'
+        + groups[tag].map(function(e){
+            var q = (e.m + ' ' + e.p + ' ' + e.t).toLowerCase();
+            return '<div class="api-row" data-gsearch="' + esc(q) + '">'
+              + '<span class="api-method ' + (e.m === 'GET' ? 'is-get' : 'is-post') + '">' + esc(e.m) + '</span>'
+              + '<span class="api-path">' + esc(e.p) + '</span>'
+              + '<span class="api-desc">' + esc(e.t) + '</span>'
+              + '<button class="btn btn--sm" data-callpath="' + esc(e.p) + '" data-callm="' + esc(e.m) + '">调用</button>'
+              + '</div>';
+          }).join('')
+        + '</div>';
+    }).join('');
+    Array.prototype.forEach.call(box.querySelectorAll('[data-callpath]'), function(b){
+      b.onclick = function(){ callEndpoint({ m: this.dataset.callm, p: this.dataset.callpath, t: '' }); };
+    });
+  }).catch(function(e){
+    box.innerHTML = '<div class="dev-err">接口清单加载失败：' + esc(e.message) + '</div>';
+  });
+}
+
+// devFilterApiList 接口清单前端过滤
+function devFilterApiList(q){
+  q = String(q || '').trim().toLowerCase();
+  Array.prototype.forEach.call(document.querySelectorAll('#devApiList .api-row'), function(r){
+    var hit = !q || (r.dataset.gsearch || '').indexOf(q) >= 0;
+    r.classList.toggle('hidden', !hit);
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('#devApiList .dev-api-group'), function(g){
+    var vis = g.querySelectorAll('.api-row:not(.hidden)').length;
+    g.classList.toggle('hidden', vis === 0);
+  });
 }
 
 function bindDevDocs(){
@@ -6139,11 +6276,13 @@ function bindDevDocs(){
   if(b1) b1.onclick = function(){ window.open(apiUrl('/api/dev/openapi'), '_blank'); };
   var b2 = document.getElementById('devBtnDocs');
   if(b2) b2.onclick = function(){ window.open(apiUrl('/api/dev/docs'), '_blank'); };
-  Array.prototype.forEach.call(document.querySelectorAll('button[data-call]'), function(b){
-    b.onclick = function(){ callEndpoint(DEV_ENDPOINTS[parseInt(this.dataset.call, 10)]); };
-  });
+  var s = document.getElementById('devApiSearch');
+  if(s) s.oninput = function(){ devFilterApiList(this.value); };
   var rf = document.getElementById('devCapsRefresh');
   if(rf) rf.onclick = devLoadCaps;
+  bindDevCopies();
+  devLoadDoc();
+  devLoadApiList();
   devLoadCaps();
 }
 
@@ -6663,28 +6802,8 @@ function devNum(n){
   return n.toLocaleString('zh-CN');
 }
 
-// 开发者页保留的接口清单（docs Tab 用，可点「调用」自测）
-var DEV_ENDPOINTS = [
-  {m:"GET",  p:"/api/health",              t:"健康检查"},
-  {m:"GET",  p:"/api/dev/capabilities",    t:"能力探测"},
-  {m:"GET",  p:"/api/dev/status",          t:"开放模式状态"},
-  {m:"GET",  p:"/api/dev/tokens",          t:"Token 列表"},
-  {m:"GET",  p:"/api/dev/logs?limit=20",   t:"请求日志"},
-  {m:"GET",  p:"/api/dev/stats?days=7",    t:"调用统计"},
-  {m:"GET",  p:"/api/devices",             t:"摄像头列表"},
-  {m:"GET",  p:"/api/devices/all",         t:"全部设备"},
-  {m:"GET",  p:"/api/homes",               t:"家庭列表"},
-  {m:"GET",  p:"/api/accounts",            t:"账号列表"},
-  {m:"GET",  p:"/api/live/hls/info",       t:"HLS 能力"},
-  {m:"GET",  p:"/api/live/source-status",  t:"凭据状态"},
-  {m:"GET",  p:"/api/storage",             t:"存储总览"},
-  {m:"GET",  p:"/api/storage/cleanup-preview", t:"清理预览"},
-  {m:"GET",  p:"/api/recordings",          t:"录像任务"},
-  {m:"GET",  p:"/api/recordings/files",    t:"录像文件"},
-  {m:"GET",  p:"/api/setup/check",         t:"环境自检"},
-  {m:"GET",  p:"/api/diag/report",         t:"诊断报告"},
-  {m:"GET",  p:"/api/platform",            t:"平台信息"}
-];
+// 接口清单不再硬编码：由 /api/dev/openapi 规格生成（分组 + 搜索 + 调用），
+// 避免手写列表与真实路由漂移
 
 
 // ===== 页面：系统设置 =====

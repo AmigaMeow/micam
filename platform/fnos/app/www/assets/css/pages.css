@@ -3419,6 +3419,30 @@
 .dev-tokenbox__label { font-size: var(--text-sm); color: var(--warning); }
 .dev-tokenbox__val { font-family: var(--font-mono); font-size: var(--text-base); background: var(--surface-2); border:1px solid var(--border-subtle); border-radius: var(--radius-md); padding: var(--space-3); word-break: break-all; }
 
+/* ---- 接口文档：左侧目录 + 右侧渲染正文 ---- */
+.dev-doc { display:grid; grid-template-columns: 200px minmax(0,1fr); gap: var(--space-5); padding: 0 var(--space-5) var(--space-5); align-items:start; }
+@media (max-width: 1000px){ .dev-doc{ grid-template-columns:1fr; } .dev-doc__toc{ display:none; } }
+.dev-doc__toc { position:sticky; top: var(--space-4); display:flex; flex-direction:column; gap:1px; max-height:72vh; overflow:auto; }
+.dev-doc__toc-title { font-size: var(--text-xs); color: var(--text-muted); margin-bottom:4px; }
+.dev-doc__toc-item { text-align:left; font-size: var(--text-sm); color: var(--text-secondary); padding:4px 8px; border-radius: var(--radius-sm); }
+.dev-doc__toc-item:hover { background: var(--surface-2); color: var(--text); }
+.dev-doc__toc-item--h3 { padding-left:18px; font-size: var(--text-xs); }
+.dev-doc__search { width: 190px; height: 28px; font-size: var(--text-sm); }
+.dev-md { font-size: var(--text-base); line-height:1.75; color: var(--text-secondary); min-width:0; }
+.dev-md-h { color: var(--text); }
+.dev-md-h1 { font-size: var(--text-xl); margin: 0 0 var(--space-4); }
+.dev-md-h2 { font-size: var(--text-lg); margin: var(--space-6) 0 var(--space-3); padding-bottom:6px; border-bottom:1px solid var(--border-subtle); }
+.dev-md-h3 { font-size: var(--text-base); font-weight: var(--weight-semibold); margin: var(--space-5) 0 var(--space-2); }
+.dev-md-h4 { font-size: var(--text-base); margin: var(--space-4) 0 var(--space-2); }
+.dev-md-p { margin: 0 0 var(--space-3); }
+.dev-md-pre { background:#0b1017; color:#c9d4e3; border:1px solid #1d2634; border-radius: var(--radius-md); padding: var(--space-3) var(--space-4); font-family: var(--font-mono); font-size: var(--text-sm); line-height:1.7; overflow-x:auto; margin: 0 0 var(--space-4); white-space: pre; }
+.dev-md-code { font-family: var(--font-mono); font-size: var(--text-sm); background: var(--surface-3); padding:1px 5px; border-radius: var(--radius-sm); }
+.dev-md-ul { margin: 0 0 var(--space-3); padding-left: 22px; }
+.dev-md-ul li { margin-bottom:4px; list-style: disc; }
+.dev-md-hr { border:0; border-top:1px solid var(--border-subtle); margin: var(--space-5) 0; }
+.dev-api-group__head { display:flex; align-items:center; gap:8px; padding: var(--space-3) var(--space-4) 6px; font-size: var(--text-sm); color: var(--text-muted); }
+.dev-api-group__head > em { font-style:normal; background: var(--surface-3); border-radius:999px; padding:0 6px; font-size: var(--text-xs); }
+
 /* 能力探测键值 */
 .dev-kv { display:flex; flex-direction:column; }
 .dev-kv__row { display:flex; gap: var(--space-4); padding: 6px 0; border-bottom:1px solid var(--border-subtle); font-size: var(--text-sm); }
