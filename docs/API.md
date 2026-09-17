@@ -1,5 +1,42 @@
 # MiCam API 接入文档
 
+## 📡 本文档的实时地址（给第三方客户端）
+
+**不要只拿这一份文件** —— 服务端更新后，下面的地址会**自动返回最新内容**：
+
+```
+GET /api/dev/docs          Markdown（本文档的实时版）
+GET /api/dev/openapi       OpenAPI 3.0 JSON（可导入 Postman / 生成 SDK）
+GET /api/dev/docs/meta     版本 + 内容哈希 + 更新时间（判断有无更新）
+```
+
+**客户端接入建议**：
+
+```
+1. 启动时拉一次 /api/dev/docs/meta
+2. 把返回的 hash 存本地
+3. 下次启动对比 hash：不一样就说明文档更新了
+4. 想看内容再拉 /api/dev/docs（Markdown）或 /api/dev/openapi（JSON）
+```
+
+`meta` 返回示例：
+
+```json
+{
+  "version":   "0.40.1",
+  "hash":      "a1b2c3d4e5f6a7b8",
+  "updatedAt": "2026-09-18 05:30:00",
+  "source":    "/vol1/@appcenter/micam/docs/API.md",
+  "bytes":     24576,
+  "urls": { "markdown": "/api/dev/docs", "openapi": "/api/dev/openapi" }
+}
+```
+
+> **接口变了但文档没变** —— 这种情况不该出现。
+> 文档与服务端同一次构建发布，`hash` 变了就代表内容真的变了。
+
+---
+
 版本: 0.10.2
 
 ---

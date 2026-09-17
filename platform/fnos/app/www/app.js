@@ -4934,6 +4934,21 @@ function paintStorage(c, d, cleanup){
     +   '</div>'
     + '</div>'
 
+    + '<div class="set3">'
+    +   '<aside class="set3__nav">'
+    +     [['ov','概览','Overview','hard-drive'],['rec','录像与策略','Recording','film'],['clean','迁移与清理','Cleanup','trash']].map(function(x){
+            return '<button class="set3__tab' + (stTab === x[0] ? ' is-active' : '') + '" data-sttab="' + x[0] + '">'
+              + icon(x[3],17)
+              + '<span class="set3__tab-body">'
+              +   '<span class="set3__tab-name">' + x[1] + '</span>'
+              +   '<span class="set3__tab-en">' + x[2] + '</span>'
+              + '</span>'
+              + '</button>';
+          }).join('')
+    +   '</aside>'
+    +   '<div class="set3__main">'
+    +   '<div class="pnl' + (stTab === 'ov' ? ' is-on' : '') + '" data-pnl="ov">'
+
     // 4 统计卡
     + '<div class="st-stats">'
     +   stStat('hard-drive', '总容量', fmtGB(disk.usedGB) + ' / ' + fmtGB(disk.totalGB),
@@ -4983,6 +4998,9 @@ function paintStorage(c, d, cleanup){
     +       '「录像数据」含连续与事件录像（系统未区分）</div>'
     +   '</div>'
     + '</div>'
+
+    + '</div>'
+    + '<div class="pnl' + (stTab === 'rec' ? ' is-on' : '') + '" data-pnl="rec">'
 
     // 摄像头 + 策略
     + '<div class="st-row st-row--2">'
@@ -5051,6 +5069,9 @@ function paintStorage(c, d, cleanup){
     +   '</div>'
     + '</div>'
 
+    + '</div>'
+    + '<div class="pnl' + (stTab === 'clean' ? ' is-on' : '') + '" data-pnl="clean">'
+
     // 迁移 + 清理预览
     + '<div class="st-row st-row--2">'
     +   '<div class="card">'
@@ -5093,6 +5114,9 @@ function paintStorage(c, d, cleanup){
     +     '</div>'
     +   '</div>'
     + '</div>'
+    +   '</div>'
+    +   '</div>'
+    + '</div>'
 
     // 底部状态栏
     + '<div class="st-footbar">'
@@ -5127,7 +5151,12 @@ function stField(label, id, val, unit, hint){
     + '</div>';
 }
 
+var stTab = 'ov';   // 存储页左侧导航：ov=概览 / rec=录像与策略 / clean=迁移与清理
+
 function bindStorage(c, cams){
+  Array.prototype.forEach.call(c.querySelectorAll('[data-sttab]'), function(b){
+    b.onclick = function(){ stTab = this.dataset.sttab; render(); };
+  });
   var seg = document.getElementById('stSeg');
   var keep = document.getElementById('stKeep');
   var th = document.getElementById('stThresh');
@@ -5279,9 +5308,20 @@ function paintAccounts(c, d, st){
     +   '<button class="icon-btn" id="acctRefresh" title="刷新">' + icon('refresh',15) + '</button>'
     + '</div>'
 
-    + '<div class="acct-grid">'
-
-      // 左：账号卡片
+    + '<div class="set3">'
+    +   '<aside class="set3__nav">'
+    +     [['list', '账号列表', 'Accounts', 'user'], ['cred', '凭据与备份', 'Credentials', 'shield']].map(function(x){
+            return '<button class="set3__tab' + (acctTab === x[0] ? ' is-active' : '') + '" data-accttab="' + x[0] + '">'
+              + icon(x[3],17)
+              + '<span class="set3__tab-body">'
+              +   '<span class="set3__tab-name">' + x[1] + '</span>'
+              +   '<span class="set3__tab-en">' + x[2] + '</span>'
+              + '</span>'
+              + '</button>';
+          }).join('')
+    +   '</aside>'
+    +   '<div class="set3__main">'
+    +   '<div class="pnl' + (acctTab === 'list' ? ' is-on' : '') + '" data-pnl="list">'
     +   '<div class="acct-list">'
     +   (accts.length ? accts.map(function(a){
           var stt = acctState(a);
@@ -5319,8 +5359,8 @@ function paintAccounts(c, d, st){
         }).join('')
         : empty('user','还没有账号','点「扫码添加账号」开始',''))
     +   '</div>'
-
-      // 右：说明 + 备份 + 统计
+    +   '</div>'
+    +   '<div class="pnl' + (acctTab === 'cred' ? ' is-on' : '') + '" data-pnl="cred">'
     +   '<aside class="acct-side">'
 
     // 三层凭据说明
@@ -5388,6 +5428,8 @@ function paintAccounts(c, d, st){
     +     '</div>'
 
     +   '</aside>'
+    +   '</div>'
+    +   '</div>'
     + '</div>'
 
     + '</div>';
@@ -5441,7 +5483,12 @@ function importAccountBackup(){
   f.click();
 }
 
+var acctTab = 'list';   // 账号页左侧导航：list=账号列表 / cred=凭据与备份
+
 function bindAccounts(c){
+  Array.prototype.forEach.call(c.querySelectorAll('[data-accttab]'), function(b){
+    b.onclick = function(){ acctTab = this.dataset.accttab; render(); };
+  });
   // 「扫码添加账号」要真的弹扫码窗（showQR），不是跳安装向导；
   // 「导入备份」同理，两个按钮之前都被硬编码成了 page='setup'
   var add = document.getElementById('acctAdd');
@@ -5707,7 +5754,7 @@ function devRepaintBody(){
 // devCardHead 统一的卡片头：图标 + 标题 + 副标题（参考图每张卡标题下都有一行说明）
 function devCardHead(ic, title, hint, actions){
   return '<div class="card__head">'
-    + icon(ic,15)
+    + (ic ? icon(ic,15) : '')
     + '<div class="dev-head__main">'
     +   '<span class="card__title">' + esc(title) + '</span>'
     +   (hint ? '<span class="dev-head__hint">' + esc(hint) + '</span>' : '')
@@ -6149,7 +6196,7 @@ var devRefFlat = [];             // 参考手册用的扁平接口列表
 
 function devDocsTab(){
   return '<div class="card">'
-    + devCardHead('file-video', '接口文档', '接入指南（快速开始/播放/云台/录像/错误处理/共享连接）+ 逐接口参考手册。',
+    + devCardHead('', '接口文档', '接入指南（快速开始/播放/云台/录像/错误处理/共享连接）+ 逐接口参考手册。',
         '<div class="segmented dev-seg" id="devDocSeg">'
         + [['guide','指南'],['ref','参考手册']].map(function(x){
             return '<button class="segmented__btn' + (devDocTab === x[0] ? ' is-active' : '') + '" data-doctab="' + x[0] + '">' + x[1] + '</button>';
@@ -7425,44 +7472,137 @@ function cleanup(){
   });
 }
 
-// ===== 扫码登录 =====
+// ===== 添加小米账号（扫码 / 账号密码）=====
+//
+// 两点修正：
+//   1. 不只是「米家 App」—— 米家 / 小米商城 / 小米运动等任一小米 App 都能扫，
+//      登录的都是同一个**小米账号**；
+//   2. 账号密码登录的底层（xiaomi.Login + VerifyError.StartVerify/Submit）
+//      早就实现了，只是从没接出 HTTP 接口（/api/accounts POST 一直回「未实现」）。
+//      本轮补上 POST /api/accounts/login 与 /api/accounts/verify。
 function showQR(){
   var mask = document.createElement("div");
   mask.className = "mask is-open";
-  mask.innerHTML = "<div class=\"dialog\">"
-    + "<div class=\"dialog__head\">扫码添加小米账号</div>"
-    + "<div class=\"dialog__body\"><div class=\"qr-wrap\" id=\"qrWrap\">"+loading("正在获取二维码…")+"</div></div>"
-    + "<div class=\"dialog__foot\"><button class=\"btn\" id=\"qrClose\">关闭</button></div></div>";
+  mask.innerHTML = '<div class="dialog">'
+    + '<div class="dialog__head">添加小米账号</div>'
+    + '<div class="dialog__body">'
+    +   '<div class="segmented dev-seg acct-login__seg" id="acctLoginSeg">'
+    +     '<button class="segmented__btn is-active" data-lt="qr">扫码登录</button>'
+    +     '<button class="segmented__btn" data-lt="pwd">账号密码</button>'
+    +   '</div>'
+    +   '<div id="acctLoginBody"></div>'
+    + '</div>'
+    + '<div class="dialog__foot"><button class="btn" id="qrClose">关闭</button></div></div>';
   document.body.appendChild(mask);
-  var timer = null;
-  mask.querySelector("#qrClose").onclick = function(){ if(timer) clearInterval(timer); mask.remove(); };
-  mask.onclick = function(e){ if(e.target===mask){ if(timer) clearInterval(timer); mask.remove(); } };
 
-  api("/api/accounts/qr", {method:"POST"}).then(function(r){
-    if(!r.id){
-      mask.querySelector("#qrWrap").innerHTML = empty("close","获取失败", r.msg||"","");
-      return;
-    }
-    mask.querySelector("#qrWrap").innerHTML =
-      "<img src=\""+r.qrBase64+"\" alt=\"二维码\"><div class=\"qr-tip\">请用 <b>米家 App</b> 扫码登录</div>";
-    timer = setInterval(function(){
-      api("/api/accounts/qr/status?id="+encodeURIComponent(r.id)).then(function(s){
-        if(s.state==="success"){
-          clearInterval(timer); mask.remove();
-          toast("登录成功","ok");
-          loadDevices().then(function(){ render(); });
-        } else if(s.state==="scanned"){
-          var tip = mask.querySelector(".qr-tip");
-          if(tip) tip.innerHTML = "已扫码，请在手机上确认";
-        } else if(s.state==="failed"){
-          clearInterval(timer);
-          mask.querySelector("#qrWrap").innerHTML = empty("close","登录失败", s.error||"","");
-        }
-      });
-    }, 2000);
-  }).catch(function(e){
-    mask.querySelector("#qrWrap").innerHTML = empty("close","错误", e.message,"");
+  var timer = null, closed = false;
+  function close(){
+    closed = true;
+    if(timer) clearInterval(timer);
+    mask.remove();
+  }
+  mask.querySelector("#qrClose").onclick = close;
+  mask.onclick = function(e){ if(e.target === mask) close(); };
+
+  function done(){
+    close();
+    toast("登录成功", "ok");
+    loadDevices().then(function(){ render(); });
+  }
+
+  // ---- 扫码 ----
+  function paintQR(){
+    var box = mask.querySelector("#acctLoginBody");
+    box.innerHTML = '<div class="qr-wrap" id="qrWrap">' + loading("正在获取二维码…") + '</div>';
+    api("/api/accounts/qr", {method:"POST"}).then(function(r){
+      if(closed) return;
+      if(!r.id){ box.querySelector("#qrWrap").innerHTML = empty("close","获取失败", r.msg||"",""); return; }
+      box.querySelector("#qrWrap").innerHTML =
+        '<img src="' + r.qrBase64 + '" alt="二维码">'
+        + '<div class="qr-tip">用<b>任意小米 App</b>（米家 / 小米商城 / 小米运动…）扫码<br>登录的是你的 <b>小米账号</b></div>';
+      timer = setInterval(function(){
+        api("/api/accounts/qr/status?id=" + encodeURIComponent(r.id)).then(function(s){
+          if(closed) return;
+          if(s.state === "success"){ done(); }
+          else if(s.state === "scanned"){
+            var tip = box.querySelector(".qr-tip");
+            if(tip) tip.innerHTML = "已扫码，请在手机上确认";
+          } else if(s.state === "failed"){
+            clearInterval(timer);
+            box.querySelector("#qrWrap").innerHTML = empty("close","登录失败", s.error||"","");
+          }
+        }).catch(function(){});
+      }, 2000);
+    }).catch(function(e){
+      if(!closed) box.querySelector("#qrWrap").innerHTML = empty("close","错误", e.message,"");
+    });
+  }
+
+  // ---- 账号密码 ----
+  function paintPwd(){
+    var box = mask.querySelector("#acctLoginBody");
+    box.innerHTML = '<div class="acct-login">'
+      + '<div class="field"><label class="field__label">小米账号</label>'
+      +   '<input class="input" id="acctUser" placeholder="手机号 / 邮箱 / 小米 ID" autocomplete="username"></div>'
+      + '<div class="field"><label class="field__label">密码</label>'
+      +   '<input class="input" id="acctPass" type="password" placeholder="账号密码" autocomplete="current-password"></div>'
+      + '<div class="dev-sub__tip">' + icon('info',12) + ' 陌生设备通常会要求短信/邮箱验证码，下一步会让你填。</div>'
+      + '<div id="acctLoginMsg"></div>'
+      + '<button class="btn btn--primary btn--block" id="acctLoginGo">登录</button>'
+      + '</div>';
+    var go = box.querySelector("#acctLoginGo");
+    var msg = box.querySelector("#acctLoginMsg");
+    go.onclick = function(){
+      var u = box.querySelector("#acctUser").value.trim();
+      var pw = box.querySelector("#acctPass").value;
+      if(!u || !pw){ msg.innerHTML = '<div class="dev-err">账号和密码都要填</div>'; return; }
+      go.disabled = true; go.textContent = "登录中…";
+      api("/api/accounts/login", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({username:u, password:pw}) })
+        .then(function(r){
+          go.disabled = false; go.textContent = "登录";
+          if(r && r.msg){ msg.innerHTML = '<div class="dev-err">' + esc(r.msg) + '</div>'; return; }
+          if(r && r.ok){ done(); return; }
+          if(r && r.needVerify){ paintVerify(r); return; }
+          if(r && r.needCaptcha){ msg.innerHTML = '<div class="dev-err">' + esc(r.msg || "需要图形验证码，请改用扫码登录") + '</div>'; }
+        })
+        .catch(function(e){ go.disabled = false; go.textContent = "登录"; msg.innerHTML = '<div class="dev-err">' + esc(e.message) + '</div>'; });
+    };
+  }
+
+  function paintVerify(r){
+    var box = mask.querySelector("#acctLoginBody");
+    var to = r.method === "邮箱" ? (r.maskedEmail || "邮箱") : (r.maskedPhone || "手机");
+    box.innerHTML = '<div class="acct-login">'
+      + '<div class="dev-note dev-note--tight">验证码已发送到 <b>' + esc(to) + '</b>，请在 5 分钟内填写。</div>'
+      + '<div class="field"><label class="field__label">验证码</label>'
+      +   '<input class="input" id="acctCode" placeholder="短信/邮箱里的验证码" inputmode="numeric"></div>'
+      + '<div id="acctLoginMsg"></div>'
+      + '<button class="btn btn--primary btn--block" id="acctVerifyGo">提交验证码</button>'
+      + '</div>';
+    var go = box.querySelector("#acctVerifyGo");
+    var msg = box.querySelector("#acctLoginMsg");
+    go.onclick = function(){
+      var code = box.querySelector("#acctCode").value.trim();
+      if(!code){ msg.innerHTML = '<div class="dev-err">请填验证码</div>'; return; }
+      go.disabled = true; go.textContent = "提交中…";
+      api("/api/accounts/verify", { method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify({id:r.id, code:code}) })
+        .then(function(res){
+          go.disabled = false; go.textContent = "提交验证码";
+          if(res && res.msg){ msg.innerHTML = '<div class="dev-err">' + esc(res.msg) + '</div>'; return; }
+          if(res && res.ok) done();
+        })
+        .catch(function(e){ go.disabled = false; go.textContent = "提交验证码"; msg.innerHTML = '<div class="dev-err">' + esc(e.message) + '</div>'; });
+    };
+  }
+
+  Array.prototype.forEach.call(mask.querySelectorAll('[data-lt]'), function(b){
+    b.onclick = function(){
+      Array.prototype.forEach.call(mask.querySelectorAll('[data-lt]'), function(x){ x.classList.toggle('is-active', x === b); });
+      if(timer){ clearInterval(timer); timer = null; }
+      if(this.dataset.lt === 'pwd') paintPwd(); else paintQR();
+    };
   });
+  paintQR();
 }
 
 // ===== 宿主 SDK 集成 =====

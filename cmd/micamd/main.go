@@ -482,9 +482,9 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/platform", s.handlePlatform)
 
 	// 小米账号
-	mux.HandleFunc("/api/accounts", s.handleAccounts)           // GET 列表 / POST 添加
-	mux.HandleFunc("/api/accounts/qr", s.handleQRStart)         // POST 发起扫码
-	mux.HandleFunc("/api/accounts/qr/status", s.handleQRStatus) // GET 轮询扫码状态
+	mux.HandleFunc("/api/accounts", s.handleAccounts)             // GET 列表 / POST 添加
+	mux.HandleFunc("/api/accounts/qr", s.handleQRStart)           // POST 发起扫码
+	mux.HandleFunc("/api/accounts/qr/status", s.handleQRStatus)   // GET 轮询扫码状态
 	mux.HandleFunc("/api/accounts/login", s.handleAccountLogin)   // POST 账号密码登录
 	mux.HandleFunc("/api/accounts/verify", s.handleAccountVerify) // POST 提交二次验证码
 
@@ -565,6 +565,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/dev/reset", s.handleDevReset)
 	mux.HandleFunc("/api/dev/openapi", s.handleDevOpenAPI)
 	mux.HandleFunc("/api/dev/docs", s.handleDevDocs)
+	mux.HandleFunc("/api/dev/docs/meta", s.handleDevDocsMeta)
 	mux.HandleFunc("/api/dev/capabilities", s.handleDevCapabilities)
 
 	// 开发者页（v0.40）：Token 管理 / 请求日志 / 调用统计 / Webhook 测试 / 重置配置
@@ -662,7 +663,7 @@ func (s *Server) handleAccounts(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		writeJSON(w, 501, map[string]any{
-			"msg": "账号密码登录请走 /api/accounts/login（未实现），推荐用扫码",
+			"msg": "账号密码登录请走 POST /api/accounts/login；扫码走 POST /api/accounts/qr",
 		})
 	default:
 		writeErr(w, 405, "方法不允许")

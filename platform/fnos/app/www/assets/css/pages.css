@@ -3016,6 +3016,13 @@
 
 /* 两列布局 */
 .st-row { display:grid; gap: var(--space-5); align-items:start; margin-bottom: var(--space-5); }
+/* 左右两栏高度差会留出大片空白：让两栏等高，图表吃掉剩余高度 */
+.st-row--2 { align-items: stretch; }
+.st-row--2 > .card { display:flex; flex-direction:column; }
+.st-row--2 .st-chart { flex:1; display:flex; flex-direction:column; }
+.st-row--2 .st-chart .st-chart__svg { flex:1; height:auto; min-height:200px; }
+/* 概览面板里「趋势」和「类型统计」不再并排（并排时趋势卡会被拉得过高、内容撑不满） */
+.pnl[data-pnl="ov"] .st-row--2 { grid-template-columns: 1fr; }
 .st-row--2 { grid-template-columns: minmax(0,1.55fr) minmax(0,1fr); }
 @media (max-width:1100px){ .st-row--2{ grid-template-columns:1fr;} }
 
@@ -3105,6 +3112,14 @@
 /* ==========================================================================
    SETTINGS 3-COL — 设置页（左 Tab + 中内容 + 右摘要）
    ========================================================================== */
+
+/* 页面内面板：左侧导航切换（设置页同款骨架；账号 / 存储页复用） */
+.pnl { display: none; }
+.pnl.is-on { display: block; }
+
+/* 账号页：卡片改成网格，消灭"左列下面一大片空白" */
+.set3__main .acct-list { display:grid; grid-template-columns: repeat(auto-fill, minmax(430px, 1fr)); gap: var(--space-4); }
+.set3__main .acct-side { display:grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: var(--space-5); align-items:start; }
 
 /* 两栏：左导航 + 内容。v0.40.1 去掉右列摘要卡（标题与左栏完全重复） */
 .set3 { display:grid; gap: var(--space-5); grid-template-columns: 200px minmax(0,1fr); align-items:start; }
@@ -3421,6 +3436,9 @@
 
 /* ---- 接口文档：子 Tab / 参考手册 ---- */
 .dev-seg .segmented__btn { width:auto; padding:0 var(--space-3); font-size: var(--text-sm); }
+.acct-login__seg { margin-bottom: var(--space-4); }
+.acct-login { display:flex; flex-direction:column; gap: var(--space-3); }
+.acct-login .field { margin:0; }
 .dev-ref-head { display:flex; align-items:center; gap: var(--space-3); padding: var(--space-3) var(--space-5) var(--space-2); }
 .dev-ref-item { border-bottom: 1px solid var(--border-subtle); }
 .dev-ref-item:last-child { border-bottom: 0; }
