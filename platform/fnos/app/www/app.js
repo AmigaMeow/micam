@@ -29,27 +29,27 @@
 //   页面：存储监控                              L  4825 -  4825
 //   页面：存储监控（对齐效果图）                L  4826 -  5178
 //   页面：账号管理                              L  5179 -  5179
-//   页面：账号管理（对齐效果图）                L  5180 -  5475
-//   页面：安装向导                              L  5476 -  5544
-//   页面：开发者                                L  5545 -  5545
-//   页面：开发者（对齐效果图：7 个 Tab）        L  5546 -  6658
-//   页面：系统设置                              L  6659 -  6659
-//   页面：设置（对齐效果图）                    L  6660 -  7009
-//   凭据状态提示                                L  7010 -  7063
-//   云台方向翻转（按设备记住）                  L  7064 -  7082
-//   动作                                        L  7083 -  7120
-//   扫码登录                                    L  7121 -  7160
-//   宿主 SDK 集成                               L  7161 -  7187
-//   事件通知配置                                L  7188 -  7188
-//   AI 设置                                     L  7189 -  7468
-//   诊断功能                                    L  7469 -  7518
-//   加载 hls.js（HLS 播放库）                   L  7519 -  7520
-//   为什么不用相对路径                          L  7521 -  7560
-//   开放模式（开发者选项）解锁                  L  7561 -  7588
-//   启动                                        L  7589 -  7628
-//                                               L  7629 -  7640
-//                                               L  7641 -  8168
-//   顶栏右上角：用户菜单 + 全局搜索             L  8169 -  8406
+//   页面：账号管理（对齐效果图）                L  5180 -  5513
+//   页面：安装向导                              L  5514 -  5582
+//   页面：开发者                                L  5583 -  5583
+//   页面：开发者（对齐效果图：7 个 Tab）        L  5584 -  6696
+//   页面：系统设置                              L  6697 -  6697
+//   页面：设置（对齐效果图）                    L  6698 -  7047
+//   凭据状态提示                                L  7048 -  7101
+//   云台方向翻转（按设备记住）                  L  7102 -  7120
+//   动作                                        L  7121 -  7158
+//   扫码登录                                    L  7159 -  7198
+//   宿主 SDK 集成                               L  7199 -  7225
+//   事件通知配置                                L  7226 -  7226
+//   AI 设置                                     L  7227 -  7506
+//   诊断功能                                    L  7507 -  7556
+//   加载 hls.js（HLS 播放库）                   L  7557 -  7558
+//   为什么不用相对路径                          L  7559 -  7598
+//   开放模式（开发者选项）解锁                  L  7599 -  7626
+//   启动                                        L  7627 -  7666
+//                                               L  7667 -  7678
+//                                               L  7679 -  8206
+//   顶栏右上角：用户菜单 + 全局搜索             L  8207 -  8444
 //
 // 重新生成索引：node build/gen-js-index.js
 // ===== 分节索引结束 =====
@@ -5412,11 +5412,49 @@ function acctStat(ic, val, label, hint){
     + '</span></div>';
 }
 
+// importAccountBackup 导入凭据备份。
+//
+// 19:05 那次前端源码丢失把这套流程一起丢了，按钮被改成了「跳安装向导」；
+// 这里按 v0.38.0 fpk 里取回的旧逻辑补回：选文件 -> 读 JSON -> POST /api/accounts/import
+function importAccountBackup(){
+  var f = document.getElementById('acctImportFile');
+  if(!f){
+    f = document.createElement('input');
+    f.type = 'file';
+    f.id = 'acctImportFile';
+    f.accept = '.json,application/json';
+    f.style.display = 'none';
+    f.onchange = function(){
+      var self = this;
+      var file = self.files && self.files[0];
+      if(!file) return;
+      if(!confirm('导入会用文件里的凭据覆盖当前登录。\n\n现有凭据会自动备份。\n\n确定继续？')){ self.value = ''; return; }
+      var reader = new FileReader();
+      reader.onload = function(){
+        api('/api/accounts/import', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: reader.result
+        }).then(function(r){
+          if(r && r.msg){ toast(r.msg, 'err'); return; }
+          toast('已导入 ' + (r.count || 0) + ' 个账号，无需重新扫码', 'ok');
+          loadDevices().then(function(){ page = 'accounts'; renderMenu(); render(); });
+        }).catch(function(e){ toast('导入失败：' + e.message, 'err'); });
+        self.value = '';
+      };
+      reader.readAsText(file);
+    };
+    document.body.appendChild(f);
+  }
+  f.click();
+}
+
 function bindAccounts(c){
+  // 「扫码添加账号」要真的弹扫码窗（showQR），不是跳安装向导；
+  // 「导入备份」同理，两个按钮之前都被硬编码成了 page='setup'
   var add = document.getElementById('acctAdd');
-  if(add) add.onclick = function(){ page='setup'; renderMenu(); render(); };
+  if(add) add.onclick = showQR;
   var im = document.getElementById('acctImport');
-  if(im) im.onclick = function(){ page='setup'; renderMenu(); render(); };
+  if(im) im.onclick = importAccountBackup;
   var ex = document.getElementById('acctExport');
   if(ex) ex.onclick = function(){ window.open(apiUrl('/api/accounts/export'), '_blank'); };
   var rf = document.getElementById('acctRefresh');

@@ -226,12 +226,18 @@
 .wizard-step.active .wizard-step__num { background: var(--accent); color: #fff; }
 .wizard-step.done { color: var(--online); }
 .wizard-step.done .wizard-step__num { background: color-mix(in srgb, var(--online) 18%, transparent); color: var(--online); }
+/* 向导是单列内容：满宽时每行右边会空掉一大片
+   （实测 .check-item 宽 1342px，里面只有左边 ~200px 有字），所以收窄居中 */
+.wizard { max-width: 720px; margin: 0 auto; }
+.wizard__steps { justify-content: center; }
+
 .wizard__actions {
-  display: flex; align-items: center; gap: var(--space-2); flex-wrap: wrap;
+  display: flex; align-items: center; justify-content: center; gap: var(--space-2); flex-wrap: wrap;
   padding: var(--space-5) var(--space-6);
   border-top: 1px solid var(--border-subtle);
 }
 .check-list { padding: var(--space-2) var(--space-6) var(--space-5); }
+.check-list .check-item { padding: var(--space-4) 0; }
 
 /* ===== 播放器占位（连接中 / 离线 / 失败）===== */
 
