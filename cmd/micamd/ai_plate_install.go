@@ -80,7 +80,9 @@ func installLPRResources() error {
 	// 解压后路径: base/hyperlpr3.0-share-linux-x86/lib/libhyperlpr3.so
 	src := filepath.Join(base, "hyperlpr3.0-share-linux-x86", "lib", "libhyperlpr3.so")
 	if raw, err := os.ReadFile(src); err == nil {
-		_ = os.WriteFile(filepath.Join(libDir, "libhyperlpr3.so"), raw, 0o755)
+		if err := os.WriteFile(filepath.Join(libDir, "libhyperlpr3.so"), raw, 0o755); err != nil {
+			logf("[lpr] 写入 libhyperlpr3.so 失败: %v", err)
+		}
 	}
 
 	// 2) 下载 6 个模型
@@ -104,7 +106,9 @@ func installLPRResources() error {
 	dstMnn := filepath.Join(modelDir, "rpv3_mdict_160_r3.mnn")
 	if _, err := os.Stat(dstMnn); err != nil {
 		if raw, err := os.ReadFile(srcMnn); err == nil {
-			_ = os.WriteFile(dstMnn, raw, 0o644)
+			if err := os.WriteFile(dstMnn, raw, 0o644); err != nil {
+				logf("[lpr] 写入模型文件 %s 失败: %v", dstMnn, err)
+			}
 		}
 	}
 	return nil

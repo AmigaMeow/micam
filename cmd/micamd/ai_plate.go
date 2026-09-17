@@ -61,12 +61,14 @@ func (s *Server) enrichEventPlate(ev *event.Event) (*lprResult, error) {
 			alt = append(alt, c.Code)
 		}
 	}
-	_ = s.eventStore.Enrich(ev.ID, event.Enrichment{
+	if err := s.eventStore.Enrich(ev.ID, event.Enrichment{
 		AIPlate:     res.Plate,
 		AIPlateConf: res.Conf,
 		AIPlateSrc:  "local",
 		AIPlateAlt:  alt,
-	})
+	}); err != nil {
+		logf("[lpr] 写回车牌结果到事件失败 id=%s: %v", ev.ID, err)
+	}
 	return res, nil
 }
 
@@ -208,7 +210,9 @@ func (s *Server) handlePlateInstall(w http.ResponseWriter, r *http.Request) {
 	}
 	go func() {
 		defer func() { _ = recover() }()
-		_ = installLPRResources()
+		if err := installLPRResources(); err != nil {
+			logf("[lpr] 安装车牌识别资源失败: %v", err)
+		}
 	}()
 	writeJSON(w, 200, map[string]any{"ok": true, "message": "开始下载（约 31MB），稍后查看状态"})
 }

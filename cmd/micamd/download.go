@@ -54,7 +54,9 @@ func downloadFile(urls []string, dst string) error {
 			continue
 		}
 
-		_ = os.MkdirAll(filepath.Dir(dst), 0o755)
+		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+			logf("[download] 创建目录 %s 失败: %v", filepath.Dir(dst), err)
+		}
 		if err := os.Rename(tmp, dst); err != nil {
 			os.Remove(tmp)
 			return err

@@ -64,8 +64,12 @@ func (s *poseStore) put(p camPose) {
 	defer s.mu.Unlock()
 	s.data[p.Did] = p
 	raw, _ := json.MarshalIndent(s.data, "", "  ")
-	_ = os.WriteFile(s.path+".tmp", raw, 0o644)
-	_ = os.Rename(s.path+".tmp", s.path)
+	if err := os.WriteFile(s.path+".tmp", raw, 0o644); err != nil {
+		logf("[pose] 写入机位临时文件 %s.tmp 失败: %v", s.path, err)
+	}
+	if err := os.Rename(s.path+".tmp", s.path); err != nil {
+		logf("[pose] 机位文件重命名到 %s 失败: %v", s.path, err)
+	}
 }
 
 func (s *poseStore) get(did string) (camPose, bool) {

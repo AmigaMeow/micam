@@ -187,7 +187,9 @@ func aiConfigFromReq(req map[string]any, cur aiConfig) aiConfig {
 		}
 	}
 	if v, ok := req["clearProviderKey"].(bool); ok && v {
-		_ = saveProviderKey("")
+		if err := saveProviderKey(""); err != nil {
+			logf("[ai] 清除 Provider 密钥失败: %v", err)
+		}
 		out.ProviderReady = false
 	}
 
@@ -346,7 +348,9 @@ func (s *Server) handleAIModel(w http.ResponseWriter, r *http.Request) {
 	}
 
 	modelDir := filepath.Join(s.dataDir, "models")
-	_ = os.MkdirAll(modelDir, 0o755)
+	if err := os.MkdirAll(modelDir, 0o755); err != nil {
+		logf("[ai] 创建模型目录 %s 失败: %v", modelDir, err)
+	}
 	dst := filepath.Join(modelDir, req.Name+".onnx")
 
 	switch req.Action {

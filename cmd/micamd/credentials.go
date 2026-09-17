@@ -102,7 +102,9 @@ func (s *Server) handleCredImport(w http.ResponseWriter, r *http.Request) {
 	// 备份现有文件
 	path := filepath.Join(s.dataDir, "accounts.json")
 	if old, err := os.ReadFile(path); err == nil {
-		_ = os.WriteFile(path+".bak", old, 0o600)
+		if err := os.WriteFile(path+".bak", old, 0o600); err != nil {
+			logf("[cred] 备份凭据到 %s.bak 失败: %v", path, err)
+		}
 	}
 
 	data, _ := json.MarshalIndent(in.Accounts, "", "  ")

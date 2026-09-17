@@ -84,6 +84,24 @@ case "$first_line" in
         ;;
 esac
 
+# 6) 前端类名 / CSS 变量一致性（**只提示，不阻塞**）
+#
+# 背景：JS 里用了 CSS 未定义的类名或变量时样式会**静默失效**，
+# 历史上踩过两次：class="switch__track" 漏写 -> 开关完全不可见；
+# 48 处用了未定义的 --text-3 -> 颜色静默失效。
+#
+# 现状：仓库存量有 18 个未定义项（详见 docs/CODE-REVIEW.md 第七节），
+# 所以这里先只警告不 exit 1 —— 免得一上来就阻塞部署。
+# 等存量修完（或明确接受）后再改成 fail_msg 硬门禁。
+if command -v node >/dev/null 2>&1 && [ -f build/check-classes.js ]; then
+    if node build/check-classes.js --js "$HTML" >/tmp/micam-check-classes.log 2>&1; then
+        ok_msg "前端类名 / CSS 变量一致"
+    else
+        echo "  ⚠️  前端类名或 CSS 变量有未定义项（不阻塞，详见 /tmp/micam-check-classes.log）"
+        sed -n 's/^/     /p' /tmp/micam-check-classes.log | grep -E "未定义|^     [a-z-]" | head -10
+    fi
+fi
+
 echo
 if [ "$fail" = "0" ]; then
     echo "✅ 校验通过"

@@ -69,7 +69,9 @@ func (s *Server) handleDevTap(w http.ResponseWriter, r *http.Request) {
 
 	if s.cfg.Dev.TapCount >= tapToUnlock {
 		s.cfg.Dev.Unlocked = true
-		_ = s.cfg.SaveSelf()
+		if err := s.cfg.SaveSelf(); err != nil {
+			logf("[dev] 保存配置失败（dev tap）: %v", err)
+		}
 		logf("开发者模式已解锁")
 		writeJSON(w, 200, map[string]any{
 			"unlocked": true,
@@ -147,7 +149,9 @@ func (s *Server) handleDevReset(w http.ResponseWriter, r *http.Request) {
 	s.cfg.Dev.TapCount = 0
 	s.cfg.Dev.CORS = false
 	s.cfg.Dev.MockMode = false
-	_ = s.cfg.SaveSelf()
+	if err := s.cfg.SaveSelf(); err != nil {
+		logf("[dev] 重置后保存配置失败: %v", err)
+	}
 	writeJSON(w, 200, map[string]any{"ok": true})
 }
 

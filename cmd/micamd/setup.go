@@ -210,10 +210,16 @@ func (s *Server) handleSetupRepair(w http.ResponseWriter, r *http.Request) {
 	unitPath := "/etc/systemd/system/micam.service"
 	if _, err := os.Stat(unitPath); err == nil {
 		// 有手动服务，尝试停用
-		_ = exec.Command("systemctl", "stop", "micam").Run()
-		_ = exec.Command("systemctl", "disable", "micam").Run()
+		if err := exec.Command("systemctl", "stop", "micam").Run(); err != nil {
+			logf("[setup] systemctl stop micam 失败: %v", err)
+		}
+		if err := exec.Command("systemctl", "disable", "micam").Run(); err != nil {
+			logf("[setup] systemctl disable micam 失败: %v", err)
+		}
 		if err := os.Remove(unitPath); err == nil {
-			_ = exec.Command("systemctl", "daemon-reload").Run()
+			if err := exec.Command("systemctl", "daemon-reload").Run(); err != nil {
+				logf("[setup] systemctl daemon-reload 失败: %v", err)
+			}
 			fixed = append(fixed, "删除了冲突的手动 systemd 服务")
 		} else {
 			failed = append(failed, "无法删除 systemd 服务（需要 root 权限）")

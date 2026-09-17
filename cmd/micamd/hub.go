@@ -181,7 +181,9 @@ func (c *camConn) stop() {
 	}
 	connMu.Unlock()
 
-	_ = c.prod.Stop()
+	if err := c.prod.Stop(); err != nil {
+		logf("[hub] 停止 producer 失败: %v", err)
+	}
 	select {
 	case <-c.prodDone:
 	case <-time.After(2 * time.Second):
@@ -411,7 +413,9 @@ func (s *Server) useConnKey(dev *xiaomi.Device, lens int) (*camConn, *mpegtsCons
 	// 每个消费者一份，互不影响
 	mc, err := newConsumerFor(prod)
 	if err != nil {
-		_ = prod.Stop()
+		if err := prod.Stop(); err != nil {
+			logf("[hub] 停止旧 producer 失败: %v", err)
+		}
 		connMu.Lock()
 		delete(conns, dev.Did)
 		connMu.Unlock()
@@ -425,7 +429,9 @@ func (s *Server) useConnKey(dev *xiaomi.Device, lens int) (*camConn, *mpegtsCons
 	go func() {
 		defer close(c.prodDone)
 		defer recoverPanic("producer " + dev.Did)
-		_ = prod.Start()
+		if err := prod.Start(); err != nil {
+			logf("[hub] 启动 producer 失败: %v", err)
+		}
 	}()
 
 	c.addRef()

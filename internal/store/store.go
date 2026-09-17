@@ -6,6 +6,7 @@ package store
 
 import (
 	"encoding/json"
+	"log"
 	"os"
 	"path/filepath"
 	"sync"
@@ -524,7 +525,9 @@ func (s *Store) SaveQR(sess *xiaomi.Session, qr *xiaomi.QRLogin) string {
 			qs.Error = err.Error()
 			return
 		}
-		_ = s.AddAccount(sess)
+		if err := s.AddAccount(sess); err != nil {
+			log.Printf("[store] 保存扫码账号失败 userId=%s: %v", sess.UserID, err)
+		}
 		qs.UserID = sess.UserID
 		qs.State = QRSuccess
 		close(qs.done)

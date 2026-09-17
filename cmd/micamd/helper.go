@@ -22,7 +22,9 @@ func initLogFile(dir string) {
 	if dir == "" {
 		return
 	}
-	_ = os.MkdirAll(dir, 0o755)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		log.Printf("[log] 创建日志目录 %s 失败: %v", dir, err)
+	}
 	f, err := os.OpenFile(filepath.Join(dir, "micamd.log"),
 		os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err == nil {

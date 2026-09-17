@@ -222,7 +222,9 @@ func (s *Server) handleEventBulk(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, 500, err.Error())
 			return
 		}
-		_ = s.marks.deleteMarks(req.IDs)
+		if err := s.marks.deleteMarks(req.IDs); err != nil {
+			logf("[event] 批量删除标记失败 请求 %d 个 id: %v", len(req.IDs), err)
+		}
 		writeJSON(w, 200, map[string]any{"ok": true, "deleted": n})
 
 	case "exports":

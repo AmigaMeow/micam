@@ -3,6 +3,7 @@ package stream
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"sync"
 	"time"
 
@@ -150,7 +151,9 @@ func (s *Stream) RemoveConsumer(cons core.Consumer) {
 		}
 	}
 	s.mu.Unlock()
-	_ = cons.Stop()
+	if err := cons.Stop(); err != nil {
+		log.Printf("[stream] 停止 consumer 失败: %v", err)
+	}
 }
 
 // Close 关闭整条流。
@@ -158,11 +161,15 @@ func (s *Stream) Close() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if s.producer != nil {
-		_ = s.producer.Stop()
+		if err := s.producer.Stop(); err != nil {
+			log.Printf("[stream] 停止 producer 失败: %v", err)
+		}
 		s.producer = nil
 	}
 	for _, c := range s.consumers {
-		_ = c.Stop()
+		if err := c.Stop(); err != nil {
+			log.Printf("[stream] 停止 consumer 失败: %v", err)
+		}
 	}
 	s.consumers = nil
 }

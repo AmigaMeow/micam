@@ -21,7 +21,9 @@ type mpegtsConsumer struct {
 // stop 停止（幂等）。
 func (m *mpegtsConsumer) stop() {
 	m.once.Do(func() {
-		_ = m.cons.Stop()
+		if err := m.cons.Stop(); err != nil {
+			logf("[hub] 停止 consumer 失败: %v", err)
+		}
 	})
 }
 

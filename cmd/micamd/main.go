@@ -49,7 +49,7 @@ var appDestDir string
 // startedAt 进程启动时间（状态条显示「运行时间」用）
 var startedAt = time.Now()
 
-var appVersion = "0.38.0"
+var appVersion = "0.39.0"
 
 func main() {
 	var (
@@ -233,7 +233,9 @@ func main() {
 		if err != nil {
 			log.Fatalf("监听 unix socket 失败: %v", err)
 		}
-		_ = os.Chmod(*socketPath, 0o660)
+		if err := os.Chmod(*socketPath, 0o660); err != nil {
+			logf("[main] 设置 unix socket 权限失败 %s: %v", *socketPath, err)
+		}
 		listeners = append(listeners, ln)
 		log.Printf("监听 Unix socket: %s", *socketPath)
 
@@ -658,7 +660,9 @@ func (s *Server) handleQRStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	id := s.store.SaveQR(sess, qr)
-	_ = s.store.SaveQRImage(id, img)
+	if err := s.store.SaveQRImage(id, img); err != nil {
+		logf("[qr] 保存二维码图片失败 id=%s: %v", id, err)
+	}
 
 	writeJSON(w, 200, map[string]any{
 		"id":       id,
@@ -850,7 +854,9 @@ func watchSocket(path string, srv *http.Server) {
 			log.Printf("重建 socket 失败: %v", err)
 			continue
 		}
-		_ = os.Chmod(path, 0o660)
+		if err := os.Chmod(path, 0o660); err != nil {
+			logf("[main] socket 重建后设置权限失败 %s: %v", path, err)
+		}
 
 		go func(l net.Listener) {
 			if err := srv.Serve(l); err != nil && err != http.ErrServerClosed {

@@ -1,6 +1,6 @@
 # 文档索引
 
-> 41 个文档按主题归类。新人从「入门」开始看。
+> 40 个文档按主题归类，另有 6 个历史版本文档在 [`_archive/`](_archive/)。新人从「入门」开始看。
 
 ---
 
@@ -23,13 +23,11 @@
 |---|---|
 | [CONTROL-PROTOCOL.md](CONTROL-PROTOCOL.md) | cs2 P2P 控制协议 |
 | [cs2-handshake-capture.md](cs2-handshake-capture.md) | 握手抓包记录 |
-| [xiaomi-ptz-protocol.md](xiaomi-ptz-protocol.md) | 云台协议（初版） |
-| [xiaomi-ptz-protocol-v2.md](xiaomi-ptz-protocol-v2.md) | 云台协议（修订） |
-| [xiaomi-ptz-confirmed.md](xiaomi-ptz-confirmed.md) | 云台协议（实测确认） |
+| [xiaomi-ptz-confirmed.md](xiaomi-ptz-confirmed.md) | 云台协议（实测确认，**当前有效**） |
 | [REPLY-PTZ-TO-MAC.md](REPLY-PTZ-TO-MAC.md) | 回复 Mac 的云台问题 |
 
-**注意**：`xiaomi-ptz-protocol*.md` 是同一主题的三个版本，
-看最新的 `xiaomi-ptz-confirmed.md` 即可，前两个保留作历史。
+**注意**：云台协议的初版与修订版（`xiaomi-ptz-protocol.md`、`xiaomi-ptz-protocol-v2.md`）
+已移入 [`_archive/`](_archive/)，看 [xiaomi-ptz-confirmed.md](xiaomi-ptz-confirmed.md) 即可。
 
 ---
 
@@ -50,7 +48,7 @@
 | [PERFORMANCE.md](PERFORMANCE.md) | 性能数据 |
 | [STARTUP-PERFORMANCE.md](STARTUP-PERFORMANCE.md) | 启动性能 |
 | [MOBILE.md](MOBILE.md) | 移动端适配 |
-| [easynvr-design-spec.md](easynvr-design-spec.md) | NVR 对接（早期草稿） |
+| NVR 对接（早期草稿） | 未实施，已移入 [`_archive/easynvr-design-spec.md`](_archive/easynvr-design-spec.md) |
 
 ---
 
@@ -103,16 +101,21 @@
 | 文档 | 说明 |
 |---|---|
 | [DEV-NOTES.md](DEV-NOTES.md) | 开发笔记（19KB，踩坑记录） |
+| [CODE-REVIEW.md](CODE-REVIEW.md) | **代码审查报告**（规模 / 安全 / 质量观察，5 项质量任务的出处） |
+| [QUALITY-TASKS-PROMPT.md](QUALITY-TASKS-PROMPT.md) | 质量改进任务的独立提示词（可整段贴到新窗口执行） |
 
 ---
 
-## 文档维护建议
+## 历史归档
 
-```
-可合并的（同一主题多版本，保留最新 + 归档旧版）：
-  xiaomi-ptz-protocol.md / -v2.md / -confirmed.md   -> 3 合 1
-  REPLY-TO-MAC-V2/V3/V4 + reply-to-mac.md           -> 保留 V4
-  AI-FEASIBILITY / AI-MODELS / MODEL-LIMITS         -> 可合并为「AI 能力与边界」
+早期版本与已废弃的草稿统一放在 [`_archive/`](_archive/)，主目录只留当前有效文档 ——
+**历史版本见 `_archive/`**。
 
-建议加 docs/_archive/ 放历史版本，主目录只留当前有效文档。
-```
+| 归档文档 | 为什么归档 |
+|---|---|
+| reply-to-mac.md / REPLY-TO-MAC-V2.md / REPLY-TO-MAC-V3.md | 已被 [REPLY-TO-MAC-V4.md](REPLY-TO-MAC-V4.md) 取代 |
+| xiaomi-ptz-protocol.md / xiaomi-ptz-protocol-v2.md | 已被 [xiaomi-ptz-confirmed.md](xiaomi-ptz-confirmed.md) 取代 |
+| easynvr-design-spec.md | NVR 对接早期草稿，未实施 |
+
+仍可合并的候选：AI-FEASIBILITY / AI-MODELS / MODEL-LIMITS 可合成「AI 能力与边界」，
+但内容都还有效，暂不归档。

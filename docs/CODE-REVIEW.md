@@ -101,13 +101,68 @@ API Key 隔离：
 
 ---
 
-## 五、建议的下一步质量工作
+## 五、建议的下一步质量工作（2026-09-17 · v0.39.0 已全部完成）
 
 ```
-[ ] 建 docs/_archive/ 归置历史文档
-[ ] 给关键路径的 `_ = xxx` 加日志
-[ ] AI 计费逻辑改为无中途解锁
-[ ] 补一个「CSS 类名与 JS 使用一致性」的检查脚本
-    （这次的 switch__track 和 17 个冲突类都是这类问题）
-[ ] 前端 JS 分节索引（在文件头列出各页面行号范围）
+[x] 建 docs/_archive/ 归置历史文档              -> 6 个历史文档已归档，见 docs/README.md「历史归档」
+[x] 给关键路径的 `_ = xxx` 加日志               -> 37 处关键路径加日志，见第六节
+[x] AI 计费逻辑改为无中途解锁                    -> addCost / addImages 改为「锁内算快照 + 锁外写盘」
+[x] 补一个「CSS 类名与 JS 使用一致性」的检查脚本 -> build/check-classes.js（零依赖），已接入 validate-web.sh（只提示）
+[x] 前端 JS 分节索引                            -> build/gen-js-index.js 自动生成，索引在 /tmp/final-js.txt 头部
 ```
+
+---
+
+## 六、`_ = xxx` 分类结果（2026-09-17）
+
+改前 159 处，其中 **37 处属关键路径**，已加日志（编译通过、部署验证）：
+
+| 类别 | 处数 | 代表 |
+|---|---|---|
+| 事件写入 | 5 | `eventStore.Enrich`、`appendLocked`、`SaveThumb`、`os.Rename` 原子替换 |
+| 数据持久化 | 9 | 机位文件写+改名、凭据备份、LPR 资源/模型写入、二维码图片 |
+| 状态变更 | 13 | `cfg.SaveSelf`、`saveProviderKey("")`、presets/marks 删除、producer/consumer Stop/Start |
+| 持久化目录创建 | 5 | 模型目录、解压目录、下载目录、日志目录 |
+| 外部命令 | 3 | `systemctl stop / disable / daemon-reload` |
+| 计费 / 记账 | 1 | `saveCostState` 写盘失败 |
+
+**剩余 122 处全部判为非关键并保持现状**：编译期占位 47、解析失败降级 22、临时文件清理 16、
+资源释放 15、缓存目录 5、缓存写入 2、HTTP 响应写 2、其它 13。
+
+原则：**不为「干净」全改** —— 把 159 处全改一遍，风险远大于收益。
+完整清单：`grep -rn "_ = " --include='*.go' cmd internal`。
+
+---
+
+## 七、前端类名 / CSS 变量未定义清单（2026-09-17 扫描，**本轮未修**）
+
+`node build/check-classes.js` 扫出 **18 个未定义项**（JS 用 611 个类名，CSS 定义 849 个）。
+都是**存量问题**，本轮只做检测不改动 —— 修它们会改变视觉效果，超出「质量改进」范围，需要单独决策。
+
+### 7.1 未定义类名（14）
+
+| 类名 | 位置 | 备注 |
+|---|---|---|
+| `open` | L299 / L304 | 代码只 add/remove `is-open`，CSS 也只有 `.is-open` -> `contains("open")` 恒 false，侧栏滑动手势分支失效 |
+| `spin` | L4175 | 实际用的类是 `.spinner` -> 「隐藏 loading」永不生效 |
+| `ai-find` | L2726 | `.ai-find__answer` / `__cover` / `__est-*` 一族都在，独缺本体 |
+| `ai-evidence__main` / `ai-evidence__side` | L2625 / L2646 | 同级 `__label` / `__box` / `__img` 都在 |
+| `tag` / `tag-on` / `tag-off` | L6079 | CSS 里 `.tag*` 一个都没有（相近的只有 `.badge` / `.ev-tag`） |
+| `dev-preview` `empty__action` `ev-list` `ai-examples__label` `tl-strip` `wizard` | L1120 / L1273 / L1714 / L2577 / L5434 / L5860 | 待确认是漏写 CSS 还是废弃代码 |
+
+### 7.2 未定义 CSS 变量（4 个 / 18 处）
+
+| 变量 | 处数 | 等价 token |
+|---|---|---|
+| `--error` | 11 | `--danger` |
+| `--success` | 3 | `--online` |
+| `--hover` | 2 | `--surface-hover` |
+| `--split` | 2 | `--border` / `--border-subtle` |
+
+> `--text-2` / `--text-3`（曾 49 处未定义）已在 tokens.css 加了别名，不再报警。
+
+### 7.3 防回归
+
+`build/validate-web.sh` 已接入 `node build/check-classes.js --js "$HTML"`，
+**当前只警告不阻塞**（存量 18 个问题会立刻卡住部署）。
+建议先把上面 18 个修完，再改成 `fail_msg` 硬门禁。

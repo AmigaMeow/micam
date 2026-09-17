@@ -177,7 +177,7 @@ func (s *Server) handleAIAnalyze(w http.ResponseWriter, r *http.Request) {
 
 	// 写回事件
 	if req.Save {
-		_ = s.eventStore.Enrich(ev.ID, event.Enrichment{
+		if err := s.eventStore.Enrich(ev.ID, event.Enrichment{
 			AISummary:   res.Summary,
 			AITitle:     res.Title,
 			AITags:      res.Tags,
@@ -188,7 +188,9 @@ func (s *Server) handleAIAnalyze(w http.ResponseWriter, r *http.Request) {
 			AIProvider:  res.Provider,
 			AIModel:     res.Model,
 			AIPromptVer: "v1",
-		})
+		}); err != nil {
+			logf("[ai] 写回分析结果到事件失败 id=%s: %v", ev.ID, err)
+		}
 	}
 
 	writeJSON(w, 200, map[string]any{

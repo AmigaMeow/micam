@@ -25,7 +25,9 @@ func unzipTo(zipPath, dstDir string) error {
 		}
 		dst := filepath.Join(dstDir, name)
 		if f.FileInfo().IsDir() {
-			_ = os.MkdirAll(dst, 0o755)
+			if err := os.MkdirAll(dst, 0o755); err != nil {
+				logf("[unzip] 创建目标目录 %s 失败: %v", dst, err)
+			}
 			continue
 		}
 		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {

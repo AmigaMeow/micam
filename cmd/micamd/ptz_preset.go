@@ -122,7 +122,9 @@ func (s *Server) handlePTZPreset(w http.ResponseWriter, r *http.Request) {
 			writeErr(w, 400, "缺少 did 或 slot")
 			return
 		}
-		_ = s.presets.del(did, slot)
+		if err := s.presets.del(did, slot); err != nil {
+			logf("[ptz] 删除预置位失败 did=%s slot=%d: %v", did, slot, err)
+		}
 		writeJSON(w, 200, map[string]any{"ok": true})
 		return
 	}

@@ -23,6 +23,7 @@ package event
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -93,7 +94,9 @@ func NewStore(dir string, keepDays int) *Store {
 		thumbDir: filepath.Join(dir, "thumbs"),
 		keepDays: keepDays,
 	}
-	_ = os.MkdirAll(s.thumbDir, 0o755)
+	if err := os.MkdirAll(s.thumbDir, 0o755); err != nil {
+		log.Printf("[event] 创建缩略图目录 %s 失败: %v", s.thumbDir, err)
+	}
 	return s
 }
 
@@ -107,7 +110,9 @@ func (s *Store) Add(ev Event) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	_ = s.appendLocked(ev)
+	if err := s.appendLocked(ev); err != nil {
+		log.Printf("[event] 写入事件失败 id=%s: %v", ev.ID, err)
+	}
 }
 
 func (s *Store) appendLocked(ev Event) error {
@@ -195,7 +200,9 @@ func (s *Store) SaveThumb(data []byte) string {
 		return ""
 	}
 	name := fmt.Sprintf("%d.jpg", time.Now().UnixNano())
-	_ = os.WriteFile(filepath.Join(s.thumbDir, name), data, 0o644)
+	if err := os.WriteFile(filepath.Join(s.thumbDir, name), data, 0o644); err != nil {
+		log.Printf("[event] 写入缩略图 %s 失败: %v", name, err)
+	}
 	return name
 }
 
@@ -311,7 +318,9 @@ func (s *Store) DeleteEvents(ids []string) (int, error) {
 			if err := os.WriteFile(tmp, []byte(content), 0o644); err != nil {
 				continue
 			}
-			_ = os.Rename(tmp, p)
+			if err := os.Rename(tmp, p); err != nil {
+				log.Printf("[event] 重命名 %s -> %s 失败: %v", tmp, p, err)
+			}
 		}
 	}
 	return total, nil

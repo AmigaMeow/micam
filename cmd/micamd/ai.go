@@ -228,8 +228,18 @@ func (a *aiClient) imgToday() int {
 	return a.imgCount
 }
 
-// addImages 记图片数
+// addImages 记图片数。
+//
+// 锁内只更新内存并返回快照，写盘在锁外做（saveCostState）。
+// 原实现是 Lock -> 手动 Unlock -> 写盘 -> 再 Lock，与 defer Unlock 混用：
+// panic 路径下锁状态不一致，且后来者极易改错。
 func (a *aiClient) addImages(n int) {
+	day, cny, cloud, img := a.addImagesLocked(n)
+	saveCostState(day, cny, cloud, img)
+}
+
+// addImagesLocked 锁内更新图片计数，返回供落盘用的快照。
+func (a *aiClient) addImagesLocked(n int) (string, float64, int, int) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	day := time.Now().Format("2006-01-02")
@@ -240,10 +250,7 @@ func (a *aiClient) addImages(n int) {
 		a.imgCount = 0
 	}
 	a.imgCount += n
-	day2, cny2, cloud2, img2 := a.costDay, a.costCNY, a.cloudCount, a.imgCount
-	a.mu.Unlock()
-	saveCostState(day2, cny2, cloud2, img2)
-	a.mu.Lock()
+	return a.costDay, a.costCNY, a.cloudCount, a.imgCount
 }
 
 // ---- 费用记账持久化 ----
@@ -285,12 +292,24 @@ func loadCostState(a *aiClient) {
 }
 
 func saveCostState(day string, cny float64, cloud, images int) {
-	raw, _ := json.Marshal(costState{Day: day, CostCNY: cny, Cloud: cloud, Images: images})
-	_ = os.WriteFile(costStatePath(), raw, 0o644)
+	raw, err := json.Marshal(costState{Day: day, CostCNY: cny, Cloud: cloud, Images: images})
+	if err != nil {
+		logf("[ai] 序列化费用状态失败: %v", err)
+		return
+	}
+	if err := os.WriteFile(costStatePath(), raw, 0o644); err != nil {
+		logf("[ai] 写入费用文件 %s 失败: %v", costStatePath(), err)
+	}
 }
 
-// addCost 记一笔费用
+// addCost 记一笔费用。锁内算好快照，写盘在锁外。
 func (a *aiClient) addCost(cny float64) {
+	day, total, cloud, img := a.addCostLocked(cny)
+	saveCostState(day, total, cloud, img)
+}
+
+// addCostLocked 锁内累加费用，返回供落盘用的快照。
+func (a *aiClient) addCostLocked(cny float64) (string, float64, int, int) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	day := time.Now().Format("2006-01-02")
@@ -302,10 +321,7 @@ func (a *aiClient) addCost(cny float64) {
 	}
 	a.costCNY += cny
 	a.cloudCount++
-	day2, cny2, cloud2, img2 := a.costDay, a.costCNY, a.cloudCount, a.imgCount
-	a.mu.Unlock()
-	saveCostState(day2, cny2, cloud2, img2)
-	a.mu.Lock()
+	return a.costDay, a.costCNY, a.cloudCount, a.imgCount
 }
 
 var ai *aiClient
@@ -511,7 +527,9 @@ func (a *aiClient) watch() {
 		time.Sleep(2 * time.Second)
 		a.mu.Lock()
 		defer a.mu.Unlock()
-		_ = a.startLocked(c)
+		if err := a.startLocked(c); err != nil {
+			logf("[ai] 自动重启 AI 服务失败: %v", err)
+		}
 	}(a.cfg)
 }
 
