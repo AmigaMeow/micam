@@ -1583,6 +1583,13 @@
   margin-top: var(--space-5);
 }
 @media (max-width: 1100px) { .ai-row2 { grid-template-columns: 1fr; } }
+/* 全局 .card + .card{margin-top:20px} 在多列网格里会把右侧卡片推下去 20px —— 网格内清零 */
+.ai-row2 > .card + .card,
+.ai-set-grid > .card + .card,
+.st-row--2 > .card + .card,
+.acct-side > .card + .card,
+.dev-tools > .dev-tool + .dev-tool { margin-top: 0; }
+
 /* 两栏高度不同会留出空白：让卡片等高，缩略图区/列表区吃掉剩余高度 */
 .ai-row2 > .card { display: flex; flex-direction: column; }
 .ai-row2 > .card > .ai-thumbs, .ai-row2 > .card > .ai-process { flex: 1; align-content: start; }
@@ -1666,7 +1673,10 @@
 
 /* ---- AI 处理情况 ---- */
 /* 卡片被右栏拉高后，环图与列表居中，别贴顶留白 */
-.ai-row2 .ai-process { flex: 1; align-items: center; justify-content: center; }
+.ai-row2 .ai-process { flex: 1; align-items: center; justify-content: center; gap: var(--space-6); }
+.ai-row2 .ai-process__list { justify-content: center; gap: 14px; }
+.ai-row2 .ai-process__ring { flex: 0 0 148px; }
+.ai-row2 .ai-ring { width: 148px; height: 148px; }
 .ai-process { display: flex; align-items: center; gap: var(--space-5); padding: 0 var(--space-5) var(--space-4); }
 .ai-process__ring { flex: 0 0 128px; }
 .ai-ring { width: 128px; height: 128px; }
@@ -2781,7 +2791,8 @@
 .ai-autostat__body { min-width: 0; }
 .ai-autostat__label, .ai-autostat__hint, .ai-autostat__val { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ai-autostat__icon { color: var(--text-muted); flex: 0 0 auto; margin-top: 2px; }
-.ai-autostat__body { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.ai-autostat__body { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.ai-autostat__label { margin-bottom: 1px; }
 .ai-autostat__label { font-size: var(--text-sm); color: var(--text-muted); }
 .ai-autostat__val { font-size: var(--text-lg); font-weight: var(--weight-semibold); line-height: 1.2; }
 .ai-autostat__hint { font-size: var(--text-xs); color: var(--text-muted); }
