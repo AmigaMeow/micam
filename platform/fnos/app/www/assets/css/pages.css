@@ -1598,6 +1598,9 @@
 .ai-row2 .ai-thumb { height: 100%; min-height: 120px; }
 .ai-row2 .ai-thumb img { height: 100%; }
 
+/* 自动分析卡紧贴在统计卡下面（实测间距 0）：补上和其它区块一致的 20px */
+#aiAutoCard { margin-top: var(--space-5); }
+
 /* ---- 4 张统计卡 ---- */
 .ai-stats {
   display: grid; gap: var(--space-4);

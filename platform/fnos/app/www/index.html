@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <title>小米摄像头</title>
-<meta name="micam-build" content="2026-09-17 22:37:48">
+<meta name="micam-build" content="2026-09-17 22:53:42">
 <!-- 样式内联：飞牛网关会剥前缀，相对路径不可靠（详见 build/assemble-web.js）-->
 <style>
 
@@ -2955,6 +2955,9 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; line-h
 .ai-row2 .ai-thumbs { grid-template-columns: repeat(2, minmax(0,1fr)); gap: var(--space-4); align-content: center; }
 .ai-row2 .ai-thumb { height: 100%; min-height: 120px; }
 .ai-row2 .ai-thumb img { height: 100%; }
+
+/* 自动分析卡紧贴在统计卡下面（实测间距 0）：补上和其它区块一致的 20px */
+#aiAutoCard { margin-top: var(--space-5); }
 
 /* ---- 4 张统计卡 ---- */
 .ai-stats {
