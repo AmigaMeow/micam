@@ -111,11 +111,15 @@ type UIConfig struct {
 	AutoplayMute    bool   `json:"autoplayMute"`
 
 	// 界面偏好
-	HomeShowCameras   bool   `json:"homeShowCameras"`
-	HomeShowEvents    bool   `json:"homeShowEvents"`
-	HomeShowStorage   bool   `json:"homeShowStorage"`
-	ShowEnglishAlias  bool   `json:"showEnglishAlias"`
-	CompactMode       bool   `json:"compactMode"`
+	HomeShowCameras  bool `json:"homeShowCameras"`
+	HomeShowEvents   bool `json:"homeShowEvents"`
+	HomeShowStorage  bool `json:"homeShowStorage"`
+	ShowEnglishAlias bool `json:"showEnglishAlias"`
+	CompactMode      bool `json:"compactMode"`
+
+	// 存储页底部那条「录像路径 / 数据路径」状态栏是否显示
+	// 默认 true（零值 false），所以下面用指针区分"没设置过"
+	ShowStoragePaths  *bool  `json:"showStoragePaths,omitempty"`
 	EventsDefaultView string `json:"eventsDefaultView"` // grid / list
 
 	// 录像

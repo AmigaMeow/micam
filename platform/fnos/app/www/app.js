@@ -4856,8 +4856,12 @@ function renderStorage(c){
     api('/api/storage/detail').catch(function(){ return null; }),
     api('/api/recordings/cache').catch(function(){ return {}; }),
     api('/api/storage/cleanup-preview').catch(function(){ return {}; }),
+    api('/api/ui/config').catch(function(){ return {}; }),
+    api('/api/storage/locations').catch(function(){ return {}; }),
   ]).then(function(res){
     if(!res[0]) throw new Error('读取存储信息失败');
+    stUIPref = ((res[3] && res[3].config) || {});
+    stLocs = (res[4] && res[4].locations) || [];
     paintStorage(c, res[0], res[2] || {});
   }).catch(function(err){
     c.innerHTML = '<div class="page__inner">' + errorCard(err, function(){ renderStorage(c); }) + '</div>';
@@ -5118,16 +5122,25 @@ function paintStorage(c, d, cleanup){
     +   '</div>'
     + '</div>'
 
-    // 底部状态栏
-    + '<div class="st-footbar">'
-    +   '<span>录像路径 <b class="st-mono">' + esc(status.recPath||'—') + '</b></span>'
-    +   '<span>数据路径 <b class="st-mono">' + esc(status.dataPath||'—') + '</b></span>'
-    +   '<span>上次扫描 <b>' + esc(status.lastScan||'—') + '</b></span>'
-    +   '<span class="st-footbar__spacer"></span>'
-    +   '<span class="st-health ' + (status.healthy?'is-ok':'is-warn') + '">'
-    +     '<span class="status-dot ' + (status.healthy?'is-online':'') + '"></span>'
-    +     '存储健康 <b>' + (status.healthy?'正常':'偏低') + '</b></span>'
-    + '</div>'
+    // 底部状态栏（可关闭；录像目录可自定义）
+    + (stUIPref.showStoragePaths === false ? '' :
+        '<div class="st-footbar">'
+      +   '<span class="st-footbar__label">录像目录</span>'
+      +   '<select class="input st-footbar__sel" id="stRecDir">'
+      +     ((stLocs.length ? stLocs : [{ path: status.recPath || '', name: status.recPath || '当前目录' }]).map(function(l){
+              return '<option value="' + esc(l.path) + '"' + (l.path === (status.recPath || '') ? ' selected' : '') + '>'
+                + esc(l.name || l.path) + ' · ' + esc(l.path) + (l.desc ? '（' + esc(l.desc) + '）' : '') + '</option>';
+            }).join(''))
+      +   '</select>'
+      +   '<button class="btn btn--sm" id="stRecDirSave">应用</button>'
+      +   '<span class="st-footbar__item">数据路径 <b class="st-mono">' + esc(status.dataPath||'—') + '</b></span>'
+      +   '<span class="st-footbar__item">上次扫描 <b>' + esc(status.lastScan||'—') + '</b></span>'
+      +   '<span class="st-footbar__spacer"></span>'
+      +   '<span class="st-health ' + (status.healthy?'is-ok':'is-warn') + '">'
+      +     '<span class="status-dot ' + (status.healthy?'is-online':'') + '"></span>'
+      +     '存储健康 <b>' + (status.healthy?'正常':'偏低') + '</b></span>'
+      +   '<button class="icon-btn" id="stFootHide" title="隐藏这条状态栏">' + icon('close',14) + '</button>'
+      + '</div>')
 
     + '</div>';
 
@@ -5151,9 +5164,32 @@ function stField(label, id, val, unit, hint){
     + '</div>';
 }
 
-var stTab = 'ov';   // 存储页左侧导航：ov=概览 / rec=录像与策略 / clean=迁移与清理
+var stTab = 'ov';        // 存储页左侧导航：ov=概览 / rec=录像与策略 / clean=迁移与清理
+var stUIPref = {};       // /api/ui/config（含是否常显底部状态栏）
+var stLocs = [];         // /api/storage/locations（可选的录像目录）
 
 function bindStorage(c, cams){
+  // 底部状态栏：改录像目录 / 隐藏
+  var sel = document.getElementById('stRecDir');
+  var save = document.getElementById('stRecDirSave');
+  if(save) save.onclick = function(){
+    var dir = sel ? sel.value : '';
+    if(!dir) return;
+    if(!confirm('把录像目录改成：\n' + dir + '\n\n已有录像不会自动搬过去，需要的话用「迁移录像」。确定？')) return;
+    api('/api/storage/record-dir', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ dir: dir }) })
+      .then(function(r){
+        if(r && r.msg){ toast(r.msg, 'err'); return; }
+        toast('录像目录已更新', 'ok');
+        setTimeout(function(){ render(); }, 800);
+      }).catch(function(e){ toast('设置失败：' + e.message, 'err'); });
+  };
+  var hide = document.getElementById('stFootHide');
+  if(hide) hide.onclick = function(){
+    api('/api/ui/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ showStoragePaths: false }) })
+      .then(function(){ toast('已隐藏（可在设置里恢复）', 'ok'); render(); })
+      .catch(function(e){ toast('保存失败：' + e.message, 'err'); });
+  };
+
   Array.prototype.forEach.call(c.querySelectorAll('[data-sttab]'), function(b){
     b.onclick = function(){ stTab = this.dataset.sttab; render(); };
   });
@@ -6331,6 +6367,14 @@ function devDocsTab(){
 // 只覆盖 /api/dev/docs 实际用到的语法：标题(#~####)、4 空格缩进代码块、
 // 无序列表、分隔线、段落，以及行内 **粗体** / 反引号 code / 链接。
 // 返回 { html, toc }，toc 供左侧目录使用。
+// devMdCells 把一行表格拆成单元格
+function devMdCells(line){
+  var s = String(line).trim();
+  if(s.charAt(0) === '|') s = s.slice(1);
+  if(s.charAt(s.length - 1) === '|') s = s.slice(0, -1);
+  return s.split('|').map(function(x){ return x.trim(); });
+}
+
 function devRenderMarkdown(md){
   var lines = String(md || '').replace(/\r\n/g, '\n').split('\n');
   var out = [], toc = [], i = 0, slug = 0;
@@ -6338,6 +6382,8 @@ function devRenderMarkdown(md){
 
   function inline(s){
     return esc(s)
+      // 文档里偶发字面 \n（生成脚本拼接产物）：当换行处理，别原样显示
+      .replace(/\\n/g, '<br>')
       .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
       .replace(new RegExp(BT + '([^' + BT + ']+)' + BT, 'g'), '<code class="dev-md-code">$1</code>')
       .replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
@@ -6346,7 +6392,49 @@ function devRenderMarkdown(md){
   while (i < lines.length){
     var ln = lines[i];
 
-    // 4 空格缩进代码块（后端文档主要用这种）
+    // 围栏代码块（新版文档用）
+    if (/^\s*```/.test(ln)){
+      var fbuf = [];
+      i++;
+      while (i < lines.length && !/^\s*```/.test(lines[i])){ fbuf.push(lines[i]); i++; }
+      i++;
+      out.push('<pre class="dev-md-pre">' + esc(fbuf.join('\\n')) + '</pre>');
+      continue;
+    }
+
+    // 表格：连续以 | 开头的行（下一行是分隔行才算）
+    if (/^\s*\|/.test(ln) && /^\s*\|?[\s:|-]+\|\s*$/.test(lines[i + 1] || '')){
+      var head = devMdCells(ln);
+      var trows = [];
+      i += 2;
+      while (i < lines.length && /^\s*\|/.test(lines[i])){ trows.push(devMdCells(lines[i])); i++; }
+      out.push('<div class="dev-md-tablewrap"><table class="table dev-md-table"><thead><tr>'
+        + head.map(function(c){ return '<th>' + inline(c) + '</th>'; }).join('')
+        + '</tr></thead><tbody>'
+        + trows.map(function(r){
+            return '<tr>' + r.map(function(c){ return '<td>' + inline(c) + '</td>'; }).join('') + '</tr>';
+          }).join('')
+        + '</tbody></table></div>');
+      continue;
+    }
+
+    // 引用块
+    if (/^\s*>/.test(ln)){
+      var qbuf = [];
+      while (i < lines.length && /^\s*>/.test(lines[i])){ qbuf.push(lines[i].replace(/^\s*> ?/, '')); i++; }
+      out.push('<blockquote class="dev-md-quote">' + qbuf.map(function(x){ return '<div>' + inline(x) + '</div>'; }).join('') + '</blockquote>');
+      continue;
+    }
+
+    // 有序列表
+    if (/^\d+[.)]\s/.test(ln)){
+      var oitems = [];
+      while (i < lines.length && /^\d+[.)]\s/.test(lines[i])){ oitems.push('<li>' + inline(lines[i].replace(/^\d+[.)]\s/, '')) + '</li>'); i++; }
+      out.push('<ol class="dev-md-ol">' + oitems.join('') + '</ol>');
+      continue;
+    }
+
+    // 4 空格缩进代码块（旧版文档用）
     if (/^ {4}\S/.test(ln)){
       var code = [];
       while (i < lines.length && (/^ {4}/.test(lines[i]) || lines[i].trim() === '')){
@@ -7329,6 +7417,11 @@ function paintSetMain(){
           row('自动更新', '有新版本时自动提示。', sw('uiAutoUpd', cfg.autoUpdate!==false)),
           row('AI 设置', '本地识别与云端视觉分析的详细配置。',
               '<button class="btn" id="setGoAI">' + icon('zap',14) + '前往 AI 智能页面' + icon('chevron-right',13) + '</button>'),
+          row('存储路径状态栏', '存储页底部那条「录像目录 / 数据路径」状态栏。', 
+              (function(){
+                var on = !(setCfg && setCfg.showStoragePaths === false);
+                return '<label class="switch"><input type="checkbox" id="setStoragePaths"' + (on ? ' checked' : '') + '><span class="switch__track"></span></label>';
+              })()),
           row('设备与维护', '设备管理、诊断与日志。',
               '<button class="btn" id="setGoDev">' + icon('camera',14) + '摄像头列表' + icon('chevron-right',13) + '</button>'),
         ])
@@ -7471,6 +7564,15 @@ function bindSettings(c){
       paintSettings(c);
     };
   });
+  // 存储页底部「录像目录 / 数据路径」状态栏是否显示
+  var sp = document.getElementById('setStoragePaths');
+  if(sp) sp.onchange = function(){
+    var on = this.checked;
+    if(setCfg) setCfg.showStoragePaths = on;
+    api('/api/ui/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ showStoragePaths: on }) })
+      .then(function(){ toast(on ? '存储页会显示路径状态栏' : '已隐藏路径状态栏', 'ok'); })
+      .catch(function(e){ toast('保存失败：' + e.message, 'err'); });
+  };
 }
 
 // ===== 凭据状态提示 =====

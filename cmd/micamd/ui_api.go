@@ -75,6 +75,10 @@ func (s *Server) handleUIConfig(w http.ResponseWriter, r *http.Request) {
 	bl("homeShowStorage", &cur.HomeShowStorage)
 	bl("showEnglishAlias", &cur.ShowEnglishAlias)
 	bl("compactMode", &cur.CompactMode)
+	// 存储页底部状态栏是否显示（用指针：默认显示 = true，零值 false 无法表达"没设置过"）
+	if v, ok := req["showStoragePaths"].(bool); ok {
+		cur.ShowStoragePaths = &v
+	}
 	str("eventsDefaultView", &cur.EventsDefaultView)
 	str("recordSchedule", &cur.RecordSchedule)
 	bl("loopOverwrite", &cur.LoopOverwrite)
