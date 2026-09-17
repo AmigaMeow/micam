@@ -3419,6 +3419,21 @@
 .dev-tokenbox__label { font-size: var(--text-sm); color: var(--warning); }
 .dev-tokenbox__val { font-family: var(--font-mono); font-size: var(--text-base); background: var(--surface-2); border:1px solid var(--border-subtle); border-radius: var(--radius-md); padding: var(--space-3); word-break: break-all; }
 
+/* ---- 接口文档：子 Tab / 参考手册 ---- */
+.dev-seg .segmented__btn { width:auto; padding:0 var(--space-3); font-size: var(--text-sm); }
+.dev-ref-head { display:flex; align-items:center; gap: var(--space-3); padding: var(--space-3) var(--space-5) var(--space-2); }
+.dev-ref-item { border-bottom: 1px solid var(--border-subtle); }
+.dev-ref-item:last-child { border-bottom: 0; }
+.dev-ref-item__head { display:flex; align-items:center; gap: var(--space-3); width:100%; text-align:left; padding: 10px var(--space-4); transition: background var(--duration-fast) var(--ease-out); }
+.dev-ref-item__head:hover { background: var(--surface-2); }
+.dev-ref-item__head .icon { color: var(--text-muted); flex:0 0 auto; transition: transform var(--duration-normal) var(--ease-out); }
+.dev-ref-item.is-open .dev-ref-item__head .icon { transform: rotate(180deg); }
+.dev-ref-item__summary { flex:1; min-width:0; font-size: var(--text-sm); color: var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.dev-ref-item__body { padding: 0 var(--space-4) var(--space-4); }
+.dev-ref-params__title, .dev-ref-resp__title { font-size: var(--text-sm); color: var(--text-muted); margin: var(--space-3) 0 var(--space-2); }
+.dev-ref-params .table { font-size: var(--text-sm); }
+.dev-ref-item__acts { margin-top: var(--space-3); }
+
 /* ---- 接口文档：左侧目录 + 右侧渲染正文 ---- */
 .dev-doc { display:grid; grid-template-columns: 200px minmax(0,1fr); gap: var(--space-5); padding: 0 var(--space-5) var(--space-5); align-items:start; }
 @media (max-width: 1000px){ .dev-doc{ grid-template-columns:1fr; } .dev-doc__toc{ display:none; } }

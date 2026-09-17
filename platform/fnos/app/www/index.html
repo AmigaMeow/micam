@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <title>小米摄像头</title>
-<meta name="micam-build" content="2026-09-17 12:14:22">
+<meta name="micam-build" content="2026-09-17 12:21:03">
 <!-- 样式内联：飞牛网关会剥前缀，相对路径不可靠（详见 build/assemble-web.js）-->
 <style>
 
@@ -4760,6 +4760,21 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; line-h
 .dev-tokenbox { display:flex; flex-direction:column; gap: var(--space-2); }
 .dev-tokenbox__label { font-size: var(--text-sm); color: var(--warning); }
 .dev-tokenbox__val { font-family: var(--font-mono); font-size: var(--text-base); background: var(--surface-2); border:1px solid var(--border-subtle); border-radius: var(--radius-md); padding: var(--space-3); word-break: break-all; }
+
+/* ---- 接口文档：子 Tab / 参考手册 ---- */
+.dev-seg .segmented__btn { width:auto; padding:0 var(--space-3); font-size: var(--text-sm); }
+.dev-ref-head { display:flex; align-items:center; gap: var(--space-3); padding: var(--space-3) var(--space-5) var(--space-2); }
+.dev-ref-item { border-bottom: 1px solid var(--border-subtle); }
+.dev-ref-item:last-child { border-bottom: 0; }
+.dev-ref-item__head { display:flex; align-items:center; gap: var(--space-3); width:100%; text-align:left; padding: 10px var(--space-4); transition: background var(--duration-fast) var(--ease-out); }
+.dev-ref-item__head:hover { background: var(--surface-2); }
+.dev-ref-item__head .icon { color: var(--text-muted); flex:0 0 auto; transition: transform var(--duration-normal) var(--ease-out); }
+.dev-ref-item.is-open .dev-ref-item__head .icon { transform: rotate(180deg); }
+.dev-ref-item__summary { flex:1; min-width:0; font-size: var(--text-sm); color: var(--text-muted); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.dev-ref-item__body { padding: 0 var(--space-4) var(--space-4); }
+.dev-ref-params__title, .dev-ref-resp__title { font-size: var(--text-sm); color: var(--text-muted); margin: var(--space-3) 0 var(--space-2); }
+.dev-ref-params .table { font-size: var(--text-sm); }
+.dev-ref-item__acts { margin-top: var(--space-3); }
 
 /* ---- 接口文档：左侧目录 + 右侧渲染正文 ---- */
 .dev-doc { display:grid; grid-template-columns: 200px minmax(0,1fr); gap: var(--space-5); padding: 0 var(--space-5) var(--space-5); align-items:start; }
@@ -11184,23 +11199,22 @@ function devToolAction(a){
 
 // ---- Tab：接口文档 ----
 
+var devDocTab = 'guide';       // guide=接入指南 / ref=参考手册
+var devDocMdCache = null;        // /api/dev/docs 的 Markdown 缓存
+var devDocSpecCache = null;      // /api/dev/openapi 的规格缓存
+var devRefFlat = [];             // 参考手册用的扁平接口列表
+
 function devDocsTab(){
   return '<div class="card">'
-    + devCardHead('file-video', '接口文档', '完整接入文档：快速开始、播放、云台、录像、错误处理、共享连接与性能特征。',
-        '<button class="btn btn--sm" id="devBtnSpec">' + icon('download',13) + 'OpenAPI</button>'
-        + '<button class="btn btn--sm" id="devBtnDocs">' + icon('download',13) + 'Markdown</button>'
-        + '<button class="btn btn--sm" data-copy-el="devDocBox">' + icon('copy',13) + '复制全文</button>')
-    + '<div class="dev-doc">'
-    +   '<aside class="dev-doc__toc" id="devDocToc"></aside>'
-    +   '<div class="dev-md" id="devDocBox">' + loading('加载文档…') + '</div>'
-    + '</div>'
-    + '</div>'
-
-    + '<div class="card">'
-    + devCardHead('code', '接口清单', '按分组列出全部接口，点「调用」可直接请求。',
-        '<input class="input dev-doc__search" id="devApiSearch" placeholder="搜索路径 / 说明">')
-    + '<div class="api-list" id="devApiList">' + loading('加载中…') + '</div>'
-    + '<div class="card__body" id="devResult"></div>'
+    + devCardHead('file-video', '接口文档', '接入指南（快速开始/播放/云台/录像/错误处理/共享连接）+ 逐接口参考手册。',
+        '<div class="segmented dev-seg" id="devDocSeg">'
+        + [['guide','指南'],['ref','参考手册']].map(function(x){
+            return '<button class="segmented__btn' + (devDocTab === x[0] ? ' is-active' : '') + '" data-doctab="' + x[0] + '">' + x[1] + '</button>';
+          }).join('')
+        + '</div>'
+        + '<button class="btn btn--sm" id="devBtnSpec">' + icon('download',13) + 'OpenAPI</button>'
+        + '<button class="btn btn--sm" id="devBtnDocs">' + icon('download',13) + 'Markdown</button>')
+    + '<div id="devDocBody"></div>'
     + '</div>'
 
     + '<div class="card">'
@@ -11275,78 +11289,173 @@ function devRenderMarkdown(md){
   return { html: out.join('\n'), toc: toc };
 }
 
-// devLoadDoc 拉 Markdown 并渲染（注意：这个接口返回 text/markdown，不能用 api()）
-function devLoadDoc(){
+// devDocPath 把响应示例（后端塞在 description 里的 JSON 串）转成代码块
+function devDocPath(desc){
+  var s = String(desc || '');
+  if(/^\s*[\{\[]/.test(s)) return '<pre class="dev-md-pre">' + esc(s) + '</pre>';
+  return '<p class="dev-md-p">' + esc(s) + '</p>';
+}
+
+// devPaintDoc 渲染当前子 Tab（指南 / 参考手册）
+function devPaintDoc(){
+  var box = document.getElementById('devDocBody');
+  if(!box) return;
+
+  if(devDocTab === 'guide'){
+    box.innerHTML = '<div class="dev-doc">'
+      + '<aside class="dev-doc__toc" id="devDocToc"></aside>'
+      + '<div class="dev-md" id="devDocBox">' + loading('加载文档…') + '</div>'
+      + '</div>';
+    if(devDocMdCache){
+      devRenderDocInto(devDocMdCache);
+      return;
+    }
+    fetch(apiUrl('/api/dev/docs')).then(function(r){ return r.text(); }).then(function(md){
+      devDocMdCache = md;
+      devRenderDocInto(md);
+    }).catch(function(e){
+      var d = document.getElementById('devDocBox');
+      if(d) d.innerHTML = '<div class="dev-err">文档加载失败：' + esc(e.message) + '</div>';
+    });
+    return;
+  }
+
+  // 参考手册
+  box.innerHTML = '<div class="dev-ref-head">'
+    + '<input class="input dev-doc__search" id="devApiSearch" placeholder="搜索路径 / 说明（如 events、live/hls、token）">'
+    + '<span class="dev-hint" id="devRefCount"></span>'
+    + '</div><div id="devApiList">' + loading('加载中…') + '</div>';
+  if(devDocSpecCache){ devRenderRefInto(devDocSpecCache); return; }
+  fetch(apiUrl('/api/dev/openapi')).then(function(r){ return r.json(); }).then(function(spec){
+    devDocSpecCache = spec;
+    devRenderRefInto(spec);
+  }).catch(function(e){
+    var d = document.getElementById('devApiList');
+    if(d) d.innerHTML = '<div class="dev-err">规格加载失败：' + esc(e.message) + '</div>';
+  });
+}
+
+// devRenderDocInto 把 Markdown 渲染进正文 + 生成目录
+function devRenderDocInto(md){
   var box = document.getElementById('devDocBox');
   if(!box) return;
-  fetch(apiUrl('/api/dev/docs')).then(function(r){ return r.text(); }).then(function(md){
-    var res = devRenderMarkdown(md);
-    box.innerHTML = res.html;
-    var toc = document.getElementById('devDocToc');
-    if(toc){
-      toc.innerHTML = res.toc.length
-        ? '<div class="dev-doc__toc-title">目录</div>' + res.toc.map(function(t){
-            return '<button class="dev-doc__toc-item dev-doc__toc-item--h' + t.level + '" data-doctoc="' + t.id + '">' + esc(t.text) + '</button>';
-          }).join('')
-        : '';
-      Array.prototype.forEach.call(toc.querySelectorAll('[data-doctoc]'), function(b){
-        b.onclick = function(){
-          var el = document.getElementById(this.dataset.doctoc);
-          if(el) el.scrollIntoView({ behavior:'smooth', block:'start' });
-        };
-      });
-    }
-  }).catch(function(e){
-    box.innerHTML = '<div class="dev-err">文档加载失败：' + esc(e.message) + '</div>';
+  var res = devRenderMarkdown(md);
+  box.innerHTML = res.html;
+  var toc = document.getElementById('devDocToc');
+  if(!toc) return;
+  toc.innerHTML = res.toc.length
+    ? '<div class="dev-doc__toc-title">目录</div>' + res.toc.map(function(t){
+        return '<button class="dev-doc__toc-item dev-doc__toc-item--h' + t.level + '" data-doctoc="' + t.id + '">' + esc(t.text) + '</button>';
+      }).join('')
+    : '';
+  Array.prototype.forEach.call(toc.querySelectorAll('[data-doctoc]'), function(b){
+    b.onclick = function(){
+      var el = document.getElementById(this.dataset.doctoc);
+      if(el) el.scrollIntoView({ behavior:'smooth', block:'start' });
+    };
   });
 }
 
-// devLoadApiList 由 OpenAPI 规格生成分组接口清单
-function devLoadApiList(){
+// devRenderRefInto 把 OpenAPI 规格渲染成「可展开的接口参考」
+function devRenderRefInto(spec){
   var box = document.getElementById('devApiList');
   if(!box) return;
-  fetch(apiUrl('/api/dev/openapi')).then(function(r){ return r.json(); }).then(function(spec){
-    var ps = spec.paths || {}, groups = {}, order = [];
-    Object.keys(ps).forEach(function(p){
-      Object.keys(ps[p]).forEach(function(m){
-        var op = ps[p][m] || {};
-        var tag = (op.tags && op.tags[0]) || '其它';
-        if(!groups[tag]){ groups[tag] = []; order.push(tag); }
-        groups[tag].push({ m: m.toUpperCase(), p: '/api' + p, t: op.summary || '' });
-      });
+  var ps = spec.paths || {}, groups = {}, order = [];
+  devRefFlat = [];
+  Object.keys(ps).forEach(function(p){
+    Object.keys(ps[p]).forEach(function(m){
+      var op = ps[p][m] || {};
+      var tag = (op.tags && op.tags[0]) || '其它';
+      if(!groups[tag]){ groups[tag] = []; order.push(tag); }
+      var idx = devRefFlat.length;
+      op.__path = '/api' + p;
+      devRefFlat.push(op);
+      groups[tag].push({ m: m.toUpperCase(), p: '/api' + p, t: op.summary || '', idx: idx });
     });
-    box.innerHTML = order.map(function(tag){
-      return '<div class="dev-api-group">'
-        + '<div class="dev-api-group__head">' + esc(tag) + '<em>' + groups[tag].length + '</em></div>'
-        + groups[tag].map(function(e){
-            var q = (e.m + ' ' + e.p + ' ' + e.t).toLowerCase();
-            return '<div class="api-row" data-gsearch="' + esc(q) + '">'
-              + '<span class="api-method ' + (e.m === 'GET' ? 'is-get' : 'is-post') + '">' + esc(e.m) + '</span>'
-              + '<span class="api-path">' + esc(e.p) + '</span>'
-              + '<span class="api-desc">' + esc(e.t) + '</span>'
-              + '<button class="btn btn--sm" data-callpath="' + esc(e.p) + '" data-callm="' + esc(e.m) + '">调用</button>'
-              + '</div>';
-          }).join('')
-        + '</div>';
-    }).join('');
-    Array.prototype.forEach.call(box.querySelectorAll('[data-callpath]'), function(b){
-      b.onclick = function(){ callEndpoint({ m: this.dataset.callm, p: this.dataset.callpath, t: '' }); };
-    });
-  }).catch(function(e){
-    box.innerHTML = '<div class="dev-err">接口清单加载失败：' + esc(e.message) + '</div>';
   });
+
+  box.innerHTML = order.map(function(tag){
+    return '<div class="dev-api-group">'
+      + '<div class="dev-api-group__head">' + esc(tag) + '<em>' + groups[tag].length + '</em></div>'
+      + groups[tag].map(function(e){
+          var q = (e.m + ' ' + e.p + ' ' + e.t).toLowerCase();
+          return '<div class="dev-ref-item" data-gsearch="' + esc(q) + '">'
+            + '<button class="dev-ref-item__head" data-refopen="' + e.idx + '">'
+            +   '<span class="api-method ' + (e.m === 'GET' ? 'is-get' : 'is-post') + '">' + esc(e.m) + '</span>'
+            +   '<span class="api-path">' + esc(e.p) + '</span>'
+            +   '<span class="dev-ref-item__summary">' + esc(e.t) + '</span>'
+            +   icon('chevron-down',14)
+            + '</button>'
+            + '<div class="dev-ref-item__body hidden" id="devref-' + e.idx + '"></div>'
+            + '</div>';
+        }).join('')
+      + '</div>';
+  }).join('');
+
+  var cnt = document.getElementById('devRefCount');
+  if(cnt) cnt.textContent = devRefFlat.length + ' 个接口';
+
+  Array.prototype.forEach.call(box.querySelectorAll('[data-refopen]'), function(b){
+    b.onclick = function(){ devToggleRef(this.dataset.refopen); };
+  });
+  var s = document.getElementById('devApiSearch');
+  if(s) s.oninput = function(){ devFilterRef(this.value); };
 }
 
-// devFilterApiList 接口清单前端过滤
-function devFilterApiList(q){
+// devToggleRef 展开某个接口：说明 + 参数表 + 响应示例 + 调用
+function devToggleRef(idx){
+  var body = document.getElementById('devref-' + idx);
+  if(!body) return;
+  var item = body.parentNode;
+  if(!body.classList.contains('hidden')){
+    body.classList.add('hidden');
+    if(item) item.classList.remove('is-open');
+    return;
+  }
+  if(item) item.classList.add('is-open');
+  var op = devRefFlat[Number(idx)] || {};
+  var params = op.parameters || [];
+  var html = '';
+  if(op.description) html += '<p class="dev-md-p">' + esc(op.description) + '</p>';
+  if(params.length){
+    html += '<div class="dev-ref-params"><div class="dev-ref-params__title">参数</div>'
+      + '<table class="table"><thead><tr><th>名称</th><th>位置</th><th>类型</th><th>必填</th><th>说明</th></tr></thead><tbody>'
+      + params.map(function(pa){
+          return '<tr><td class="dev-md-code">' + esc(pa.name || '') + '</td>'
+            + '<td>' + esc(pa.in || '') + '</td>'
+            + '<td>' + esc((pa.schema && pa.schema.type) || 'string') + '</td>'
+            + '<td>' + (pa.required ? '是' : '否') + '</td>'
+            + '<td>' + esc(pa.description || '') + '</td></tr>';
+        }).join('')
+      + '</tbody></table></div>';
+  } else {
+    html += '<div class="dev-hint">该接口没有查询参数。</div>';
+  }
+  var resp = (op.responses && op.responses['200'] && op.responses['200'].description) || '';
+  html += '<div class="dev-ref-resp__title">响应</div>' + devDocPath(resp);
+  html += '<div class="dev-ref-item__acts">'
+    + '<button class="btn btn--sm btn--primary" data-refcall="' + idx + '">' + icon('play',13) + '调用这个接口</button>'
+    + '</div><div id="devrefres-' + idx + '"></div>';
+  body.innerHTML = html;
+  body.classList.remove('hidden');
+  var cb = body.querySelector('[data-refcall]');
+  if(cb) cb.onclick = function(){ callEndpoint({ m: 'GET', p: devRefPath(Number(this.dataset.refcall)), t: '' }, 'devrefres-' + this.dataset.refcall); };
+}
+
+// devRefPath 取某个接口的完整路径（含 /api 前缀）
+function devRefPath(idx){
+  var op = devRefFlat[idx] || {};
+  return op.__path || '';   // __path 里已经带 /api 前缀，不要再拼一次
+}
+
+// devFilterRef 参考手册过滤
+function devFilterRef(q){
   q = String(q || '').trim().toLowerCase();
-  Array.prototype.forEach.call(document.querySelectorAll('#devApiList .api-row'), function(r){
-    var hit = !q || (r.dataset.gsearch || '').indexOf(q) >= 0;
-    r.classList.toggle('hidden', !hit);
+  Array.prototype.forEach.call(document.querySelectorAll('#devApiList .dev-ref-item'), function(r){
+    r.classList.toggle('hidden', !!q && (r.dataset.gsearch || '').indexOf(q) < 0);
   });
   Array.prototype.forEach.call(document.querySelectorAll('#devApiList .dev-api-group'), function(g){
-    var vis = g.querySelectorAll('.api-row:not(.hidden)').length;
-    g.classList.toggle('hidden', vis === 0);
+    g.classList.toggle('hidden', g.querySelectorAll('.dev-ref-item:not(.hidden)').length === 0);
   });
 }
 
@@ -11355,27 +11464,53 @@ function bindDevDocs(){
   if(b1) b1.onclick = function(){ window.open(apiUrl('/api/dev/openapi'), '_blank'); };
   var b2 = document.getElementById('devBtnDocs');
   if(b2) b2.onclick = function(){ window.open(apiUrl('/api/dev/docs'), '_blank'); };
-  var s = document.getElementById('devApiSearch');
-  if(s) s.oninput = function(){ devFilterApiList(this.value); };
+  Array.prototype.forEach.call(document.querySelectorAll('[data-doctab]'), function(b){
+    b.onclick = function(){
+      devDocTab = this.dataset.doctab;
+      Array.prototype.forEach.call(document.querySelectorAll('[data-doctab]'), function(x){
+        x.classList.toggle('is-active', x === b);
+      });
+      devPaintDoc();
+    };
+  });
   var rf = document.getElementById('devCapsRefresh');
   if(rf) rf.onclick = devLoadCaps;
-  bindDevCopies();
-  devLoadDoc();
-  devLoadApiList();
+  devPaintDoc();
   devLoadCaps();
 }
 
-function callEndpoint(e){
-  var out = document.getElementById('devResult');
+// callEndpoint 请求一个接口并把结果显示出来。
+//
+// 不能直接用 api()（它只做 r.json()）：参考手册里有图片接口（thumb/frame）、
+// 文本接口（HLS 的 m3u8）、文件接口（download），一律按 content-type 分开处理，
+// 否则点「调用」会报 "Unexpected non-whitespace character after JSON"。
+function callEndpoint(e, outId){
+  var out = document.getElementById(outId || 'devResult');
   if(out) out.innerHTML = loading('请求 ' + e.p + ' …');
   var t0 = Date.now();
-  api(e.p).then(function(r){
-    var ms = Date.now() - t0;
-    var txt = JSON.stringify(r, null, 2);
-    if(txt.length > 3000) txt = txt.slice(0, 3000) + '\n… （已截断）';
-    if(out) out.innerHTML = '<div class="dev-wh__head"><span class="badge badge--ok">' + ms + ' ms</span>'
-      + '<span class="dev-hint">' + esc(e.m + ' ' + e.p) + '</span></div>'
-      + '<div class="diag-result">' + esc(txt) + '</div>';
+  fetch(apiUrl(e.p)).then(function(r){
+    var ct = r.headers.get('content-type') || '';
+    return r.text().then(function(txt){ return { status: r.status, ct: ct, txt: txt, ms: Date.now() - t0 }; });
+  }).then(function(res){
+    if(!out) return;
+    var ct = res.ct.split(';')[0] || '';
+    var body;
+    if(ct.indexOf('image/') === 0){
+      body = '<div class="dev-note dev-note--tight">图片响应（约 ' + Math.round((res.txt || '').length / 1024) + ' KB），这里不渲染图片</div>';
+    } else if(ct.indexOf('json') >= 0){
+      var pretty;
+      try { pretty = JSON.stringify(JSON.parse(res.txt), null, 2); } catch(err2){ pretty = res.txt; }
+      if(pretty.length > 3000) pretty = pretty.slice(0, 3000) + '\n… （已截断）';
+      body = '<div class="diag-result">' + esc(pretty) + '</div>';
+    } else {
+      var t = res.txt || '（空响应）';
+      if(t.length > 1200) t = t.slice(0, 1200) + '\n… （已截断）';
+      body = '<div class="diag-result">' + esc(t) + '</div>';
+    }
+    out.innerHTML = '<div class="dev-wh__head">'
+      + '<span class="badge ' + (res.status < 400 ? 'badge--ok' : 'badge--danger') + '">HTTP ' + res.status + '</span>'
+      + '<span class="dev-hint">' + res.ms + ' ms · ' + esc(ct || '未知类型') + '</span></div>'
+      + body;
   }).catch(function(err){
     if(out) out.innerHTML = '<div class="dev-err">请求失败：' + esc(err.message) + '</div>';
   });

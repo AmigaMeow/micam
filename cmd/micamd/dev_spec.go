@@ -495,6 +495,85 @@ func (s *Server) openAPISpec(r *http.Request) map[string]any {
 	}
 
 	_ = r
+
+	// 补齐其余公开接口。
+	//
+	// 上面手写的是核心接口（带说明/参数/响应示例）；这里按分组补齐其余对外接口，
+	// 保证「参考手册」和真实路由一致。内部调试接口（/api/ui/config、/api/live/inject、
+	// /api/dev/tap、/api/ai/* 的内部端点、/api/camera/pose*）不列。
+	extra := []struct {
+		method, path, summary, tag, resp string
+	}{
+		{"get", "/events", "事件列表（按日期/设备/类型筛选）", "事件", "事件数组"},
+		{"get", "/events/thumb", "事件缩略图（图片）", "事件", "JPEG"},
+		{"get", "/events/marks", "事件的标记/标签/收藏", "事件", "标记对象"},
+		{"post", "/events/bulk", "批量标记 / 归档 / 删除事件", "事件", "{\"ok\":true}"},
+		{"get", "/devices/meta", "设备别名与隐藏状态", "设备", "元数据"},
+		{"post", "/devices/meta", "设置设备别名", "设备", "{\"ok\":true}"},
+		{"post", "/devices/hide", "隐藏 / 显示设备", "设备", "{\"ok\":true}"},
+		{"get", "/home", "默认家庭信息", "设备", "家庭对象"},
+		{"get", "/live/thumb", "设备实时缩略图（图片）", "播放", "JPEG"},
+		{"get", "/live/stats", "当前播放/推流统计", "播放", "统计对象"},
+		{"get", "/ptz/preset", "云台预置位列表", "云台", "预置位数组"},
+		{"post", "/ptz/preset", "保存 / 删除云台预置位", "云台", "{\"ok\":true}"},
+		{"post", "/ptz/goto", "转到指定预置位", "云台", "{\"ok\":true}"},
+		{"post", "/recordings/stop", "停止录像", "录像", "{\"ok\":true}"},
+		{"get", "/recordings/dates", "有录像的日期列表", "录像", "日期数组"},
+		{"get", "/recordings/list", "某天的录像片段列表", "录像", "片段数组"},
+		{"get", "/recordings/play", "获取可播放地址（必要时转码）", "录像", "播放信息"},
+		{"get", "/recordings/frame", "录像某一时刻的帧（图片）", "录像", "JPEG"},
+		{"get", "/recordings/frame-strip", "录像关键帧连拍条", "录像", "JPEG"},
+		{"post", "/recordings/delete", "删除单个录像片段", "录像", "{\"ok\":true}"},
+		{"post", "/recordings/batch-delete", "批量删除录像", "录像", "{\"ok\":true}"},
+		{"post", "/recordings/cleanup", "按策略清理录像", "录像", "{\"ok\":true}"},
+		{"get", "/recordings/cache", "转码缓存占用", "录像", "缓存统计"},
+		{"post", "/recordings/cache/clear", "清理转码缓存", "录像", "{\"ok\":true}"},
+		{"post", "/recordings/export", "导出片段（异步任务）", "录像", "任务信息"},
+		{"get", "/recordings/export/status", "导出任务状态", "录像", "任务状态"},
+		{"get", "/recordings/export/list", "导出任务列表", "录像", "任务数组"},
+		{"get", "/recordings/export/download", "下载导出结果", "录像", "文件流"},
+		{"post", "/recordings/export/delete", "删除导出结果", "录像", "{\"ok\":true}"},
+		{"post", "/recordings/export/clear", "清空导出结果", "录像", "{\"ok\":true}"},
+		{"get", "/storage/detail", "存储明细（按摄像头/类型）", "存储", "明细对象"},
+		{"get", "/storage/locations", "可用的存储位置", "存储", "位置数组"},
+		{"post", "/storage/record-dir", "修改录像目录", "存储", "{\"ok\":true}"},
+		{"get", "/notify/config", "通知配置", "通知", "配置对象"},
+		{"post", "/notify/config", "保存通知配置", "通知", "{\"ok\":true}"},
+		{"get", "/notify/events", "可订阅的事件类型", "通知", "事件类型数组"},
+		{"post", "/notify/test", "发送测试通知", "通知", "{\"ok\":true}"},
+		{"get", "/accounts/detail", "账号页聚合（账号 + 每账号设备 + 活动）", "账号", "聚合对象"},
+		{"get", "/dev/tokens", "API Token 列表（不含明文）", "开发者", "Token 数组"},
+		{"post", "/dev/tokens", "创建 API Token（明文仅返回一次）", "开发者", "{\"token\":\"mcam_…\"}"},
+		{"patch", "/dev/tokens", "启用 / 禁用 / 改名 Token", "开发者", "{\"ok\":true}"},
+		{"delete", "/dev/tokens", "删除 API Token", "开发者", "{\"ok\":true}"},
+		{"get", "/dev/logs", "最近请求日志（环形缓冲 200 条）", "开发者", "日志数组"},
+		{"get", "/dev/stats", "调用统计（近 N 天）", "开发者", "统计对象"},
+		{"post", "/dev/webhook/test", "向指定地址发一条示例事件", "开发者", "发送结果"},
+		{"post", "/dev/reset-config", "开放模式开关恢复默认", "开发者", "{\"ok\":true}"},
+		{"get", "/setup/check", "环境自检（账号/设备/端口/编码器）", "安装", "自检结果"},
+		{"post", "/setup/repair", "一键修复自检发现的问题", "安装", "修复结果"},
+		{"get", "/ai/status", "本地 AI 运行状态", "AI", "状态对象"},
+		{"get", "/ai/usage", "AI 用量与费用", "AI", "用量对象"},
+		{"get", "/ai/search", "自然语言搜索事件", "AI", "搜索结果"},
+		{"post", "/ai/analyze", "分析指定事件", "AI", "分析结果"},
+		{"get", "/ai/plate/search", "按车牌搜索", "AI", "事件数组"},
+	}
+	for _, e := range extra {
+		item, ok := paths[e.path].(map[string]any)
+		if !ok {
+			item = map[string]any{}
+			paths[e.path] = item
+		}
+		if _, exists := item[e.method]; exists {
+			continue
+		}
+		item[e.method] = map[string]any{
+			"summary":   e.summary,
+			"tags":      []string{e.tag},
+			"responses": okResp(e.resp),
+		}
+	}
+
 	return map[string]any{
 		"openapi": "3.0.3",
 		"info": map[string]any{
