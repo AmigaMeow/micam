@@ -5542,120 +5542,1103 @@ function renderWizard(c){
 
 
 // ===== 页面：开发者 =====
+// ===== 页面：开发者（对齐效果图：7 个 Tab）=====
+//
+// 布局（概览 Tab，左宽右窄两列）：
+//   左：开放模式（全局开关 + 5 张能力卡）/ API Token / 调用统计
+//   右：API 访问信息（地址 + 快速开始）/ 最近请求日志 / 工具与资源
+//
+// 两个踩过的坑，这里都按正确写法处理：
+//   1. 开关必须写 <span class="switch__track">，只写 <span> 会完全看不见
+//      （v0.39 之前的开发者页开关就是这个 bug）
+//   2. 局域网是 http 访问，**不是安全上下文**，navigator.clipboard 在
+//      http://192.168.x.x 下是 undefined —— 复制必须有 execCommand 回退
+
+var devTab = 'overview';
+var devSt = null;        // /api/dev/status
+var devTokens = [];      // /api/dev/tokens
+var devLogs = [];        // /api/dev/logs
+var devStats = null;     // /api/dev/stats
+var devStatDays = 7;
+var devQuick = 'curl';   // 快速开始：curl / python / js
+var devLogTimer = null;  // 请求日志自动刷新定时器
+var devLogAutoOn = false;
+var devDetailOpen = false;
+
+var DEV_TABS = [
+  ['overview', '概览',        '开放能力、Token、调用统计与近期请求'],
+  ['docs',     '接口文档',    'OpenAPI 规格与全部接口清单，可直接调用'],
+  ['tokens',   'API Token',   '为第三方应用创建访问令牌'],
+  ['logs',     '请求日志',    '最近 200 条 API 请求（内存缓冲）'],
+  ['stats',    '调用统计',    '近 7 / 14 / 30 天的请求量与耗时'],
+  ['webhook',  'Webhook 测试','向第三方地址发送一条示例事件'],
+  ['diag',     '诊断包',      '环境自检、能力探测与诊断导出']
+];
+
+// 开放能力 5 项（效果图「开放模式」的 5 张卡）
+var DEV_CAPS = [
+  { k:'allowLan',   ic:'monitor', t:'本地 API (REST)',    d:'访问设备、事件、回放等基础接口', go:'detail' },
+  { k:'hls',        ic:'play',    t:'实时流 (HLS)',       d:'获取实时视频流地址',            go:'docs'   },
+  { k:'webhook',    ic:'bell',    t:'事件推送 (Webhook)', d:'向第三方推送事件通知',          go:'webhook'},
+  { k:'fileAccess', ic:'film',    t:'本地文件访问',       d:'访问录像文件（需安全控制）',     go:'logs'   },
+  { k:'websocket',  ic:'grid',    t:'WebSocket',          d:'实时事件流（尚未实现）',        go:'none'   }
+];
+
+// 「本地 API」卡详情里的调试开关
+// （v0.39 的 5 个开关里，allowLan 已升为卡本体，其余 4 个收进详情）
+var DEV_DEBUG_FLAGS = [
+  { k:'cors',       t:'允许跨域 (CORS)', d:'网页端 / Electron 调试时需要' },
+  { k:'exposeSpec', t:'暴露接口规格',    d:'开放 /api/dev/openapi 与 /api/dev/docs' },
+  { k:'verboseLog', t:'详细日志',        d:'记录凭据申请、连接生命周期等细节' },
+  { k:'mockMode',   t:'模拟数据模式',    d:'不连真实设备，方便 UI 开发（未实现）' }
+];
+
+function stopDevTimers(){
+  if(devLogTimer){ clearInterval(devLogTimer); devLogTimer = null; }
+}
+
 function renderDev(c){
   if(!DEV_UNLOCKED){
-    c.innerHTML = "<div class=\"card\">" + empty("close","开发者模式未开启","连续点击左下角版本号 7 次解锁","") + "</div>";
+    c.innerHTML = '<div class="page__inner"><div class="card">'
+      + empty('close','开发者模式未开启','连续点击左下角版本号 7 次解锁','')
+      + '</div></div>';
     return;
   }
+  stopDevTimers();
+  c.innerHTML = '<div class="page__inner">' + loading('加载开发者信息…') + '</div>';
+  Promise.all([
+    api('/api/dev/status'),
+    api('/api/dev/tokens').catch(function(){ return { items: [] }; }),
+    api('/api/dev/logs?limit=50').catch(function(){ return { items: [] }; }),
+    api('/api/dev/stats?days=' + devStatDays).catch(function(){ return null; })
+  ]).then(function(res){
+    devSt = res[0] || {};
+    devTokens = (res[1] && res[1].items) || [];
+    devLogs = (res[2] && res[2].items) || [];
+    devStats = res[3];
+    paintDev(c);
+  }).catch(function(err){
+    c.innerHTML = '<div class="page__inner">' + errorCard(err, function(){ renderDev(c); }) + '</div>';
+  });
+}
 
-  c.innerHTML = ""
-    + "<div class=\"card\">"
-    +   "<div class=\"card__head\">"
-    +     "<span class=\"card__title\">" + icon("code",15) + " 开放模式</span>"
-    +     "<span style=\"font-size:12px;color:var(--text-3)\">供第三方客户端接入调试</span>"
-    +   "</div>"
-    +   "<div style=\"padding:8px 0\" id=\"devFlags\">" + loading("读取中…") + "</div>"
-    + "</div>"
-    + "<div class=\"card\">"
-    +   "<div class=\"card__head\">"
-    +     "<span class=\"card__title\">" + icon("device",15) + " 接口文档</span>"
-    +     "<div style=\"display:flex;gap:8px\">"
-    +       "<button class=\"btn btn--sm\" id=\"btnSpec\">OpenAPI JSON</button>"
-    +       "<button class=\"btn btn--sm\" id=\"btnDocs\">Markdown</button>"
-    +     "</div>"
-    +   "</div>"
-    +   "<div style=\"padding:0\" id=\"devEndpoints\">" + loading("加载中…") + "</div>"
-    + "</div>"
-    + "<div class=\"card\">"
-    +   "<div class=\"card__head\">"
-    +     "<span class=\"card__title\">" + icon("play",15) + " 接口自测</span>"
-    +     "<span style=\"font-size:12px;color:var(--text-3)\">点「调用」直接请求</span>"
-    +   "</div>"
-    +   "<div style=\"padding:0\" id=\"devTry\"></div>"
-    + "</div>"
-    + "<div class=\"card\">"
-    +   "<div class=\"card__head\"><span class=\"card__title\">" + icon("set",15) + " 能力探测</span>"
-    +     "<button class=\"btn btn--sm\" id=\"btnCaps\">刷新</button></div>"
-    +   "<div style=\"padding:16px 24px\" id=\"devCaps\">" + loading("读取中…") + "</div>"
-    + "</div>"
-    + "<div class=\"card\">"
-    +   "<div class=\"card__head\"><span class=\"card__title\">" + icon("close",15) + " 危险操作</span></div>"
-    +   "<div style=\"padding:16px 24px\">"
-    +     "<button class=\"btn\" id=\"btnDevReset\" style=\"color:var(--danger);border-color:var(--danger)\">关闭开发者模式</button>"
-    +   "</div>"
-    + "</div>";
+function devSubtitle(){
+  var hit = DEV_TABS.filter(function(x){ return x[0] === devTab; })[0];
+  return hit ? hit[2] : '';
+}
 
-  loadDevFlags();
-  loadDevEndpoints();
-  loadDevCaps();
+function paintDev(c){
+  c.innerHTML = '<div class="page__inner">'
 
-  var s1 = $("#btnSpec");
-  if(s1) s1.onclick = function(){ window.open(apiUrl("/api/dev/openapi"), "_blank"); };
-  var s2 = $("#btnDocs");
-  if(s2) s2.onclick = function(){ window.open(apiUrl("/api/dev/docs"), "_blank"); };
-  var s3 = $("#btnCaps");
-  if(s3) s3.onclick = loadDevCaps;
-  var s4 = $("#btnDevReset");
-  if(s4) s4.onclick = function(){
-    if(!confirm("关闭开发者模式？开放模式的开关会全部复位。")) return;
-    api("/api/dev/reset", { method: "POST" }).then(function(){
+    + '<div class="list-head">'
+    +   '<div class="list-head__main">'
+    +     '<h1 class="list-head__title">开发者</h1>'
+    +     '<div class="list-head__en" id="devSub">' + esc(devSubtitle()) + '</div>'
+    +   '</div>'
+    +   '<div class="list-head__acts">'
+    +     '<span class="chip is-active"><span class="status-dot is-online"></span>开发者模式已开启</span>'
+    +     '<span class="chip">v' + esc(devVersion()) + '</span>'
+    +   '</div>'
+    + '</div>'
+
+    + '<div class="tabs-line" id="devTabs">'
+    + DEV_TABS.map(function(x){
+        return '<button class="tabline' + (devTab === x[0] ? ' is-active' : '') + '" data-dtab="' + x[0] + '">' + esc(x[1]) + '</button>';
+      }).join('')
+    + '</div>'
+
+    + '<div id="devBody"></div>'
+    + '</div>';
+
+  Array.prototype.forEach.call(document.querySelectorAll('#devTabs .tabline'), function(b){
+    b.onclick = function(){
+      devTab = this.dataset.dtab;
+      stopDevTimers();
+      devLogAutoOn = false;
+      paintDev(c);
+    };
+  });
+  paintDevBody();
+}
+
+function paintDevBody(){
+  var box = document.getElementById('devBody');
+  if(!box) return;
+  if(devTab === 'overview'){ box.innerHTML = devOverviewHTML(); bindDevOverview(); }
+  else if(devTab === 'docs'){ box.innerHTML = devDocsTab(); bindDevDocs(); }
+  else if(devTab === 'tokens'){ box.innerHTML = devTokensTab(); bindDevTokens(); }
+  else if(devTab === 'logs'){ box.innerHTML = devLogsTab(); bindDevLogs(); }
+  else if(devTab === 'stats'){ box.innerHTML = devStatsTab(); bindDevStats(); }
+  else if(devTab === 'webhook'){ box.innerHTML = devWebhookTab(); bindDevWebhook(); }
+  else { box.innerHTML = devDiagTab(); bindDevDiag(); }
+}
+
+// 重绘当前 Tab（保持滚动位置不保证，但状态一致）
+function devRepaintBody(){
+  paintDevBody();
+}
+
+// ---- 概览 ----
+
+function devOverviewHTML(){
+  return '<div class="dev-cols">'
+    + '<div class="dev-col">'
+    +   devOpenCard()
+    +   devTokenCard(devTokens.slice(0, 3))
+    +   devStatsCard()
+    + '</div>'
+    + '<div class="dev-col">'
+    +   devAccessCard()
+    +   devLogsCard(devLogs.slice(0, 6), true)
+    +   devToolsCard()
+    + '</div>'
+    + '</div>';
+}
+
+function devOpenCard(){
+  var master = devFlag('enabled');
+  return '<div class="card">'
+    + '<div class="card__head">' + icon('terminal',15) + '<span class="card__title">开放模式</span>'
+    +   '<div class="card__actions">'
+    +     '<span class="dev-hint" id="devMasterState">' + (master ? '已开启' : '已关闭') + '</span>'
+    +     '<label class="switch"><input type="checkbox" id="devMaster"' + (master ? ' checked' : '') + '><span class="switch__track"></span></label>'
+    +   '</div>'
+    + '</div>'
+    + '<div class="card__body dev-caps' + (master ? '' : ' dev-caps--dim') + '">'
+    +   DEV_CAPS.map(devCapCard).join('')
+    + '</div>'
+    + '</div>';
+}
+
+function devCapCard(x){
+  var on = devFlag(x.k);
+  var tail = '';
+  if(x.go === 'detail'){
+    tail = '<button class="icon-btn dev-cap__chev' + (devDetailOpen ? ' is-open' : '') + '" data-cap-detail="1" title="更多选项">'
+      + icon(devDetailOpen ? 'chevron-up' : 'chevron-down',14) + '</button>';
+  } else if(x.go === 'none'){
+    tail = '<span class="badge badge--warn">未实现</span>';
+  } else {
+    tail = '<button class="icon-btn dev-cap__chev" data-cap-go="' + x.go + '" title="前往">' + icon('chevron-right',14) + '</button>';
+  }
+
+  var detail = '';
+  if(x.go === 'detail' && devDetailOpen){
+    detail = '<div class="dev-cap-detail">'
+      + DEV_DEBUG_FLAGS.map(function(f){
+          return '<div class="dev-sub">'
+            + '<div class="dev-sub__body">'
+            +   '<div class="dev-sub__name">' + esc(f.t) + '</div>'
+            +   '<div class="dev-sub__desc">' + esc(f.d) + '</div>'
+            + '</div>'
+            + '<label class="switch"><input type="checkbox" data-debug="' + f.k + '"' + (devFlag(f.k) ? ' checked' : '') + '><span class="switch__track"></span></label>'
+            + '</div>';
+        }).join('')
+      + '<div class="dev-sub__tip">' + icon('info',12) + ' 这些是调试开关，不影响上面的开放能力</div>'
+      + '</div>';
+  }
+
+  return '<div class="dev-cap' + (on ? '' : ' is-off') + '">'
+    + '<div class="dev-cap__icon">' + icon(x.ic,16) + '</div>'
+    + '<div class="dev-cap__body">'
+    +   '<div class="dev-cap__title">' + esc(x.t) + '</div>'
+    +   '<div class="dev-cap__desc">' + esc(x.d) + '</div>'
+    + '</div>'
+    + '<div class="dev-cap__right">'
+    +   '<span class="dev-cap__state">' + (on ? '已开启' : '已关闭') + '</span>'
+    +   '<label class="switch"><input type="checkbox" data-cap="' + x.k + '"' + (on ? ' checked' : '') + '><span class="switch__track"></span></label>'
+    + '</div>'
+    + tail
+    + '</div>'
+    + detail;
+}
+
+function devTokenCard(list){
+  var tk = (devSt && devSt.tokens) || {};
+  return '<div class="card">'
+    + '<div class="card__head">' + icon('lock',15) + '<span class="card__title">API Token</span>'
+    +   '<div class="card__actions">'
+    +     '<span class="dev-hint">' + (tk.total || 0) + ' / ' + (tk.limit || 50) + '</span>'
+    +     '<button class="btn btn--sm btn--accent" id="devTokenCreate">' + icon('plus',13) + '创建 Token</button>'
+    +   '</div>'
+    + '</div>'
+    + '<div class="dev-note">为第三方应用创建访问令牌，更安全地控制访问权限。服务端只保存哈希，明文仅在创建时显示一次。</div>'
+    + devTokenTable(list)
+    + '</div>';
+}
+
+function devTokenTable(list){
+  if(!list.length){
+    return '<div class="dev-empty">' + icon('lock',20)
+      + '<div>还没有 API Token</div>'
+      + '<div class="dev-empty__sub">创建后第三方用 Authorization: Bearer mcam_… 调用</div></div>';
+  }
+  return '<div class="table-wrap"><table class="table">'
+    + '<thead><tr><th>名称</th><th>权限</th><th>创建时间</th><th>最后使用</th><th>状态</th><th></th></tr></thead>'
+    + '<tbody>'
+    + list.map(function(t){
+        return '<tr>'
+          + '<td><div class="dev-tokname">' + esc(t.name) + '</div>'
+          +     '<div class="dev-tokpre">' + esc(t.prefix) + '…</div></td>'
+          + '<td><span class="badge ' + (t.scopes === 'ro' ? 'badge--accent' : 'badge--ok') + '">' + (t.scopes === 'ro' ? '只读' : '读写') + '</span></td>'
+          + '<td class="dev-dim">' + devDate(t.createdAt) + '</td>'
+          + '<td class="dev-dim">' + devAgo(t.lastUsedAt) + '</td>'
+          + '<td><span class="dev-state ' + (t.enabled ? 'is-on' : 'is-off') + '">'
+          +     '<span class="status-dot ' + (t.enabled ? 'is-online' : '') + '"></span>' + (t.enabled ? '启用' : '禁用') + '</span></td>'
+          + '<td class="dev-acts">'
+          +   '<button class="btn btn--sm" data-tok-toggle="' + esc(t.id) + '" data-next="' + (t.enabled ? '0' : '1') + '">'
+          +     (t.enabled ? '禁用' : '启用') + '</button>'
+          +   '<button class="btn btn--sm btn--danger" data-tok-del="' + esc(t.id) + '" data-name="' + esc(t.name) + '">删除</button>'
+          + '</td>'
+          + '</tr>';
+      }).join('')
+    + '</tbody></table></div>';
+}
+
+function devStatsCard(){
+  var s = devStats || {};
+  var t = s.totals || {};
+  return '<div class="card">'
+    + '<div class="card__head">' + icon('chart',15) + '<span class="card__title">调用统计（近 ' + devStatDays + ' 天）</span>'
+    +   '<div class="card__actions">'
+    +     '<select class="input dev-sel" id="devDays">'
+    +       [7,14,30].map(function(d){
+              return '<option value="' + d + '"' + (d === devStatDays ? ' selected' : '') + '>近 ' + d + ' 天</option>';
+            }).join('')
+    +     '</select>'
+    +   '</div>'
+    + '</div>'
+    + devKpis(t, s.delta)
+    + '<div class="dev-chart">' + devChart(s.series) + '</div>'
+    + '<div class="dev-chart__foot">' + devStatRange(s.series) + '</div>'
+    + '</div>';
+}
+
+function devKpis(t, d){
+  var items = [
+    { k:'total', l:'总请求',   v:devNum(t.total),    dv:d && d.total, bad:false },
+    { k:'ok',    l:'成功',     v:devNum(t.ok),       dv:d && d.ok,    bad:false },
+    { k:'fail',  l:'失败',     v:devNum(t.fail),     dv:d && d.fail,  bad:true  },
+    { k:'avgMs', l:'平均耗时', v:(t.avgMs || 0) + ' ms', dv:d && d.avgMs, bad:true }
+  ];
+  return '<div class="dev-kpis">'
+    + items.map(function(x){
+        var cls = 'dev-kpi__delta';
+        if(x.dv === null || x.dv === undefined) cls += ' is-flat';
+        else if(x.dv > 0) cls += x.bad ? ' is-down' : ' is-up';
+        else if(x.dv < 0) cls += x.bad ? ' is-up' : ' is-down';
+        else cls += ' is-flat';
+        return '<div class="dev-kpi">'
+          + '<div class="dev-kpi__label">' + esc(x.l) + '</div>'
+          + '<div class="dev-kpi__value">' + x.v + '</div>'
+          + '<div class="' + cls + '">' + devDeltaText(x.dv) + '</div>'
+          + '</div>';
+      }).join('')
+    + '</div>';
+}
+
+function devDeltaText(v){
+  if(v === null || v === undefined) return '较上期 —';
+  if(Math.abs(v) < 0.05) return '较上期 持平';
+  return '较上期 ' + (v > 0 ? '↑' : '↓') + Math.abs(v).toFixed(1) + '%';
+}
+
+function devStatRange(series){
+  if(!series || !series.length) return '暂无数据';
+  var a = series[0].date.slice(5).replace('-', '/');
+  var b = series[series.length - 1].date.slice(5).replace('-', '/');
+  return a + ' — ' + b;
+}
+
+function devChart(series){
+  if(!series || !series.length){
+    return '<div class="dev-chart__empty">' + icon('chart',24) + '<div>还没有统计数据</div>'
+      + '<div class="dev-chart__empty-sub">请求发生后会自动按天累计</div></div>';
+  }
+  var W = 600, H = 180, PL = 46, PR = 14, PT = 14, PB = 26;
+  var max = 1;
+  series.forEach(function(d){ if((d.total || 0) > max) max = d.total; });
+  var step = (W - PL - PR) / Math.max(1, series.length - 1);
+  var pts = series.map(function(d, i){
+    var x = PL + i * step;
+    var y = PT + (H - PT - PB) * (1 - (d.total || 0) / max);
+    return x.toFixed(1) + ',' + y.toFixed(1);
+  });
+  var area = (PL + ',' + (H - PB) + ' ' + pts.join(' ') + ' '
+    + (PL + (series.length - 1) * step).toFixed(1) + ',' + (H - PB));
+
+  var grid = '';
+  for(var g = 0; g <= 3; g++){
+    var gy = PT + (H - PT - PB) * g / 3;
+    grid += '<line x1="' + PL + '" y1="' + gy.toFixed(1) + '" x2="' + (W - PR) + '" y2="' + gy.toFixed(1) + '" class="dev-chart__grid"/>'
+      + '<text x="' + (PL - 8) + '" y="' + (gy + 3).toFixed(1) + '" class="dev-chart__ylab" text-anchor="end">'
+      + Math.round(max * (1 - g / 3)) + '</text>';
+  }
+  var xlab = series.map(function(d, i){
+    var x = PL + i * step;
+    return '<text x="' + x.toFixed(1) + '" y="' + (H - 8) + '" class="dev-chart__xlab" text-anchor="middle">'
+      + esc(d.date.slice(5).replace('-', '/')) + '</text>';
+  }).join('');
+
+  return '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none" class="dev-chart__svg">'
+    + grid
+    + '<polygon points="' + area + '" fill="var(--accent-soft)"/>'
+    + '<polyline points="' + pts.join(' ') + '" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linejoin="round"/>'
+    + xlab
+    + '</svg>';
+}
+
+function devAccessCard(){
+  var base = location.origin;
+  var ws = base.replace(/^http/, 'ws') + '/ws';
+  return '<div class="card">'
+    + '<div class="card__head">' + icon('link',15) + '<span class="card__title">API 访问信息</span></div>'
+    + '<div class="card__body">'
+    +   '<div class="dev-note dev-note--tight">在局域网内使用以下地址访问摄像头 API</div>'
+    +   '<button class="btn btn--sm" id="devOpenBase">' + icon('external',13) + '在浏览器中打开</button>'
+    +   devURLRow('基础地址', base, '')
+    +   devURLRow('WebSocket', ws, '未实现')
+    +   devURLRow('当前版本', 'v' + devVersion(), '')
+    +   '<div class="dev-quick">'
+    +     '<div class="dev-quick__head"><span>快速开始</span>'
+    +       '<div class="segmented" id="devQuickSeg">'
+    +         [['curl','cURL'],['python','Python'],['js','JS']].map(function(x){
+                  return '<button class="segmented__btn' + (devQuick === x[0] ? ' is-active' : '') + '" data-quick="' + x[0] + '">' + x[1] + '</button>';
+                }).join('')
+    +       '</div>'
+    +     '</div>'
+    +     '<div class="dev-code">'
+    +       '<pre class="code-block" id="devQuickCode">' + esc(devQuickCode()) + '</pre>'
+    +       '<button class="btn btn--sm dev-code__copy" data-copy-el="devQuickCode">' + icon('copy',13) + '复制</button>'
+    +     '</div>'
+    +   '</div>'
+    + '</div>'
+    + '</div>';
+}
+
+function devURLRow(label, val, badge){
+  var id = 'devv_' + Math.random().toString(36).slice(2, 8);
+  return '<div class="dev-url">'
+    + '<div class="dev-url__label">' + esc(label) + '</div>'
+    + '<div class="dev-url__row">'
+    +   '<code class="dev-url__val" id="' + id + '">' + esc(val) + '</code>'
+    +   (badge ? '<span class="badge badge--warn">' + esc(badge) + '</span>' : '')
+    +   '<button class="icon-btn" data-copy-el="' + id + '" title="复制">' + icon('copy',14) + '</button>'
+    + '</div>'
+    + '</div>';
+}
+
+function devQuickCode(){
+  var base = location.origin;
+  if(devQuick === 'python'){
+    return 'import requests\n\nBASE = "' + base + '"\n'
+      + 'r = requests.get(BASE + "/api/devices", timeout=10)\n'
+      + 'for d in r.json()["devices"]:\n'
+      + '    print(d["name"], d["online"])';
+  }
+  if(devQuick === 'js'){
+    return 'const BASE = "' + base + '";\n\n'
+      + 'const r = await fetch(BASE + "/api/devices");\n'
+      + 'const { devices } = await r.json();\n'
+      + 'console.log(devices.map(d => d.name));';
+  }
+  return 'curl -s "' + base + '/api/devices" | jq .\n\n'
+    + '# 第三方带 Token 调用（可选）\n'
+    + 'curl -s -H "Authorization: Bearer mcam_xxx" \\\n'
+    + '  "' + base + '/api/devices"';
+}
+
+function devLogsCard(list, compact){
+  return '<div class="card">'
+    + '<div class="card__head">' + icon('activity',15) + '<span class="card__title">最近请求日志</span>'
+    +   '<div class="card__actions">'
+    +     '<span class="dev-hint">' + devLogCount() + '</span>'
+    +     (compact ? '<button class="btn btn--sm" id="devLogsMore">查看全部</button>' : '')
+    +   '</div>'
+    + '</div>'
+    + devLogTable(list)
+    + '</div>';
+}
+
+function devLogCount(){
+  var lg = (devSt && devSt.logs) || {};
+  return (lg.buffered || 0) + ' / ' + (lg.cap || 200) + ' 条';
+}
+
+function devLogTable(list){
+  if(!list.length){
+    return '<div class="dev-empty">' + icon('activity',20)
+      + '<div>还没有请求记录</div>'
+      + '<div class="dev-empty__sub">只记录 /api/ 下的请求，最多保留 200 条</div></div>';
+  }
+  return '<div class="table-wrap"><table class="table">'
+    + '<thead><tr><th>时间</th><th>方法</th><th>路径</th><th>状态</th><th>耗时</th><th>来源</th></tr></thead>'
+    + '<tbody>'
+    + list.map(function(e){
+        var cls = e.status >= 500 ? 'badge--danger' : (e.status >= 400 ? 'badge--warn' : 'badge--ok');
+        return '<tr>'
+          + '<td class="dev-dim">' + devClock(e.time) + '</td>'
+          + '<td><span class="dev-method ' + (e.method === 'GET' ? 'is-get' : 'is-post') + '">' + esc(e.method) + '</span></td>'
+          + '<td class="dev-path">' + esc(e.path) + '</td>'
+          + '<td><span class="badge ' + cls + '">' + e.status + '</span></td>'
+          + '<td class="dev-dim">' + (e.ms || 0) + ' ms</td>'
+          + '<td class="dev-dim">' + esc(e.ip || '-') + '</td>'
+          + '</tr>';
+      }).join('')
+    + '</tbody></table></div>';
+}
+
+function devToolsCard(){
+  var tools = [
+    { ic:'file-video', t:'接口文档',     d:'Markdown 全文',  a:'docs' },
+    { ic:'download',   t:'下载 OpenAPI', d:'micam.json',     a:'openapi' },
+    { ic:'cpu',        t:'能力探测',     d:'硬件与编码器',    a:'caps' },
+    { ic:'refresh-cw', t:'Webhook 测试', d:'发一条示例事件',  a:'webhook' },
+    { ic:'database',   t:'诊断包',       d:'环境自检导出',    a:'diag' },
+    { ic:'timer',      t:'重置配置',     d:'恢复默认开关',    a:'reset', danger:true }
+  ];
+  return '<div class="card">'
+    + '<div class="card__head">' + icon('set',15) + '<span class="card__title">工具与资源</span></div>'
+    + '<div class="card__body dev-tools">'
+    + tools.map(function(x){
+        return '<button class="dev-tool' + (x.danger ? ' dev-tool--danger' : '') + '" data-tool="' + x.a + '">'
+          + '<span class="dev-tool__icon">' + icon(x.ic,16) + '</span>'
+          + '<span class="dev-tool__body">'
+          +   '<span class="dev-tool__label">' + esc(x.t) + '</span>'
+          +   '<span class="dev-tool__desc">' + esc(x.d) + '</span>'
+          + '</span>'
+          + '</button>';
+      }).join('')
+    + '</div>'
+    + '</div>';
+}
+
+// ---- 概览：事件绑定 ----
+
+function bindDevOverview(){
+  var m = document.getElementById('devMaster');
+  if(m) m.onchange = function(){
+    var body = { enabled: this.checked };
+    devSaveFlags(body, this.checked ? '开放模式已开启' : '开放模式已关闭');
+  };
+
+  Array.prototype.forEach.call(document.querySelectorAll('[data-cap]'), function(inp){
+    inp.onchange = function(){
+      var body = {};
+      body[this.dataset.cap] = this.checked;
+      devSaveFlags(body, null);
+    };
+  });
+
+  Array.prototype.forEach.call(document.querySelectorAll('[data-debug]'), function(inp){
+    inp.onchange = function(){
+      var body = {};
+      body[this.dataset.debug] = this.checked;
+      devSaveFlags(body, null);
+    };
+  });
+
+  var det = document.querySelector('[data-cap-detail]');
+  if(det) det.onclick = function(){ devDetailOpen = !devDetailOpen; devRepaintBody(); };
+
+  Array.prototype.forEach.call(document.querySelectorAll('[data-cap-go]'), function(b){
+    b.onclick = function(){
+      var t = this.dataset.capGo;
+      if(t === 'websocket'){ toast('WebSocket 尚未实现，可先用 HLS + 轮询代替', 'warn'); return; }
+      devTab = t;
+      stopDevTimers();
+      paintDev($('#content'));
+    };
+  });
+
+  var oc = document.getElementById('devTokenCreate');
+  if(oc) oc.onclick = devCreateTokenDialog;
+
+  var sd = document.getElementById('devDays');
+  if(sd) sd.onchange = function(){ devStatDays = parseInt(this.value, 10) || 7; devReloadStats(); };
+
+  var qs = document.querySelectorAll('#devQuickSeg .segmented__btn');
+  Array.prototype.forEach.call(qs, function(b){
+    b.onclick = function(){ devQuick = this.dataset.quick; devRepaintBody(); };
+  });
+
+  var ob = document.getElementById('devOpenBase');
+  if(ob) ob.onclick = function(){ window.open(location.origin, '_blank'); };
+
+  var more = document.getElementById('devLogsMore');
+  if(more) more.onclick = function(){ devTab = 'logs'; stopDevTimers(); paintDev($('#content')); };
+
+  Array.prototype.forEach.call(document.querySelectorAll('[data-tool]'), function(b){
+    b.onclick = function(){ devToolAction(this.dataset.tool); };
+  });
+
+  bindDevCopies();
+  bindDevTokenActions();
+}
+
+function devToolAction(a){
+  if(a === 'docs'){ window.open(apiUrl('/api/dev/docs'), '_blank'); return; }
+  if(a === 'openapi'){ window.open(apiUrl('/api/dev/openapi'), '_blank'); return; }
+  if(a === 'caps'){ devTab = 'docs'; paintDev($('#content')); return; }
+  if(a === 'webhook'){ devTab = 'webhook'; paintDev($('#content')); return; }
+  if(a === 'diag'){ devTab = 'diag'; paintDev($('#content')); return; }
+  if(a === 'reset'){ devResetConfig(); return; }
+}
+
+// ---- Tab：接口文档 ----
+
+function devDocsTab(){
+  return '<div class="card">'
+    + '<div class="card__head">' + icon('code',15) + '<span class="card__title">接口文档</span>'
+    +   '<div class="card__actions">'
+    +     '<button class="btn btn--sm" id="devBtnSpec">OpenAPI JSON</button>'
+    +     '<button class="btn btn--sm" id="devBtnDocs">Markdown</button>'
+    +   '</div>'
+    + '</div>'
+    + '<div class="api-list">'
+    + DEV_ENDPOINTS.map(function(e, i){
+        return '<div class="api-row">'
+          + '<span class="api-method ' + (e.m === 'GET' ? 'is-get' : 'is-post') + '">' + e.m + '</span>'
+          + '<span class="api-path">' + esc(e.p) + '</span>'
+          + '<span class="api-desc">' + esc(e.t) + '</span>'
+          + '<button class="btn btn--sm" data-call="' + i + '">调用</button>'
+          + '</div>';
+      }).join('')
+    + '</div>'
+    + '<div class="card__body" id="devResult"></div>'
+    + '</div>'
+
+    + '<div class="card">'
+    + '<div class="card__head">' + icon('cpu',15) + '<span class="card__title">能力探测</span>'
+    +   '<div class="card__actions"><button class="btn btn--sm" id="devCapsRefresh">刷新</button></div>'
+    + '</div>'
+    + '<div class="card__body" id="devCapsBox">' + loading('读取中…') + '</div>'
+    + '</div>';
+}
+
+function bindDevDocs(){
+  var b1 = document.getElementById('devBtnSpec');
+  if(b1) b1.onclick = function(){ window.open(apiUrl('/api/dev/openapi'), '_blank'); };
+  var b2 = document.getElementById('devBtnDocs');
+  if(b2) b2.onclick = function(){ window.open(apiUrl('/api/dev/docs'), '_blank'); };
+  Array.prototype.forEach.call(document.querySelectorAll('button[data-call]'), function(b){
+    b.onclick = function(){ callEndpoint(DEV_ENDPOINTS[parseInt(this.dataset.call, 10)]); };
+  });
+  var rf = document.getElementById('devCapsRefresh');
+  if(rf) rf.onclick = devLoadCaps;
+  devLoadCaps();
+}
+
+function callEndpoint(e){
+  var out = document.getElementById('devResult');
+  if(out) out.innerHTML = loading('请求 ' + e.p + ' …');
+  var t0 = Date.now();
+  api(e.p).then(function(r){
+    var ms = Date.now() - t0;
+    var txt = JSON.stringify(r, null, 2);
+    if(txt.length > 3000) txt = txt.slice(0, 3000) + '\n… （已截断）';
+    if(out) out.innerHTML = '<div class="dev-wh__head"><span class="badge badge--ok">' + ms + ' ms</span>'
+      + '<span class="dev-hint">' + esc(e.m + ' ' + e.p) + '</span></div>'
+      + '<div class="diag-result">' + esc(txt) + '</div>';
+  }).catch(function(err){
+    if(out) out.innerHTML = '<div class="dev-err">请求失败：' + esc(err.message) + '</div>';
+  });
+}
+
+function devLoadCaps(){
+  var box = document.getElementById('devCapsBox');
+  if(!box) return;
+  box.innerHTML = loading('读取中…');
+  api('/api/dev/capabilities').then(function(r){
+    var hw = r.hardware || {}, ft = r.features || {}, lm = r.limits || {}, sv = r.server || {};
+    var enc = (hw.encoders || []).map(function(x){ return x.name + (x.hardware ? '(硬)' : '(软)'); }).join('、');
+    var feats = Object.keys(ft).map(function(k){
+      return '<span class="badge ' + (ft[k] ? 'badge--ok' : 'badge--warn') + '">' + esc(k) + '</span>';
+    }).join(' ');
+    box.innerHTML = '<div class="dev-kv">'
+      + '<div class="dev-kv__row"><span>版本</span><b>' + esc((r.app || {}).version || '-') + '</b></div>'
+      + '<div class="dev-kv__row"><span>CPU</span><b>' + esc(hw.cpuModel || '-') + ' · ' + (hw.cpuCores || '-') + ' 核</b></div>'
+      + '<div class="dev-kv__row"><span>核显</span><b>' + (hw.hasDRI ? esc(hw.gpuInfo || '有') : '无') + '</b></div>'
+      + '<div class="dev-kv__row"><span>首选编码器</span><b>' + esc(hw.preferred || '-') + '</b></div>'
+      + '<div class="dev-kv__row"><span>可用编码器</span><b class="dev-kv__wrap">' + esc(enc) + '</b></div>'
+      + '<div class="dev-kv__row"><span>服务器时间</span><b>' + esc(sv.time || '-') + '</b></div>'
+      + '<div class="dev-kv__row"><span>功能</span><b>' + feats + '</b></div>'
+      + '<div class="dev-kv__row"><span>限制</span><b>fps≤' + (lm.maxFPS || '-') + ' · 宽≤' + (lm.maxWidth || '-')
+      +   ' · 分片 ' + (lm.hlsSegmentSec || '-') + 's</b></div>'
+      + '</div>';
+  }).catch(function(e){
+    box.innerHTML = '<div class="dev-err">' + esc(e.message) + '</div>';
+  });
+}
+
+// ---- Tab：API Token ----
+
+function devTokensTab(){
+  return '<div class="card">'
+    + '<div class="card__head">' + icon('lock',15) + '<span class="card__title">API Token（' + ((devSt && devSt.tokens && devSt.tokens.total) || 0) + '）</span>'
+    +   '<div class="card__actions">'
+    +     '<button class="btn btn--sm btn--accent" id="devTokenCreate">' + icon('plus',13) + '创建 Token</button>'
+    +   '</div>'
+    + '</div>'
+    + '<div class="dev-note">第三方请求带 <code class="dev-code-inline">Authorization: Bearer mcam_…</code> 即可调用。'
+    +   '权限「只读」仅允许 GET；禁用或删除后立即失效。</div>'
+    + devTokenTable(devTokens)
+    + '</div>'
+    + '<div class="card">'
+    + '<div class="card__head">' + icon('info',15) + '<span class="card__title">调用示例</span></div>'
+    + '<div class="card__body">'
+    +   '<pre class="code-block" id="devTokenSample">' + esc(devTokenSample()) + '</pre>'
+    +   '<button class="btn btn--sm dev-code__copy" data-copy-el="devTokenSample">' + icon('copy',13) + '复制</button>'
+    +   '<div class="dev-note dev-note--tight">注意：带 Token 的请求若访问录像文件接口，需要「本地文件访问」能力处于开启状态。</div>'
+    + '</div>'
+    + '</div>';
+}
+
+function devTokenSample(){
+  return 'curl -s -H "Authorization: Bearer mcam_xxx" \\\n'
+    + '  "' + location.origin + '/api/devices"';
+}
+
+function bindDevTokens(){
+  var oc = document.getElementById('devTokenCreate');
+  if(oc) oc.onclick = devCreateTokenDialog;
+  bindDevCopies();
+  bindDevTokenActions();
+}
+
+function bindDevTokenActions(){
+  Array.prototype.forEach.call(document.querySelectorAll('[data-tok-del]'), function(b){
+    b.onclick = function(){
+      var id = this.dataset.tokDel, name = this.dataset.name || '';
+      if(!confirm('删除 Token「' + name + '」？使用它的第三方会立即失效。')) return;
+      api('/api/dev/tokens?id=' + encodeURIComponent(id), { method: 'DELETE' }).then(function(r){
+        if(r && r.msg){ toast(r.msg, 'err'); return; }
+        toast('已删除', 'ok');
+        devReloadTokens();
+      }).catch(function(e){ toast('删除失败：' + e.message, 'err'); });
+    };
+  });
+
+  Array.prototype.forEach.call(document.querySelectorAll('[data-tok-toggle]'), function(b){
+    b.onclick = function(){
+      var id = this.dataset.tokToggle;
+      var next = this.dataset.next === '1';
+      api('/api/dev/tokens', {
+        method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: id, enabled: next })
+      }).then(function(r){
+        if(r && r.msg){ toast(r.msg, 'err'); return; }
+        toast(next ? '已启用' : '已禁用', 'ok');
+        devReloadTokens();
+      }).catch(function(e){ toast('操作失败：' + e.message, 'err'); });
+    };
+  });
+}
+
+function devCreateTokenDialog(){
+  openModal('创建 API Token',
+    '<div class="field"><label class="field__label">名称</label>'
+    + '<input class="input" id="devNewName" placeholder="例如 HomeAssistant" maxlength="40"></div>'
+    + '<div class="field"><label class="field__label">权限</label>'
+    + '<select class="input" id="devNewScopes">'
+    +   '<option value="rw">读写（可调用全部接口）</option>'
+    +   '<option value="ro">只读（仅 GET 请求）</option>'
+    + '</select></div>'
+    + '<div class="dev-sub__tip">' + icon('info',12) + ' Token 明文只在创建后显示一次，服务端只保存哈希。</div>',
+    function(root){
+      var foot = document.createElement('div');
+      foot.className = 'dialog__foot';
+      foot.innerHTML = '<button class="btn" id="devNewCancel">取消</button>'
+        + '<button class="btn btn--primary" id="devNewOk">创建</button>';
+      root.querySelector('.dialog').appendChild(foot);
+      root.querySelector('#devNewCancel').onclick = closeModal;
+      root.querySelector('#devNewOk').onclick = function(){
+        var name = root.querySelector('#devNewName').value;
+        var scopes = root.querySelector('#devNewScopes').value;
+        api('/api/dev/tokens', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: name, scopes: scopes })
+        }).then(function(r){
+          if(r && r.msg){ toast(r.msg, 'err'); return; }
+          closeModal();
+          devShowToken(r.token, r.item);
+          devReloadTokens();
+        }).catch(function(e){ toast('创建失败：' + e.message, 'err'); });
+      };
+    });
+}
+
+function devShowToken(val, item){
+  openModal('Token 已创建：' + ((item && item.name) || ''),
+    '<div class="dev-tokenbox">'
+    + '<div class="dev-tokenbox__label">请立即复制并妥善保存（关闭后无法再次查看）</div>'
+    + '<code class="dev-tokenbox__val" id="devNewTokenVal">' + esc(val) + '</code>'
+    + '</div>',
+    function(root){
+      var foot = document.createElement('div');
+      foot.className = 'dialog__foot';
+      foot.innerHTML = '<button class="btn" id="devTokClose">关闭</button>'
+        + '<button class="btn btn--primary" id="devTokCopy">' + icon('copy',14) + '复制 Token</button>';
+      root.querySelector('.dialog').appendChild(foot);
+      root.querySelector('#devTokClose').onclick = closeModal;
+      root.querySelector('#devTokCopy').onclick = function(){ copyText(val, 'Token 已复制'); };
+    });
+}
+
+// ---- Tab：请求日志 ----
+
+function devLogsTab(){
+  return '<div class="card">'
+    + '<div class="card__head">' + icon('activity',15) + '<span class="card__title">请求日志</span>'
+    +   '<div class="card__actions">'
+    +     '<span class="dev-hint">' + devLogCount() + '</span>'
+    +     '<label class="switch"><input type="checkbox" id="devLogAuto"' + (devLogAutoOn ? ' checked' : '') + '><span class="switch__track"></span></label>'
+    +     '<span class="dev-hint">自动刷新</span>'
+    +     '<button class="btn btn--sm" id="devLogRefresh">' + icon('refresh',13) + '刷新</button>'
+    +   '</div>'
+    + '</div>'
+    + devLogTable(devLogs)
+    + '</div>'
+    + '<div class="dev-note dev-note--tight">只记录 /api/ 下的请求（跳过日志接口本身与流式接口），最多保留 200 条，仅存内存。</div>';
+}
+
+function bindDevLogs(){
+  var rf = document.getElementById('devLogRefresh');
+  if(rf) rf.onclick = devReloadLogs;
+  var au = document.getElementById('devLogAuto');
+  if(au) au.onchange = function(){
+    devLogAutoOn = this.checked;
+    stopDevTimers();
+    if(devLogAutoOn){
+      devLogTimer = setInterval(devReloadLogs, 5000);
+      toast('每 5 秒自动刷新', 'ok');
+    }
+  };
+  if(devLogAutoOn && !devLogTimer) devLogTimer = setInterval(devReloadLogs, 5000);
+}
+
+function devReloadLogs(){
+  api('/api/dev/logs?limit=50').then(function(r){
+    devLogs = (r && r.items) || [];
+    if(devTab === 'logs' || devTab === 'overview') devRepaintBody();
+    api('/api/dev/status').then(function(s){ devSt = s; }).catch(function(){});
+  }).catch(function(){});
+}
+
+// ---- Tab：调用统计 ----
+
+function devStatsTab(){
+  var s = devStats || {};
+  var series = s.series || [];
+  return '<div class="card">'
+    + '<div class="card__head">' + icon('chart',15) + '<span class="card__title">调用统计</span>'
+    +   '<div class="card__actions">'
+    +     '<select class="input dev-sel" id="devDays">'
+    +       [7,14,30].map(function(d){
+              return '<option value="' + d + '"' + (d === devStatDays ? ' selected' : '') + '>近 ' + d + ' 天</option>';
+            }).join('')
+    +     '</select>'
+    +   '</div>'
+    + '</div>'
+    + devKpis(s.totals || {}, s.delta)
+    + '<div class="dev-chart">' + devChart(series) + '</div>'
+    + '<div class="dev-chart__foot">' + devStatRange(series) + '</div>'
+    + '<div class="table-wrap"><table class="table">'
+    +   '<thead><tr><th>日期</th><th>请求</th><th>成功</th><th>失败</th><th>平均耗时</th></tr></thead>'
+    +   '<tbody>'
+    +   series.slice().reverse().map(function(d){
+          return '<tr>'
+            + '<td class="dev-dim">' + esc(d.date) + '</td>'
+            + '<td>' + devNum(d.total) + '</td>'
+            + '<td>' + devNum(d.ok) + '</td>'
+            + '<td>' + devNum(d.fail) + '</td>'
+            + '<td class="dev-dim">' + (d.avgMs || 0) + ' ms</td>'
+            + '</tr>';
+        }).join('')
+    +   '</tbody>'
+    + '</table></div>'
+    + '</div>'
+    + '<div class="dev-note dev-note--tight">按天聚合的数据会落到 dev-stats.json，重启后仍保留最近 30 天；'
+    +   '「最近请求日志」是内存缓冲，重启即清空。</div>';
+}
+
+function bindDevStats(){
+  var sd = document.getElementById('devDays');
+  if(sd) sd.onchange = function(){ devStatDays = parseInt(this.value, 10) || 7; devReloadStats(); };
+}
+
+function devReloadStats(){
+  api('/api/dev/stats?days=' + devStatDays).then(function(r){
+    devStats = r;
+    if(devTab === 'stats' || devTab === 'overview') devRepaintBody();
+  }).catch(function(){});
+}
+
+// ---- Tab：Webhook 测试 ----
+
+function devWebhookTab(){
+  return '<div class="card">'
+    + '<div class="card__head">' + icon('refresh-cw',15) + '<span class="card__title">Webhook 测试</span></div>'
+    + '<div class="card__body">'
+    +   '<div class="dev-note dev-note--tight">填一个公网或局域网地址，点「发送」会真的发一条 POST 过去'
+    +     '（超时 10 秒，只回显响应前 4KB）。</div>'
+    +   '<div class="dev-field">'
+    +     '<input class="input" id="devWebhookURL" placeholder="https://example.com/micam/webhook">'
+    +     '<button class="btn btn--primary" id="devWebhookSend">' + icon('play',13) + '发送测试</button>'
+    +   '</div>'
+    +   '<div id="devWebhookResult"></div>'
+    + '</div>'
+    + '</div>'
+    + '<div class="card">'
+    + '<div class="card__head">' + icon('code',15) + '<span class="card__title">示例负载</span></div>'
+    + '<div class="card__body">'
+    +   '<pre class="code-block" id="devWebhookSample">' + esc(devWebhookSample()) + '</pre>'
+    +   '<button class="btn btn--sm dev-code__copy" data-copy-el="devWebhookSample">' + icon('copy',13) + '复制</button>'
+    + '</div>'
+    + '</div>';
+}
+
+function devWebhookSample(){
+  return '{\n'
+    + '  "type": "event",\n'
+    + '  "test": true,\n'
+    + '  "at": "2026-09-17T19:30:00+08:00",\n'
+    + '  "event": {\n'
+    + '    "id": "evt_test_0001",\n'
+    + '    "time": "2026-09-17 19:30:00",\n'
+    + '    "did": "1000000105",\n'
+    + '    "device": "门口",\n'
+    + '    "type": "motion",\n'
+    + '    "desc": "有人经过",\n'
+    + '    "aiCls": "person",\n'
+    + '    "conf": 0.93,\n'
+    + '    "importance": 0.7,\n'
+    + '    "thumbURL": "<你的 NAS 地址>/api/events/thumb?id=evt_test_0001"\n'
+    + '  }\n'
+    + '}';
+}
+
+function bindDevWebhook(){
+  bindDevCopies();
+  var b = document.getElementById('devWebhookSend');
+  if(b) b.onclick = function(){
+    var inp = document.getElementById('devWebhookURL');
+    var out = document.getElementById('devWebhookResult');
+    var u = inp ? inp.value.trim() : '';
+    if(!u){ toast('请先填写目标地址', 'err'); return; }
+    if(out) out.innerHTML = loading('正在发送…');
+    api('/api/dev/webhook/test', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: u })
+    }).then(function(r){
+      if(!out) return;
+      if(r && r.msg){ out.innerHTML = '<div class="dev-err">' + esc(r.msg) + '</div>'; return; }
+      var head = '<div class="dev-wh__head">'
+        + '<span class="badge ' + (r.ok ? 'badge--ok' : 'badge--danger') + '">'
+        + (r.status ? 'HTTP ' + r.status : '请求失败') + '</span>'
+        + '<span class="dev-hint">' + (r.ms || 0) + ' ms</span></div>';
+      out.innerHTML = head
+        + (r.error ? '<div class="dev-err">' + esc(r.error) + '</div>' : '')
+        + (r.body ? '<div class="diag-result">' + esc(r.body) + '</div>' : '<div class="dev-empty__sub">对端没有返回响应体</div>');
+    }).catch(function(e){
+      if(out) out.innerHTML = '<div class="dev-err">' + esc(e.message) + '</div>';
+    });
+  };
+}
+
+// ---- Tab：诊断包 ----
+
+function devDiagTab(){
+  return '<div class="card">'
+    + '<div class="card__head">' + icon('database',15) + '<span class="card__title">诊断包</span></div>'
+    + '<div class="card__body">'
+    +   '<div class="dev-note dev-note--tight">导出环境自检与运行信息，便于排查问题（不含账号与密钥）。</div>'
+    +   '<div class="dev-tools dev-tools--wide">'
+    +     '<button class="dev-tool" data-diag="bundle"><span class="dev-tool__icon">' + icon('download',16) + '</span>'
+    +       '<span class="dev-tool__body"><span class="dev-tool__label">下载诊断包</span>'
+    +       '<span class="dev-tool__desc">/api/diag/bundle</span></span></button>'
+    +     '<button class="dev-tool" data-diag="report"><span class="dev-tool__icon">' + icon('activity',16) + '</span>'
+    +       '<span class="dev-tool__body"><span class="dev-tool__label">查看诊断报告</span>'
+    +       '<span class="dev-tool__desc">/api/diag/report</span></span></button>'
+    +     '<button class="dev-tool" data-diag="check"><span class="dev-tool__icon">' + icon('shield',16) + '</span>'
+    +       '<span class="dev-tool__body"><span class="dev-tool__label">环境自检</span>'
+    +       '<span class="dev-tool__desc">/api/setup/check</span></span></button>'
+    +   '</div>'
+    +   '<div id="devDiagResult"></div>'
+    + '</div>'
+    + '</div>'
+
+    + '<div class="card">'
+    + '<div class="card__head">' + icon('close',15) + '<span class="card__title">危险操作</span></div>'
+    + '<div class="card__body">'
+    +   '<div class="dev-note dev-note--tight">关闭开发者模式会同时复位全部开放能力开关（含「本地文件访问」）。</div>'
+    +   '<button class="btn btn--danger" id="devDisable">关闭开发者模式</button>'
+    + '</div>'
+    + '</div>';
+}
+
+function bindDevDiag(){
+  Array.prototype.forEach.call(document.querySelectorAll('[data-diag]'), function(b){
+    b.onclick = function(){
+      var k = this.dataset.diag;
+      if(k === 'bundle'){ window.open(apiUrl('/api/diag/bundle'), '_blank'); return; }
+      var out = document.getElementById('devDiagResult');
+      if(out) out.innerHTML = loading('读取中…');
+      var p = k === 'check' ? '/api/setup/check' : '/api/diag/report';
+      api(p).then(function(r){
+        var txt = JSON.stringify(r, null, 2);
+        if(txt.length > 4000) txt = txt.slice(0, 4000) + '\n… （已截断）';
+        if(out) out.innerHTML = '<div class="diag-result">' + esc(txt) + '</div>';
+      }).catch(function(e){
+        if(out) out.innerHTML = '<div class="dev-err">' + esc(e.message) + '</div>';
+      });
+    };
+  });
+
+  var d = document.getElementById('devDisable');
+  if(d) d.onclick = function(){
+    if(!confirm('关闭开发者模式？开放模式的开关会全部复位。')) return;
+    api('/api/dev/reset', { method: 'POST' }).then(function(){
       DEV_UNLOCKED = false;
-      toast("已关闭开发者模式", "ok");
-      page = "devices";
-      setPageTitle("设备列表");
+      toast('已关闭开发者模式', 'ok');
+      page = 'devices';
+      setPageTitle('设备列表');
       renderMenu();
       render();
     });
   };
 }
 
-// 开放模式开关
-var DEV_FLAG_DEFS = [
-  {k:"allowLan",   t:"允许局域网直连", d:"开启 :8900 端口，第三方客户端可直连（Mac App 用）"},
-  {k:"cors",       t:"允许跨域 (CORS)", d:"网页端 / Electron 调试时需要"},
-  {k:"exposeSpec", t:"暴露接口规格", d:"开放 /api/dev/openapi 和 /api/dev/docs"},
-  {k:"verboseLog", t:"详细日志", d:"记录凭据申请、连接生命周期等细节"},
-  {k:"mockMode",   t:"模拟数据模式", d:"不连真实设备，方便 UI 开发（未实现）"}
-];
+// ---- 状态与工具 ----
 
-function loadDevFlags(){
-  var box = $("#devFlags");
-  if(!box) return;
-  api("/api/dev/status").then(function(r){
-    var f = r.flags || {};
-    box.innerHTML = DEV_FLAG_DEFS.map(function(x){
-      var on = !!f[x.k];
-      return "<div class=\"check-item\">"
-        + "<div class=\"check-item__body\">"
-        +   "<div class=\"check-item__name\">" + esc(x.t) + "</div>"
-        +   "<div class=\"check-item__detail\">" + esc(x.d) + "</div>"
-        + "</div>"
-        + "<label class=\"switch\"><input type=\"checkbox\" data-flag=\"" + x.k + "\"" + (on ? " checked" : "") + "><span></span></label>"
-        + "</div>";
-    }).join("");
-    Array.prototype.forEach.call(box.querySelectorAll("input[data-flag]"), function(inp){
-      inp.onchange = function(){
-        var body = {};
-        body[this.dataset.flag] = this.checked;
-        api("/api/dev/config", {
-          method:"POST", headers:{"Content-Type":"application/json"},
-          body: JSON.stringify(body)
-        }).then(function(){
-          toast("已保存", "ok");
-        }).catch(function(e){
-          toast("保存失败：" + e.message, "err");
-        });
-      };
-    });
-  }).catch(function(e){
-    box.innerHTML = "<div style=\"padding:16px 24px;color:var(--danger)\">" + esc(e.message) + "</div>";
+function devFlag(k){
+  return !!(devSt && devSt.flags && devSt.flags[k]);
+}
+
+function devVersion(){
+  return (devSt && devSt.app && devSt.app.version) || '';
+}
+
+function devSaveFlags(body, okMsg){
+  api('/api/dev/config', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  }).then(function(r){
+    if(r && r.msg){ toast(r.msg, 'err'); return; }
+    if(okMsg) toast(okMsg, 'ok');
+    devReloadStatus();
+  }).catch(function(e){ toast('保存失败：' + e.message, 'err'); });
+}
+
+function devReloadStatus(){
+  api('/api/dev/status').then(function(r){
+    devSt = r;
+    if(devTab) devRepaintBody();
+  }).catch(function(){});
+}
+
+function devReloadTokens(){
+  api('/api/dev/tokens').then(function(r){
+    devTokens = (r && r.items) || [];
+    devRepaintBody();
+  }).catch(function(){});
+}
+
+function devResetConfig(){
+  if(!confirm('重置开放模式配置？所有开关（含「本地文件访问」）会恢复默认值。')) return;
+  if(!confirm('再次确认：确定要重置吗？此操作立即对第三方生效。')) return;
+  api('/api/dev/reset-config', { method: 'POST' }).then(function(r){
+    if(r && r.msg){ toast(r.msg, 'err'); return; }
+    toast('已恢复默认配置', 'ok');
+    devReloadStatus();
+  }).catch(function(e){ toast('重置失败：' + e.message, 'err'); });
+}
+
+function bindDevCopies(){
+  Array.prototype.forEach.call(document.querySelectorAll('[data-copy-el]'), function(b){
+    b.onclick = function(){
+      var el = document.getElementById(this.dataset.copyEl);
+      if(el) copyText(el.textContent || el.innerText || '', '已复制');
+    };
   });
 }
 
-// 接口清单
+// copyText 复制文本。
+//
+// 注意：局域网是 http 访问，**不是安全上下文**，
+// navigator.clipboard 在 http://192.168.x.x 下是 undefined，
+// 所以必须保留 execCommand 回退，否则复制按钮在真实环境里全废。
+function copyText(txt, okMsg){
+  var ok = function(){ toast(okMsg || '已复制', 'ok'); };
+  var bad = function(){ toast('复制失败，请手动选择文本', 'err'); };
+  if(navigator.clipboard && window.isSecureContext){
+    navigator.clipboard.writeText(txt).then(ok).catch(function(){
+      if(devCopyFallback(txt)) ok(); else bad();
+    });
+    return;
+  }
+  if(devCopyFallback(txt)) ok(); else bad();
+}
+
+function devCopyFallback(txt){
+  try{
+    var ta = document.createElement('textarea');
+    ta.value = txt;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.left = '-9999px';
+    ta.style.top = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    ta.setSelectionRange(0, ta.value.length);
+    var ok = document.execCommand('copy');
+    ta.remove();
+    return ok;
+  }catch(e){
+    return false;
+  }
+}
+
+function p2(n){ return (n < 10 ? '0' : '') + n; }
+
+function devDate(iso){
+  if(!iso) return '-';
+  var d = new Date(iso);
+  if(isNaN(d.getTime())) return '-';
+  return d.getFullYear() + '-' + p2(d.getMonth() + 1) + '-' + p2(d.getDate());
+}
+
+function devClock(iso){
+  if(!iso) return '-';
+  var d = new Date(iso);
+  if(isNaN(d.getTime())) return '-';
+  return p2(d.getHours()) + ':' + p2(d.getMinutes()) + ':' + p2(d.getSeconds());
+}
+
+function devAgo(iso){
+  if(!iso) return '从未';
+  var d = new Date(iso);
+  if(isNaN(d.getTime())) return '从未';
+  var s = (Date.now() - d.getTime()) / 1000;
+  if(s < 60) return '刚刚';
+  if(s < 3600) return Math.floor(s / 60) + ' 分钟前';
+  if(s < 86400) return Math.floor(s / 3600) + ' 小时前';
+  return Math.floor(s / 86400) + ' 天前';
+}
+
+function devNum(n){
+  n = n || 0;
+  return n.toLocaleString('zh-CN');
+}
+
+// 开发者页保留的接口清单（docs Tab 用，可点「调用」自测）
 var DEV_ENDPOINTS = [
   {m:"GET",  p:"/api/health",              t:"健康检查"},
   {m:"GET",  p:"/api/dev/capabilities",    t:"能力探测"},
+  {m:"GET",  p:"/api/dev/status",          t:"开放模式状态"},
+  {m:"GET",  p:"/api/dev/tokens",          t:"Token 列表"},
+  {m:"GET",  p:"/api/dev/logs?limit=20",   t:"请求日志"},
+  {m:"GET",  p:"/api/dev/stats?days=7",    t:"调用统计"},
   {m:"GET",  p:"/api/devices",             t:"摄像头列表"},
   {m:"GET",  p:"/api/devices/all",         t:"全部设备"},
   {m:"GET",  p:"/api/homes",               t:"家庭列表"},
@@ -5671,73 +6654,6 @@ var DEV_ENDPOINTS = [
   {m:"GET",  p:"/api/platform",            t:"平台信息"}
 ];
 
-function loadDevEndpoints(){
-  var box = $("#devEndpoints");
-  if(!box) return;
-  box.innerHTML = "<div class=\"table-wrap\"><table>"
-    + "<thead><tr><th style=\"width:60px\">方法</th><th>路径</th><th>说明</th><th style=\"width:80px\"></th></tr></thead>"
-    + "<tbody>"
-    + DEV_ENDPOINTS.map(function(e, i){
-        return "<tr>"
-          + "<td><span class=\"badge badge--ok\" style=\"font-size:10px\">" + e.m + "</span></td>"
-          + "<td style=\"font-family:monospace;font-size:12px\">" + esc(e.p) + "</td>"
-          + "<td style=\"font-size:12px;color:var(--text-3)\">" + esc(e.t) + "</td>"
-          + "<td><button class=\"btn btn--sm\" data-call=\"" + i + "\">调用</button></td>"
-          + "</tr>";
-      }).join("")
-    + "</tbody></table></div>"
-    + "<div id=\"devResult\" style=\"padding:0 24px 16px\"></div>";
-
-  Array.prototype.forEach.call(box.querySelectorAll("button[data-call]"), function(b){
-    b.onclick = function(){
-      var e = DEV_ENDPOINTS[parseInt(this.dataset.call, 10)];
-      callEndpoint(e);
-    };
-  });
-}
-
-function callEndpoint(e){
-  var out = document.getElementById("devResult");
-  if(out) out.innerHTML = "<div style=\"font-size:12px;color:var(--text-3)\">请求 " + esc(e.p) + " …</div>";
-  var t0 = Date.now();
-  api(e.p).then(function(r){
-    var ms = Date.now() - t0;
-    var txt = JSON.stringify(r, null, 2);
-    if(txt.length > 3000) txt = txt.slice(0, 3000) + "\n… （已截断）";
-    if(out) out.innerHTML = "<div style=\"font-size:12px;margin-bottom:6px\">"
-      + "<span class=\"badge badge--ok\">" + ms + " ms</span></div>"
-      + "<pre style=\"background:var(--surface-hover);padding:12px;border-radius:6px;font-size:11px;overflow:auto;max-height:300px\">" + esc(txt) + "</pre>";
-  }).catch(function(err){
-    if(out) out.innerHTML = "<div style=\"color:var(--danger);font-size:12px\">失败：" + esc(err.message) + "</div>";
-  });
-}
-
-// 能力探测
-function loadDevCaps(){
-  var box = $("#devCaps");
-  if(!box) return;
-  box.innerHTML = loading("读取中…");
-  api("/api/dev/capabilities").then(function(r){
-    var hw = r.hardware || {}, ft = r.features || {}, lm = r.limits || {}, sv = r.server || {};
-    var enc = (hw.encoders || []).map(function(x){ return x.name + (x.hardware ? "(硬)" : "(软)"); }).join("、");
-    var feats = Object.keys(ft).map(function(k){
-      var on = ft[k];
-      return "<span class=\"tag " + (on ? "tag-on" : "tag-off") + "\" style=\"margin:2px\">" + k + "</span>";
-    }).join(" ");
-    box.innerHTML = "<table style=\"font-size:12px\">"
-      + "<tr><td style=\"width:120px;color:var(--text-3)\">版本</td><td>" + esc((r.app||{}).version) + "</td></tr>"
-      + "<tr><td style=\"color:var(--text-3)\">CPU</td><td>" + esc(hw.cpuModel || "-") + " · " + (hw.cpuCores||"-") + " 核</td></tr>"
-      + "<tr><td style=\"color:var(--text-3)\">核显</td><td>" + (hw.hasDRI ? esc(hw.gpuInfo || "有") : "无") + "</td></tr>"
-      + "<tr><td style=\"color:var(--text-3)\">首选编码器</td><td>" + esc(hw.preferred || "-") + "</td></tr>"
-      + "<tr><td style=\"color:var(--text-3)\">可用编码器</td><td style=\"word-break:break-all\">" + esc(enc) + "</td></tr>"
-      + "<tr><td style=\"color:var(--text-3)\">服务器时间</td><td>" + esc(sv.time || "-") + "</td></tr>"
-      + "<tr><td style=\"color:var(--text-3)\">功能</td><td>" + feats + "</td></tr>"
-      + "<tr><td style=\"color:var(--text-3)\">限制</td><td>fps≤" + (lm.maxFPS||"-") + " · 宽≤" + (lm.maxWidth||"-") + " · 分片 " + (lm.hlsSegmentSec||"-") + "s</td></tr>"
-      + "</table>";
-  }).catch(function(e){
-    box.innerHTML = "<div style=\"color:var(--danger);font-size:12px\">" + esc(e.message) + "</div>";
-  });
-}
 
 // ===== 页面：系统设置 =====
 // ===== 页面：设置（对齐效果图）=====
@@ -6740,4 +7656,186 @@ api("/api/setup/check").then(function(st){
   render();
 });
 initSDK();
+})();
+
+
+// ===== 顶栏右上角：用户菜单 + 全局搜索 =====
+//
+// 背景：原先 #btnUser（我的家）和 #globalSearch 都**没有绑定**，
+// 是纯装饰元素，点了没反应。
+//
+// 设计：
+//   「我的家」下拉 = 家庭信息 + 快捷入口（账号/设置/关于）
+//   搜索框 = 按名称/类型跨设备与事件搜索
+
+var _topnavHome = { homes: [], current: '' };
+
+function initTopNav(){
+  bindUserMenu();
+  bindGlobalSearch();
+  loadTopNavHome();
+}
+
+// loadTopNavHome 读家庭列表，显示当前家庭名
+function loadTopNavHome(){
+  api('/api/homes').then(function(d){
+    var hs = (d && d.homes) || (Array.isArray(d) ? d : []);
+    if(!hs.length) return;
+
+    // 优先用自己的非共享家庭
+    var own = hs.filter(function(h){ return !h.shared; });
+    var cur = own[0] || hs[0];
+
+    _topnavHome.homes = hs;
+    _topnavHome.current = cur.name || '我的家';
+
+    var homeEl = document.getElementById('userHome');
+    if(homeEl) homeEl.textContent = _topnavHome.current;
+
+    var nameEl = document.getElementById('userName');
+    if(nameEl) nameEl.textContent = _topnavHome.current;
+
+    var av = document.getElementById('userAvatar');
+    if(av) av.textContent = (_topnavHome.current || '家').slice(0,1);
+  }).catch(function(){ /* 读不到就保持默认文案 */ });
+}
+
+// bindUserMenu 「我的家」下拉
+function bindUserMenu(){
+  var btn = document.getElementById('btnUser');
+  if(!btn || btn.dataset.bound) return;
+  btn.dataset.bound = '1';
+
+  btn.onclick = function(e){
+    e.stopPropagation();
+    var old = document.getElementById('userMenu');
+    if(old){ old.remove(); return; }
+
+    var hs = _topnavHome.homes || [];
+    var menu = document.createElement('div');
+    menu.className = 'usermenu';
+    menu.id = 'userMenu';
+
+    menu.innerHTML = ''
+      + '<div class="usermenu__head">'
+      +   '<div class="usermenu__avatar">' + esc((_topnavHome.current||'家').slice(0,1)) + '</div>'
+      +   '<div class="usermenu__body">'
+      +     '<div class="usermenu__name">' + esc(_topnavHome.current || '我的家') + '</div>'
+      +     '<div class="usermenu__sub">' + hs.length + ' 个家庭 · ' + (devices||[]).length + ' 台设备</div>'
+      +   '</div>'
+      + '</div>'
+
+      + (hs.length > 1
+          ? '<div class="usermenu__label">家庭</div>'
+            + hs.map(function(h){
+                var on = (h.name === _topnavHome.current);
+                return '<button class="usermenu__item' + (on ? ' is-on' : '') + '" data-home="' + esc(h.id) + '">'
+                  + icon(on ? 'check' : 'home', 14)
+                  + '<span>' + esc(h.name || ('家庭 ' + h.id)) + '</span>'
+                  + (h.shared ? '<em>共享</em>' : '')
+                  + '</button>';
+              }).join('')
+          : '')
+
+      + '<div class="usermenu__sep"></div>'
+      + '<button class="usermenu__item" data-goto-page="accounts">' + icon('user',14) + '<span>账号管理</span></button>'
+      + '<button class="usermenu__item" data-goto-page="settings">' + icon('settings',14) + '<span>设置</span></button>'
+      + '<button class="usermenu__item" data-goto-tab="notify">' + icon('bell',14) + '<span>通知设置</span></button>'
+      + '<button class="usermenu__item" data-goto-page="dev">' + icon('code',14) + '<span>开发者</span></button>'
+      + '<div class="usermenu__sep"></div>'
+      + '<button class="usermenu__item" data-about="1">' + icon('info',14) + '<span>关于 MiCam ' + esc(APP_VER||'') + '</span></button>';
+
+    document.body.appendChild(menu);
+
+    // 定位到按钮下方
+    var r = btn.getBoundingClientRect();
+    menu.style.top = (r.bottom + 8) + 'px';
+    menu.style.right = Math.max(12, window.innerWidth - r.right) + 'px';
+
+    // 点菜单项
+    Array.prototype.forEach.call(menu.querySelectorAll('[data-goto-page]'), function(el){
+      el.onclick = function(){
+        page = this.dataset.gotoPage; renderMenu(); render(); menu.remove();
+      };
+    });
+    Array.prototype.forEach.call(menu.querySelectorAll('[data-goto-tab]'), function(el){
+      el.onclick = function(){
+        page = 'settings'; setTab = this.dataset.gotoTab; renderMenu(); render(); menu.remove();
+      };
+    });
+    var ab = menu.querySelector('[data-about]');
+    if(ab) ab.onclick = function(){
+      toast('MiCam ' + (APP_VER||'') + ' · 飞牛 NAS 的小米摄像头插件', 'ok');
+      menu.remove();
+    };
+    Array.prototype.forEach.call(menu.querySelectorAll('[data-home]'), function(el){
+      el.onclick = function(){
+        var id = this.dataset.home;
+        var h = (_topnavHome.homes||[]).filter(function(x){ return String(x.id) === String(id); })[0];
+        if(!h) return;
+        _topnavHome.current = h.name || ('家庭 ' + id);
+        var homeEl = document.getElementById('userHome');
+        if(homeEl) homeEl.textContent = _topnavHome.current;
+        // 记到本地，下次进来沿用（后端暂不支持按家庭过滤设备）
+        try { localStorage.setItem('micam.home', JSON.stringify({ id: id, name: _topnavHome.current })); } catch(e){}
+        toast('已切换到「' + _topnavHome.current + '」\n\n注：设备列表暂未按家庭过滤', 'warn');
+        menu.remove();
+      };
+    });
+
+    // 点别处关闭
+    setTimeout(function(){
+      document.addEventListener('click', function close(ev){
+        if(!menu.contains(ev.target)){ menu.remove(); document.removeEventListener('click', close); }
+      });
+    }, 0);
+  };
+}
+
+// bindGlobalSearch 顶栏搜索
+function bindGlobalSearch(){
+  var inp = document.getElementById('globalSearch');
+  if(!inp || inp.dataset.bound) return;
+  inp.dataset.bound = '1';
+
+  var timer = null;
+  inp.oninput = function(){
+    var q = this.value.trim();
+    if(timer) clearTimeout(timer);
+    if(!q){ return; }
+    timer = setTimeout(function(){
+      // 搜设备：命中就直接去设备页并高亮
+      var hit = (devices||[]).filter(function(d){
+        var s = ((d.name||'') + (d.alias||'') + (d.aliasEn||'')).toLowerCase();
+        return s.indexOf(q.toLowerCase()) >= 0;
+      });
+      if(hit.length === 1 && page !== 'devices'){
+        toast('找到设备「' + (hit[0].alias || hit[0].name) + '」', 'ok');
+      }
+    }, 400);
+  };
+
+  inp.onkeydown = function(e){
+    if(e.key !== 'Enter') return;
+    var q = this.value.trim();
+    if(!q) return;
+    // 回车：跳到事件中心并按关键字搜
+    evState.q = q; evState.type = 'all';
+    page = 'events'; renderMenu(); render();
+    toast('在事件里搜索「' + q + '」', 'ok');
+  };
+}
+
+// 顶栏初始化（DOM 就绪后执行一次）
+(function(){
+  function boot(){
+    if(window._topnavInited) return;
+    window._topnavInited = true;
+    try { initTopNav(); } catch(e){ console.error('initTopNav 失败', e); }
+  }
+  if(document.readyState === 'loading'){
+    document.addEventListener('DOMContentLoaded', boot);
+  } else {
+    boot();
+  }
 })();
