@@ -1,6 +1,6 @@
 # 文档索引
 
-> 40 个文档按主题归类，另有 6 个历史版本文档在 [`_archive/`](_archive/)。新人从「入门」开始看。
+> 42 个文档按主题归类，另有 6 个历史版本文档在 [`_archive/`](_archive/)。新人从「入门」开始看。
 
 ---
 
@@ -103,6 +103,8 @@
 | [DEV-NOTES.md](DEV-NOTES.md) | 开发笔记（19KB，踩坑记录） |
 | [CODE-REVIEW.md](CODE-REVIEW.md) | **代码审查报告**（规模 / 安全 / 质量观察，5 项质量任务的出处） |
 | [QUALITY-TASKS-PROMPT.md](QUALITY-TASKS-PROMPT.md) | 质量改进任务的独立提示词（可整段贴到新窗口执行） |
+| [CONTAINER-CLASS-AUDIT.md](CONTAINER-CLASS-AUDIT.md) | **容器类确认**（check-classes 剩余 10 项的逐条实测结论） |
+| [HANDOFF-DEVELOPER-PAGE.md](HANDOFF-DEVELOPER-PAGE.md) | 开发者页 + 容器类 + 发版的移交文档（含 ASCII 效果图结构） |
 
 ---
 

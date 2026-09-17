@@ -301,7 +301,9 @@ function pageTitleOf(k){
     // 左滑关闭
     if(dy < 60 && dx < -80){
       var s2 = document.querySelector(".sider");
-      if(s2 && s2.classList.contains("open")) closeSider();
+      // openSider() 加的是 is-open（不是 open），写 "open" 永远为 false
+      // —— 左滑手势因此从来没关过侧栏
+      if(s2 && s2.classList.contains("is-open")) closeSider();
     }
   }, { passive: true });
 
@@ -7661,129 +7663,169 @@ initSDK();
 
 // ===== 顶栏右上角：用户菜单 + 全局搜索 =====
 //
-// 背景：原先 #btnUser（我的家）和 #globalSearch 都**没有绑定**，
-// 是纯装饰元素，点了没反应。
+// ⚠️ 重要：这段代码**必须自包含**！
 //
-// 设计：
-//   「我的家」下拉 = 家庭信息 + 快捷入口（账号/设置/关于）
-//   搜索框 = 按名称/类型跨设备与事件搜索
+// 原因：应用主体脚本的作用域被包裹（esc/api/icon/render 不在 window 上），
+// 而这段代码在包裹之外，**访问不到那些函数**。
+// 之前直接调 api()/esc()/icon() -> ReferenceError -> 菜单点不开。
+//
+// 所以这里：
+//   · 自己定义转义函数（不用 app 的 esc）
+//   · 直接 fetch（不用 app 的 api）
+//   · 内联 SVG（不用 app 的 icon）
+//   · 导航靠【模拟点击导航按钮】触发 app 自己的路由（不直接改 page 变量）
+//   · 所有跨作用域调用都包在 try/catch 里
 
-var _topnavHome = { homes: [], current: '' };
+var _tnHome = { homes: [], current: '' };
 
-function initTopNav(){
-  bindUserMenu();
-  bindGlobalSearch();
-  loadTopNavHome();
+function _tnEsc(s){
+  return String(s == null ? '' : s).replace(/[&<>"]/g, function(c){
+    return { '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;' }[c];
+  });
 }
 
-// loadTopNavHome 读家庭列表，显示当前家庭名
+function _tnApi(path){
+  return fetch(apiPath(path)).then(function(r){ return r.json(); });
+}
+
+// apiPath 计算接口前缀（飞牛网关下路径会被重写）
+function apiPath(path){
+  // 复用 app 的逻辑：如果页面在 /app/micam/ 下，接口也在那里
+  var base = '';
+  try {
+    var p = location.pathname;
+    var i = p.indexOf('/app/micam');
+    if(i >= 0) base = '/app/micam';
+  } catch(e){}
+  return base + path;
+}
+
+// _tnIcon 内联 SVG（不能用 app 的 icon）
+function _tnIcon(name, size){
+  var sz = size || 15;
+  var paths = {
+    home:    '<path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/>',
+    check:   '<path d="M20 6 9 17l-5-5"/>',
+    user:    '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/>',
+    settings:'<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>',
+    bell:    '<path d="M6 8a6 6 0 1 1 12 0c0 7 3 8 3 8H3s3-1 3-8"/><path d="M10 21h4"/>',
+    code:    '<path d="m16 18 6-6-6-6"/><path d="m8 6-6 6 6 6"/>',
+    info:    '<circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/>'
+  };
+  return '<svg class="icon" width="'+sz+'" height="'+sz+'" viewBox="0 0 24 24" fill="none" '
+    + 'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+    + (paths[name] || paths.info) + '</svg>';
+}
+
+// _tnGoto 切页 —— 通过模拟点击导航按钮，交给 app 自己的路由
+function _tnGoto(key){
+  var el = document.querySelector('.tabnav[data-k="' + key + '"]');
+  if(el){ el.click(); return true; }
+  return false;
+}
+
+function initTopNav(){
+  try { bindUserMenu(); } catch(e){ console.error('bindUserMenu 失败', e); }
+  try { bindGlobalSearch(); } catch(e){ console.error('bindGlobalSearch 失败', e); }
+  try { loadTopNavHome(); } catch(e){ console.error('loadTopNavHome 失败', e); }
+}
+
+// loadTopNavHome 读家庭列表，更新显示
 function loadTopNavHome(){
-  api('/api/homes').then(function(d){
+  _tnApi('/api/homes').then(function(d){
     var hs = (d && d.homes) || (Array.isArray(d) ? d : []);
     if(!hs.length) return;
-
-    // 优先用自己的非共享家庭
     var own = hs.filter(function(h){ return !h.shared; });
     var cur = own[0] || hs[0];
+    _tnHome.homes = hs;
+    _tnHome.current = cur.name || '我的家';
 
-    _topnavHome.homes = hs;
-    _topnavHome.current = cur.name || '我的家';
-
-    var homeEl = document.getElementById('userHome');
-    if(homeEl) homeEl.textContent = _topnavHome.current;
-
-    var nameEl = document.getElementById('userName');
-    if(nameEl) nameEl.textContent = _topnavHome.current;
-
+    var el = document.getElementById('userName');
+    if(el) el.textContent = _tnHome.current;
     var av = document.getElementById('userAvatar');
-    if(av) av.textContent = (_topnavHome.current || '家').slice(0,1);
+    if(av) av.textContent = (_tnHome.current || '家').slice(0, 1);
   }).catch(function(){ /* 读不到就保持默认文案 */ });
 }
 
 // bindUserMenu 「我的家」下拉
 function bindUserMenu(){
   var btn = document.getElementById('btnUser');
-  if(!btn || btn.dataset.bound) return;
-  btn.dataset.bound = '1';
+  if(!btn || btn.dataset.tnBound) return;
+  btn.dataset.tnBound = '1';
 
   btn.onclick = function(e){
     e.stopPropagation();
     var old = document.getElementById('userMenu');
     if(old){ old.remove(); return; }
 
-    var hs = _topnavHome.homes || [];
+    var hs = _tnHome.homes || [];
     var menu = document.createElement('div');
     menu.className = 'usermenu';
     menu.id = 'userMenu';
 
+    var devCount = 0;
+    try { devCount = (document.querySelectorAll('.tabnav').length ? 0 : 0); } catch(e2){}
+
     menu.innerHTML = ''
       + '<div class="usermenu__head">'
-      +   '<div class="usermenu__avatar">' + esc((_topnavHome.current||'家').slice(0,1)) + '</div>'
+      +   '<div class="usermenu__avatar">' + _tnEsc((_tnHome.current || '家').slice(0, 1)) + '</div>'
       +   '<div class="usermenu__body">'
-      +     '<div class="usermenu__name">' + esc(_topnavHome.current || '我的家') + '</div>'
-      +     '<div class="usermenu__sub">' + hs.length + ' 个家庭 · ' + (devices||[]).length + ' 台设备</div>'
+      +     '<div class="usermenu__name">' + _tnEsc(_tnHome.current || '我的家') + '</div>'
+      +     '<div class="usermenu__sub">' + hs.length + ' 个家庭</div>'
       +   '</div>'
       + '</div>'
-
       + (hs.length > 1
           ? '<div class="usermenu__label">家庭</div>'
             + hs.map(function(h){
-                var on = (h.name === _topnavHome.current);
-                return '<button class="usermenu__item' + (on ? ' is-on' : '') + '" data-home="' + esc(h.id) + '">'
-                  + icon(on ? 'check' : 'home', 14)
-                  + '<span>' + esc(h.name || ('家庭 ' + h.id)) + '</span>'
+                var on = (h.name === _tnHome.current);
+                return '<button class="usermenu__item' + (on ? ' is-on' : '') + '" data-tn-home="' + _tnEsc(h.id) + '">'
+                  + _tnIcon(on ? 'check' : 'home', 14)
+                  + '<span>' + _tnEsc(h.name || ('家庭 ' + h.id)) + '</span>'
                   + (h.shared ? '<em>共享</em>' : '')
                   + '</button>';
               }).join('')
           : '')
-
       + '<div class="usermenu__sep"></div>'
-      + '<button class="usermenu__item" data-goto-page="accounts">' + icon('user',14) + '<span>账号管理</span></button>'
-      + '<button class="usermenu__item" data-goto-page="settings">' + icon('settings',14) + '<span>设置</span></button>'
-      + '<button class="usermenu__item" data-goto-tab="notify">' + icon('bell',14) + '<span>通知设置</span></button>'
-      + '<button class="usermenu__item" data-goto-page="dev">' + icon('code',14) + '<span>开发者</span></button>'
-      + '<div class="usermenu__sep"></div>'
-      + '<button class="usermenu__item" data-about="1">' + icon('info',14) + '<span>关于 MiCam ' + esc(APP_VER||'') + '</span></button>';
+      + '<button class="usermenu__item" data-tn-go="accounts">' + _tnIcon('user',14) + '<span>账号管理</span></button>'
+      + '<button class="usermenu__item" data-tn-go="settings">' + _tnIcon('settings',14) + '<span>设置</span></button>'
+      + '<button class="usermenu__item" data-tn-go="events">' + _tnIcon('bell',14) + '<span>事件中心</span></button>'
+      + '<button class="usermenu__item" data-tn-go="dev">' + _tnIcon('code',14) + '<span>开发者</span></button>';
 
     document.body.appendChild(menu);
-
-    // 定位到按钮下方
     var r = btn.getBoundingClientRect();
     menu.style.top = (r.bottom + 8) + 'px';
     menu.style.right = Math.max(12, window.innerWidth - r.right) + 'px';
 
-    // 点菜单项
-    Array.prototype.forEach.call(menu.querySelectorAll('[data-goto-page]'), function(el){
+    Array.prototype.forEach.call(menu.querySelectorAll('[data-tn-go]'), function(el){
       el.onclick = function(){
-        page = this.dataset.gotoPage; renderMenu(); render(); menu.remove();
+        _tnGoto(this.dataset.tnGo);
+        menu.remove();
       };
     });
-    Array.prototype.forEach.call(menu.querySelectorAll('[data-goto-tab]'), function(el){
+    Array.prototype.forEach.call(menu.querySelectorAll('[data-tn-home]'), function(el){
       el.onclick = function(){
-        page = 'settings'; setTab = this.dataset.gotoTab; renderMenu(); render(); menu.remove();
-      };
-    });
-    var ab = menu.querySelector('[data-about]');
-    if(ab) ab.onclick = function(){
-      toast('MiCam ' + (APP_VER||'') + ' · 飞牛 NAS 的小米摄像头插件', 'ok');
-      menu.remove();
-    };
-    Array.prototype.forEach.call(menu.querySelectorAll('[data-home]'), function(el){
-      el.onclick = function(){
-        var id = this.dataset.home;
-        var h = (_topnavHome.homes||[]).filter(function(x){ return String(x.id) === String(id); })[0];
-        if(!h) return;
-        _topnavHome.current = h.name || ('家庭 ' + id);
-        var homeEl = document.getElementById('userHome');
-        if(homeEl) homeEl.textContent = _topnavHome.current;
-        // 记到本地，下次进来沿用（后端暂不支持按家庭过滤设备）
-        try { localStorage.setItem('micam.home', JSON.stringify({ id: id, name: _topnavHome.current })); } catch(e){}
-        toast('已切换到「' + _topnavHome.current + '」\n\n注：设备列表暂未按家庭过滤', 'warn');
+        var id = this.dataset.tnHome;
+        var h = (_tnHome.homes || []).filter(function(x){ return String(x.id) === String(id); })[0];
+        if(h){
+          _tnHome.current = h.name || ('家庭 ' + id);
+          var el2 = document.getElementById('userName');
+          if(el2) el2.textContent = _tnHome.current;
+          try { localStorage.setItem('micam.home', JSON.stringify({ id: id, name: _tnHome.current })); } catch(e3){}
+          var t = document.getElementById('tnToast');
+          if(!t){
+            t = document.createElement('div');
+            t.id = 'tnToast';
+            t.className = 'tn-toast';
+            document.body.appendChild(t);
+          }
+          t.textContent = '已切换到「' + _tnHome.current + '」（设备列表暂未按家庭过滤）';
+          t.classList.add('is-on');
+          setTimeout(function(){ t.classList.remove('is-on'); }, 2600);
+        }
         menu.remove();
       };
     });
 
-    // 点别处关闭
     setTimeout(function(){
       document.addEventListener('click', function close(ev){
         if(!menu.contains(ev.target)){ menu.remove(); document.removeEventListener('click', close); }
@@ -7792,45 +7834,26 @@ function bindUserMenu(){
   };
 }
 
-// bindGlobalSearch 顶栏搜索
+// bindGlobalSearch 顶栏搜索（回车跳到事件中心搜索）
 function bindGlobalSearch(){
   var inp = document.getElementById('globalSearch');
-  if(!inp || inp.dataset.bound) return;
-  inp.dataset.bound = '1';
-
-  var timer = null;
-  inp.oninput = function(){
-    var q = this.value.trim();
-    if(timer) clearTimeout(timer);
-    if(!q){ return; }
-    timer = setTimeout(function(){
-      // 搜设备：命中就直接去设备页并高亮
-      var hit = (devices||[]).filter(function(d){
-        var s = ((d.name||'') + (d.alias||'') + (d.aliasEn||'')).toLowerCase();
-        return s.indexOf(q.toLowerCase()) >= 0;
-      });
-      if(hit.length === 1 && page !== 'devices'){
-        toast('找到设备「' + (hit[0].alias || hit[0].name) + '」', 'ok');
-      }
-    }, 400);
-  };
-
-  inp.onkeydown = function(e){
-    if(e.key !== 'Enter') return;
+  if(!inp || inp.dataset.tnBound) return;
+  inp.dataset.tnBound = '1';
+  inp.onkeydown = function(ev){
+    if(ev.key !== 'Enter') return;
     var q = this.value.trim();
     if(!q) return;
-    // 回车：跳到事件中心并按关键字搜
-    evState.q = q; evState.type = 'all';
-    page = 'events'; renderMenu(); render();
-    toast('在事件里搜索「' + q + '」', 'ok');
+    // 交给事件页：先把关键字写进 sessionStorage，再切页
+    try { sessionStorage.setItem('micam.search', q); } catch(e){}
+    _tnGoto('events');
   };
 }
 
 // 顶栏初始化（DOM 就绪后执行一次）
 (function(){
   function boot(){
-    if(window._topnavInited) return;
-    window._topnavInited = true;
+    if(window._tnInited) return;
+    window._tnInited = true;
     try { initTopNav(); } catch(e){ console.error('initTopNav 失败', e); }
   }
   if(document.readyState === 'loading'){
@@ -7839,3 +7862,4 @@ function bindGlobalSearch(){
     boot();
   }
 })();
+
