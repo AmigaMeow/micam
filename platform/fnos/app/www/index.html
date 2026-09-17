@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <title>小米摄像头</title>
-<meta name="micam-build" content="2026-09-17 07:55:30">
+<meta name="micam-build" content="2026-09-17 09:49:16">
 <!-- 样式内联：飞牛网关会剥前缀，相对路径不可靠（详见 build/assemble-web.js）-->
 <style>
 
@@ -4269,6 +4269,47 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; line-h
 .ai-find__again { padding: var(--space-5) var(--space-5) 0; }
 
 
+/* ---- 车牌展示 ---- */
+
+/* 事件卡片上的车牌徽章（蓝底白字，模仿真实车牌）*/
+.ev-card2__plate {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  padding: 2px 10px;
+  border-radius: var(--radius-sm);
+  background: linear-gradient(180deg, #1e40af 0%, #1d4ed8 100%);
+  border: 1px solid rgba(255,255,255,.35);
+  color: #fff;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  letter-spacing: .06em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  box-shadow: 0 1px 4px rgba(0,0,0,.4);
+  white-space: nowrap;
+}
+/* 有时间角标时并排 */
+.ev-card2__time + .ev-card2__plate { left: auto; right: 8px; bottom: 8px; }
+
+/* 详情弹窗里的车牌块 */
+.evd__plate {
+  display: flex; align-items: center; gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+.evd__plate-num {
+  padding: 5px 14px;
+  border-radius: var(--radius-md);
+  background: linear-gradient(180deg, #1e40af 0%, #1d4ed8 100%);
+  border: 1px solid rgba(255,255,255,.35);
+  color: #fff;
+  font-size: var(--text-lg);
+  font-weight: var(--weight-semibold);
+  letter-spacing: .1em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+.evd__plate-conf { font-size: var(--text-sm); color: var(--text-muted); }
+
+
 </style>
 </head>
 <body>
@@ -6059,8 +6100,15 @@ function paintEvents(c){
 
     if(evState.did) l = l.filter(function(x){ return x.did === evState.did; });
 
-    var q = (evState.q||'').trim().toLowerCase();
-    if(q){
+    // 车牌格式识别（省简称+A-Z+5位）-> 自动走车牌精确检索
+  var q0 = (evState.q||'').trim().toUpperCase();
+  var plateLike = /^[京津冀晋蒙辽吉黑沪苏浙皖闽赣鲁豫鄂湘粤桂琼渝川贵云藏陕甘青宁新][A-Z][A-Z0-9]{5}$/.test(q0);
+  if(plateLike){
+    l = l.filter(function(x){ return (x.aiPlate||'').toUpperCase() === q0; });
+  }
+
+  var q = (evState.q||'').trim().toLowerCase();
+    if(q && !plateLike){
       l = l.filter(function(x){
         var t = (x.aiTitle||'') + ' ' + (x.aiSummary||'') + ' ' + (x.desc||'') + ' ' + (x.device||'') + ' ' + (x.aiCls||'');
         return t.toLowerCase().indexOf(q) >= 0;
@@ -6241,6 +6289,7 @@ function paintEvents(c){
       +   (x.thumb ? '<img loading="lazy" src="' + apiUrl('/api/events/thumb?f=' + encodeURIComponent(x.thumb)) + '" alt="">'
                   : '<div class="ev-card2__ph">' + icon(t.ic,28) + '</div>')
       +   '<span class="ev-card2__time">' + esc(hm) + '</span>'
+      +   (x.aiPlate ? '<span class="ev-card2__plate">' + esc(x.aiPlate) + '</span>' : '')
       +   (dur ? '<span class="ev-card2__dur">' + esc(dur) + '</span>' : '')
       +   (watch ? '<span class="ev-card2__watch">' + icon('alert',12) + '需关注</span>' : '')
       + '</div>'
@@ -6504,6 +6553,18 @@ function openEventDetail(ev){
                 + '</div>')
             : '')
 
+    +     (ev.aiPlate
+            ? evBlock('car', '车牌',
+                '<div class="evd__plate">'
+                +   '<span class="evd__plate-num">' + esc(ev.aiPlate) + '</span>'
+                +   '<span class="evd__plate-conf">置信度 ' + Math.round((ev.aiPlateConf||0)*100) + '%</span>'
+                + '</div>'
+                + '<div class="evd__kv"><span>来源</span><b>' + esc(ev.aiPlateSrc === 'local' ? '本地 LPR（多帧投票）' : (ev.aiPlateSrc || '—')) + '</b></div>'
+                + ((ev.aiPlateAlt && ev.aiPlateAlt.length)
+                    ? '<div class="evd__kv"><span>其它读数</span><b>' + esc(ev.aiPlateAlt.join('、')) + '（供人工复核）</b></div>'
+                    : ''))
+            : '')
+
     +     evBlock('device', '设备信息',
             '<div class="evd__kv"><span>摄像头名称</span><b>' + esc(ev.device || '') + '</b></div>'
             + '<div class="evd__kv"><span>设备位置</span><b>' + esc('—') + '</b></div>'
@@ -6527,6 +6588,9 @@ function openEventDetail(ev){
     +   '<button class="btn" id="evdPlay">' + icon('play',15) + '查看回放</button>'
     +   '<button class="btn" id="evdWatch">' + icon('eye',15) + (mark.watch ? '取消需关注' : '标记需关注') + '</button>'
     +   '<button class="btn" id="evdTag">' + icon('bookmark',15) + '添加标签</button>'
+    +   (ev.type === 'vehicle' && !ev.aiPlate
+          ? '<button class="btn" id="evdPlate">' + icon('car',15) + '读车牌</button>'
+          : '')
     +   '<button class="btn btn--accent" id="evdAI">' + icon('zap',15) + (ev.aiSummary ? '重新分析' : 'AI 深度分析') + '</button>'
     +   '<span class="evd__foot-spacer"></span>'
     +   '<button class="btn btn--primary" id="evdExport">' + icon('download',15) + '导出片段</button>'
@@ -6566,6 +6630,29 @@ function openEventDetail(ev){
     // 导出片段
     root.querySelector('#evdExport').onclick = function(){
       toast('导出功能在「回放 → 导出管理」里', 'warn');
+    };
+
+    // 读车牌（本地 LPR，免费）
+    var pb = root.querySelector('#evdPlate');
+    if(pb) pb.onclick = function(){
+      var btn = this;
+      btn.disabled = true;
+      btn.innerHTML = icon('refresh',15) + '识别中…';
+      api('/api/ai/plate/read', { method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ id: ev.id }) })
+        .then(function(r){
+          if(!r.ok){ toast('识别失败：' + (r.error||'未知错误'), 'err'); btn.disabled=false; btn.innerHTML=icon('car',15)+'读车牌'; return; }
+          var res = r.result || {};
+          if(!res.plate){
+            toast('没读出车牌（画面里车牌太小或没有车牌）', 'warn');
+            btn.disabled=false; btn.innerHTML=icon('car',15)+'读车牌';
+            return;
+          }
+          toast('读到车牌：' + res.plate + '（' + (res.frames||1) + ' 帧投票）', 'ok');
+          closeModal();
+          render();
+        })
+        .catch(function(e){ toast('识别失败：' + e.message, 'err'); btn.disabled=false; btn.innerHTML=icon('car',15)+'读车牌'; });
     };
 
     // AI 深度分析
