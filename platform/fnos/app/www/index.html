@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <title>小米摄像头</title>
-<meta name="micam-build" content="2026-09-17 06:39:42">
+<meta name="micam-build" content="2026-09-17 07:55:30">
 <!-- 样式内联：飞牛网关会剥前缀，相对路径不可靠（详见 build/assemble-web.js）-->
 <style>
 
@@ -4113,6 +4113,162 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; line-h
 .ai-job__st.is-run { color: var(--accent); }
 
 
+/* ==========================================================================
+   AI 查找任务（阶段 1a）
+   ========================================================================== */
+
+.ai-find__input { display: flex; gap: var(--space-3); padding: 0 var(--space-5); }
+@media (max-width: 700px) { .ai-find__input { flex-direction: column; } }
+.ai-find__examples {
+  display: flex; gap: var(--space-2); flex-wrap: wrap;
+  padding: var(--space-4) var(--space-5) var(--space-4);
+}
+
+.ai-find__warn {
+  display: flex; gap: var(--space-3); align-items: flex-start;
+  margin: var(--space-4) 0; padding: var(--space-4);
+  background: rgba(245,158,11,.10); border-radius: var(--radius-lg);
+  color: var(--warning); font-size: var(--text-base);
+}
+.ai-find__warn-sub { font-size: var(--text-sm); color: var(--text-muted); margin-top: 4px; }
+
+/* 预估卡片 */
+.ai-find__est { padding: var(--space-4) 0 var(--space-5); }
+.ai-find__est-head {
+  display: flex; align-items: center; gap: 6px;
+  padding: 0 var(--space-5) var(--space-3);
+  font-size: var(--text-base); color: var(--text-secondary);
+}
+.ai-find__est-grid {
+  display: grid; gap: var(--space-3);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  padding: 0 var(--space-5);
+}
+@media (max-width: 900px) { .ai-find__est-grid { grid-template-columns: repeat(2, 1fr); } }
+.ai-find__est-item {
+  display: flex; align-items: flex-start; gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
+.ai-find__est-icon { color: var(--text-muted); flex: 0 0 auto; margin-top: 2px; }
+.ai-find__est-body { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.ai-find__est-label { font-size: var(--text-sm); color: var(--text-muted); }
+.ai-find__est-val { font-size: var(--text-lg); font-weight: var(--weight-semibold); line-height: 1.2; }
+.ai-find__est-hint { font-size: var(--text-xs); color: var(--text-muted); }
+
+.ai-find__plan { padding: var(--space-4) var(--space-5) 0; }
+.ai-find__plan-row {
+  display: flex; align-items: baseline; gap: var(--space-3);
+  font-size: var(--text-base); padding: 6px 0;
+}
+.ai-find__plan-row > span { flex: 0 0 72px; color: var(--text-muted); }
+.ai-find__plan-row > b { flex: 1; font-weight: var(--weight-normal); color: var(--text); }
+
+.ai-find__cover {
+  display: flex; align-items: center; gap: 6px;
+  margin-top: var(--space-3); padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  font-size: var(--text-sm);
+}
+.ai-find__cover.is-ok { background: rgba(34,197,94,.10); color: #4ade80; }
+.ai-find__cover.is-warn { background: rgba(245,158,11,.10); color: var(--warning); }
+
+.ai-find__actions {
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: var(--space-4) var(--space-5) var(--space-3);
+  flex-wrap: wrap;
+}
+.ai-find__zero { font-size: var(--text-base); color: var(--text-muted); }
+.ai-find__tip {
+  display: flex; align-items: center; gap: 6px;
+  padding: 0 var(--space-5) var(--space-5);
+  font-size: var(--text-sm); color: var(--text-muted);
+}
+
+/* 进度 */
+.ai-find__prog { padding: var(--space-5); }
+.ai-find__prog-head {
+  display: flex; align-items: center; gap: 6px;
+  font-size: var(--text-lg); margin-bottom: var(--space-4);
+}
+.ai-find__bar {
+  height: 6px; border-radius: 3px; background: var(--surface-3); overflow: hidden;
+}
+.ai-find__bar > span {
+  display: block; height: 100%; background: var(--accent);
+  transition: width var(--duration-normal) var(--ease-out);
+}
+.ai-find__prog-meta {
+  margin-top: var(--space-3); font-size: var(--text-base); color: var(--text-muted);
+}
+.ai-find__log {
+  margin-top: var(--space-4); padding: var(--space-3) var(--space-4);
+  background: var(--surface-2); border-radius: var(--radius-md);
+  font-size: var(--text-sm); color: var(--text-muted); line-height: 1.9;
+}
+
+/* 结果 */
+.ai-find__result { padding: var(--space-4) 0 var(--space-5); }
+.ai-find__answer {
+  display: flex; align-items: flex-start; gap: var(--space-3);
+  margin: 0 var(--space-5); padding: var(--space-4) var(--space-5);
+  border-radius: var(--radius-lg);
+  font-size: var(--text-lg); line-height: 1.7;
+}
+.ai-find__answer.is-hit { background: rgba(34,197,94,.12); color: #4ade80; }
+.ai-find__answer.is-none { background: rgba(148,163,184,.12); color: var(--text-secondary); }
+.ai-find__answer .icon { flex: 0 0 auto; margin-top: 3px; }
+
+.ai-find__meta {
+  margin: var(--space-3) var(--space-5) 0;
+  font-size: var(--text-sm); color: var(--text-muted);
+}
+
+.ai-find__ev-head {
+  display: flex; align-items: center; gap: 6px;
+  padding: var(--space-5) var(--space-5) var(--space-3);
+  font-size: var(--text-base); color: var(--text-secondary);
+}
+.ai-find__evs {
+  display: grid; gap: var(--space-4);
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  padding: 0 var(--space-5);
+}
+@media (max-width: 1000px) { .ai-find__evs { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 700px)  { .ai-find__evs { grid-template-columns: 1fr; } }
+
+.ai-find__ev {
+  display: flex; flex-direction: column;
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  overflow: hidden; cursor: pointer;
+  transition: border-color var(--duration-fast) var(--ease-out);
+}
+.ai-find__ev:hover { border-color: var(--accent); }
+.ai-find__ev-img { position: relative; aspect-ratio: 16/9; background: #0a0d12; }
+.ai-find__ev-img img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ai-find__ev-conf {
+  position: absolute; top: 6px; right: 6px;
+  padding: 1px 7px; border-radius: var(--radius-sm);
+  background: rgba(34,197,94,.9); color: #fff; font-size: var(--text-xs);
+}
+.ai-find__ev-body { padding: var(--space-3) var(--space-4) var(--space-4); }
+.ai-find__ev-time, .ai-find__ev-dev {
+  display: flex; align-items: center; gap: 5px;
+  font-size: var(--text-sm); color: var(--text-muted);
+}
+.ai-find__ev-note {
+  margin-top: 6px; font-size: var(--text-base); color: var(--text);
+  line-height: 1.6;
+}
+.ai-find__ev-btn { margin-top: var(--space-3); width: 100%; justify-content: center; }
+
+.ai-find__again { padding: var(--space-5) var(--space-5) 0; }
+
+
 </style>
 </head>
 <body>
@@ -6595,7 +6751,13 @@ function paintAITab(){
 
   if(aiTab === 'overview'){ box.innerHTML = aiTabOverview(); setTimeout(paintAutoCard, 0); }
   else if(aiTab === 'search')    box.innerHTML = aiTabSearch();
-  else if(aiTab === 'investigate') box.innerHTML = aiTabInvestigate();
+  else if(aiTab === 'investigate'){
+    box.innerHTML = aiTabInvestigate();
+    // 初始渲染后必须绑定，否则输入框和按钮都是死的
+    bindFind();
+    // 如果之前已经有预估/结果，恢复显示
+    if(findState.task || findState.estimate) paintFindBody();
+  }
   else { box.innerHTML = aiTabSettings(); setTimeout(paintAIUsage, 0); }
   bindAI();
 }
@@ -6966,179 +7128,311 @@ function aiConclusion(r){
 }
 
 // ============ Tab 3：调查 ============
+//
+// 阶段 1a：自然语言「查找」完整闭环
+//   提问 -> 成本预估(本地) -> 用户确认 -> 云端判断 -> 证据列表 -> 定位回放
+//
+// 设计要点：
+//   · 预估完全本地，不花钱
+//   · 必须用户确认才调用云端
+//   · 证据的时间/位置由后端绑定，前端只展示
+//   · 「没找到」同时展示覆盖率，措辞不越界
+
+var findState = {
+  question: '',
+  estimate: null,
+  task: null,
+  polling: null,
+  maxFrames: 20,
+};
+
 function aiTabInvestigate(){
-  var invs = aiLoadInvestigations();
-  var cur = invs.filter(function(x){ return x.id === aiInvCur; })[0] || invs[0];
-  if(cur) aiInvCur = cur.id;
+  var f = findState;
 
-  return '<div class="ai-inv-wrap">'
+  return '<div class="card ai-find">'
 
-    // 左：调查列表
-    + '<aside class="ai-inv-list">'
-    +   '<div class="ai-inv-list__head">'
-    +     '<span>调查列表</span>'
-    +     '<button class="btn btn--sm btn--primary" id="aiInvNew">' + icon('plus',13) + '新建调查</button>'
+    // 问句输入
+    + '<div class="card__head">' + icon('search',16) + '<span class="card__title">问 AI 一个问题</span>'
+    +   '<span class="card__hint">AI 会自己翻事件记录找答案，并给出带时间和画面的证据</span></div>'
+
+    + '<div class="ai-find__input">'
+    +   '<div class="ai-searchbox__field">'
+    +     icon('zap',18)
+    +     '<input class="ai-searchbox__input" id="findQ" type="text" '
+    +       'placeholder="例如：最近三天有人经过我的车吗？" value="' + esc(f.question) + '">'
     +   '</div>'
-    +   (invs.length ? invs.map(function(v){
-          // 实时算：匹配事件数 + 最近一次时间
-          var evs2 = aiInvEvents(v);
-          var recent = evs2.length ? (evs2[0].time || '').slice(0, 16) : '—';
-          return '<button class="ai-inv-item' + (v.id === aiInvCur ? ' is-active' : '') + '" data-inv="' + esc(v.id) + '">'
-            + '<span class="ai-inv-item__icon">' + icon(v.icon || 'search', 17) + '</span>'
-            + '<span class="ai-inv-item__body">'
-            +   '<span class="ai-inv-item__name">' + esc(v.name) + '</span>'
-            +   '<span class="ai-inv-item__meta">' + evs2.length + ' 个相关事件 · 最近 ' + esc(recent) + '</span>'
-            + '</span>'
-            + icon('chevron-right', 14)
-            + '</button>';
-        }).join('') : '<div class="ai-inv-empty">还没有调查<br><span>点「新建调查」开始</span></div>')
-    + '</aside>'
-
-    // 右：详情
-    + '<div class="ai-inv-detail">'
-    + (cur ? aiInvDetail(cur) : '<div class="card">' + empty('search','选择一个调查','','') + '</div>')
+    +   '<button class="btn btn--primary" id="findGo">' + icon('search',16) + '预估花费</button>'
     + '</div>'
 
+    + '<div class="ai-find__examples">'
+    +   ['今天门口有人经过吗？', '昨晚有没有车来？', '今天有没有人送快递包裹？'].map(function(x){
+          return '<button class="ai-example" data-findex="' + esc(x) + '">' + esc(x) + '</button>';
+        }).join('')
+    + '</div>'
+
+    + '<div id="findBody"></div>'
     + '</div>';
 }
 
-function aiInvDetail(v){
-  var evs = aiInvEvents(v);
-  var dates = {};
-  evs.forEach(function(e){ dates[(e.time||'').slice(0,10)] = 1; });
-  var cams = {};
-  evs.forEach(function(e){ cams[e.device||''] = 1; });
+// paintFindBody 渲染预估 / 进度 / 结果
+function paintFindBody(){
+  var box = document.getElementById('findBody');
+  if(!box) return;
+  var f = findState;
 
-  return '<div class="card">'
-    + '<div class="ai-inv-detail__head">'
-    +   '<span class="ai-inv-detail__icon">' + icon(v.icon || 'search', 20) + '</span>'
-    +   '<div class="ai-inv-detail__title">'
-    +     '<h3>' + esc(v.name) + '</h3>'
-    +     '<p>' + esc(v.desc || '') + '</p>'
+  // ---- 执行中：显示进度 ----
+  if(f.task && (f.task.status === 'running' || f.task.status === 'estimating')){
+    box.innerHTML = findProgress(f.task);
+    return;
+  }
+
+  // ---- 有结果 ----
+  if(f.task && f.task.status === 'done'){
+    box.innerHTML = findResult(f.task);
+    bindFind();
+    return;
+  }
+
+  // ---- 有预估：显示确认卡片 ----
+  if(f.estimate){
+    box.innerHTML = findEstimateCard(f.estimate);
+    bindFind();
+    return;
+  }
+
+  box.innerHTML = '';
+}
+
+// findEstimateCard 成本预估 + 确认
+function findEstimateCard(d){
+  var p = d.plan || {};
+  var c = d.coverage || {};
+  var lim = d.limits || {};
+
+  if(!d.ready){
+    return '<div class="ai-find__warn">' + icon('alert',15)
+      + '<div><b>还没有配置云端 Provider</b>'
+      + '<div class="ai-find__warn-sub">查找需要视觉模型判断画面内容。'
+      + '可以先用本地搜索（搜索 Tab），或到设置里配置。</div></div></div>';
+  }
+
+  var zero = (p.candidates || 0) === 0;
+
+  return '<div class="ai-find__est">'
+
+    + '<div class="ai-find__est-head">' + icon('chart',15) + '这次查找会花多少</div>'
+
+    + '<div class="ai-find__est-grid">'
+    +   findEst('file', '本地候选', (p.candidates || 0) + ' 个', '免费筛出来的')
+    +   findEst('image', '将检查画面', (p.estFrames || 0) + ' 帧', zero ? '无候选，不会花钱' : '每帧约 ¥' + (lim.pricePerFrame || 0.003).toFixed(3))
+    +   findEst('yuan', '预估费用', '¥' + ((p.estCostCny || 0)).toFixed(4), '按实际用量结算')
+    +   findEst('shield', '硬上限', '¥' + (lim.hardMaxCostCny || 1).toFixed(2) + ' / ' + (lim.hardMaxFrames || 60) + ' 帧', '超出自动停止')
+    + '</div>'
+
+    + '<div class="ai-find__plan">'
+    +   '<div class="ai-find__plan-row"><span>本地解析</span><b>' + esc(p.timeHint || '') + '</b></div>'
+    +   '<div class="ai-find__cover ' + (c.complete ? 'is-ok' : 'is-warn') + '">'
+    +     icon(c.complete ? 'check' : 'alert', 13)
+    +     '<span>' + esc(c.note || '') + '</span>'
     +   '</div>'
-    +   '<button class="btn btn--sm" id="aiInvEdit">' + icon('settings',13) + '编辑调查</button>'
     + '</div>'
 
-    + '<div class="ai-inv-stats">'
-    +   aiInvStat('file', '相关事件', evs.length)
-    +   aiInvStat('calendar', '不同日期', Object.keys(dates).length)
-    +   aiInvStat('camera', '出现摄像头', Object.keys(cams).filter(Boolean).length)
+    + '<div class="ai-find__actions">'
+    +   (zero
+        ? '<span class="ai-find__zero">没有候选事件，无需调用云端</span>'
+        : '<button class="btn btn--primary" id="findConfirm">' + icon('zap',15)
+          + '确认，开始查找（约 ¥' + ((p.estCostCny||0)).toFixed(4) + '）</button>')
+    +   '<button class="btn" id="findCancel">取消</button>'
     + '</div>'
 
-    + '<div class="sec-head">'
-    +   '<span class="sec-head__title">相关事件</span>'
-    +   (evs.length > 5 ? '<a class="sec-head__more" href="javascript:;" data-invall="1">查看全部 ' + evs.length + ' 个事件 ' + icon('chevron-right',13) + '</a>' : '')
-    + '</div>'
-    + '<div class="ai-thumbs">'
-    + (evs.length ? evs.slice(0, 5).map(function(e2){
-        return '<div class="ai-thumb" data-ev-did="' + esc(e2.did||'') + '" data-ev-time="' + esc(e2.time||'') + '">'
-          + '<img loading="lazy" src="' + apiUrl('/api/events/thumb?f=' + encodeURIComponent(e2.thumb)) + '" alt="">'
-          + '<span class="ai-thumb__time">' + esc((e2.time||'').slice(11,16)) + '</span>'
-          + '<span class="ai-thumb__foot">' + icon('camera',12) + esc(e2.device||'') + '</span>'
-          + '<span class="ai-thumb__date">' + esc((e2.time||'').slice(0,10)) + '</span>'
-          + '</div>';
-      }).join('') : '<div class="ai-thumbs__empty">没有匹配的事件</div>')
-    + '</div>'
-
-    + '<div class="ai-inv-cols">'
-    +   '<div class="ai-inv-summary">'
-    +     '<div class="ai-inv-summary__head">' + icon('zap',15) + 'AI 总结</div>'
-    +     '<div class="ai-inv-summary__body">' + esc(aiInvSummary(v, evs)) + '</div>'
-    +   '</div>'
-    +   '<div class="ai-inv-timeline">'
-    +     '<div class="ai-inv-timeline__head">' + icon('clock',15) + '出现时间线</div>'
-    +     '<div class="ai-moments">'
-    +     (evs.length ? evs.slice(0, 6).map(function(e2){
-          return '<div class="ai-moment"><span class="ai-moment__dot"></span>'
-            + '<div class="ai-moment__body"><b>' + esc((e2.time||'').slice(0,16)) + '</b> '
-            + esc(e2.device||'') + '<div class="ai-moment__sub">' + esc(e2.desc || aiLocalTitle(e2)) + '</div></div>'
-            + '</div>';
-        }).join('') : '<div class="ai-moments__hint">暂无数据</div>')
-    +     '</div>'
-    +   '</div>'
-    + '</div>'
-
-    // 相似图搜索
-    + '<div class="ai-sim">'
-    +   '<div class="ai-sim__head">' + icon('search',15) + '相似图搜索</div>'
-    +   '<div class="ai-sim__row">'
-    +     '<label class="ai-sim__drop" id="aiSimDrop">'
-    +       icon('upload',22)
-    +       '<div class="ai-sim__drop-title">上传图片进行相似图搜索</div>'
-    +       '<div class="ai-sim__drop-sub">支持 JPG、PNG 格式，最大 10MB</div>'
-    +       '<input type="file" id="aiSimFile" accept="image/*" style="display:none">'
-    +     '</label>'
-    +     '<div class="ai-sim__desc">'
-    +       '<b>使用图片查找相似的人员、车辆或物体</b>'
-    +       '<p>上传一张图片，AI 将在所有摄像头的历史事件中查找外观相似的目标，帮助您发现更多相关事件。</p>'
-    +       '<div class="ai-sim__facts">'
-    +         '<span class="ai-fact is-ok">' + icon('check',12) + '车/物：有区分度</span>'
-    +         '<span class="ai-fact is-warn">' + icon('alert',12) + '人形：精度有限</span>'
-    +         '<span class="ai-fact is-warn">' + icon('alert',12) + '单张约 3.7 秒</span>'
-    +       '</div>'
-    +     '</div>'
-    +   '</div>'
-    +   '<div id="aiSimRes"></div>'
-    + '</div>'
-
+    + '<div class="ai-find__tip">' + icon('info',13)
+    +   '预估基于本地事件库，不产生任何费用。只有点「确认」才会调用云端。</div>'
     + '</div>';
 }
 
-function aiInvStat(ic, label, val){
-  return '<div class="ai-inv-stat">'
-    + '<span class="ai-inv-stat__icon">' + icon(ic,17) + '</span>'
-    + '<span class="ai-inv-stat__body">'
-    +   '<span class="ai-inv-stat__label">' + label + '</span>'
-    +   '<span class="ai-inv-stat__val">' + val + '</span>'
-    + '</span>'
+function findEst(ic, label, val, hint){
+  return '<div class="ai-find__est-item">'
+    + '<span class="ai-find__est-icon">' + icon(ic,15) + '</span>'
+    + '<span class="ai-find__est-body">'
+    +   '<span class="ai-find__est-label">' + label + '</span>'
+    +   '<span class="ai-find__est-val">' + val + '</span>'
+    +   '<span class="ai-find__est-hint">' + hint + '</span>'
+    + '</span></div>';
+}
+
+// findProgress 执行进度
+function findProgress(t){
+  var pct = t.total ? Math.round((t.checked / t.total) * 100) : 0;
+  return '<div class="ai-find__prog">'
+    + '<div class="ai-find__prog-head">' + icon('refresh',15) + '正在检查画面…</div>'
+    + '<div class="ai-find__bar"><span style="width:' + pct + '%"></span></div>'
+    + '<div class="ai-find__prog-meta">已检查 ' + t.checked + ' / ' + t.total
+    +   ' · 花费 ¥' + ((t.costCny||0)).toFixed(4) + '</div>'
+    + '<div class="ai-find__log">'
+    + (t.log || []).slice(-5).map(function(l){ return '<div>' + esc(l) + '</div>'; }).join('')
+    + '</div></div>';
+}
+
+// findResult 结果 + 证据
+function findResult(t){
+  var ev = t.evidence || [];
+  var c = t.coverage || {};
+
+  return '<div class="ai-find__result">'
+
+    + '<div class="ai-find__answer ' + (ev.length ? 'is-hit' : 'is-none') + '">'
+    +   icon(ev.length ? 'check' : 'search', 16)
+    +   '<span>' + esc(t.answer || '') + '</span>'
+    + '</div>'
+
+    + '<div class="ai-find__meta">'
+    +   '检查 ' + t.total + ' 个候选 · 花费 ¥' + ((t.costCny||0)).toFixed(4)
+    +   ' · 耗时 ' + esc(t.doneAt || '')
+    + '</div>'
+
+    // 覆盖率（防止把「没找到」当成「没发生」）
+    + '<div class="ai-find__cover ' + (c.complete ? 'is-ok' : 'is-warn') + '">'
+    +   icon(c.complete ? 'check' : 'alert', 13)
+    +   '<span>索引范围 ' + esc((c.indexFrom||'').slice(0,16)) + ' ~ ' + esc((c.indexTo||'').slice(0,16))
+    +     ' · 共 ' + (c.indexCount||0) + ' 条事件 · 录像 ' + (c.recDays||0) + ' 天</span>'
+    + '</div>'
+
+    // 证据列表
+    + (ev.length
+        ? '<div class="ai-find__ev-head">' + icon('file',14) + '证据（' + ev.length + '）</div>'
+          + '<div class="ai-find__evs">'
+          + ev.map(function(x){
+              return '<div class="ai-find__ev" data-fev-did="' + esc(x.did||'') + '" data-fev-time="' + esc(x.time||'') + '">'
+                + '<div class="ai-find__ev-img">'
+                +   (x.thumb ? '<img loading="lazy" src="' + apiUrl('/api/events/thumb?f=' + encodeURIComponent(x.thumb)) + '" alt="">' : '')
+                +   '<span class="ai-find__ev-conf">' + Math.round((x.confidence||0)*100) + '%</span>'
+                + '</div>'
+                + '<div class="ai-find__ev-body">'
+                +   '<div class="ai-find__ev-time">' + icon('clock',12) + esc(x.time || '') + '</div>'
+                +   '<div class="ai-find__ev-dev">' + icon('camera',12) + esc(x.device || '') + '</div>'
+                +   '<div class="ai-find__ev-note">' + esc(x.note || '') + '</div>'
+                +   '<button class="btn btn--sm ai-find__ev-btn" data-fev-go="1">'
+                +     icon('play',12) + '定位回放</button>'
+                + '</div>'
+                + '</div>';
+            }).join('')
+          + '</div>'
+        : '')
+
+    + '<div class="ai-find__again">'
+    +   '<button class="btn" id="findAgain">' + icon('refresh',14) + '再问一个</button>'
+    + '</div>'
     + '</div>';
 }
 
-// aiInvSummary 调查总结（本地拼，接 LLM 后换真分析）
-function aiInvSummary(v, evs){
-  if(v.summary) return v.summary;
-  if(!evs.length) return '还没有匹配到事件。';
-  var dates = {};
-  evs.forEach(function(e){ dates[(e.time||'').slice(0,10)] = 1; });
-  var cams = {};
-  evs.forEach(function(e){ cams[e.device||''] = 1; });
-  var hours = evs.map(function(e){ return parseInt((e.time||'').slice(11,13), 10); }).filter(function(x){ return !isNaN(x); });
-  var avg = hours.length ? Math.round(hours.reduce(function(a,b){ return a+b; }, 0) / hours.length) : 12;
-  var period = avg < 6 ? '凌晨' : avg < 12 ? '上午' : avg < 18 ? '下午' : '晚间';
+// bindFind 绑定交互
+function bindFind(){
+  var c = document.getElementById('content');
+  if(!c) return;
 
-  return '在最近的时间段内，共检测到 ' + evs.length + ' 个相关事件，'
-    + '分布在 ' + Object.keys(dates).length + ' 个不同的日期，'
-    + '出现在 ' + Object.keys(cams).filter(Boolean).length + ' 个摄像头。'
-    + '出现时间多集中在' + period + '。'
-    + (hasCloud() ? '' : '（接入云端视觉模型后会给出更深入的行为分析。）');
-}
-
-// ---- 调查的本地存取 ----
-function aiLoadInvestigations(){
-  var def = [
-    { id:'suv',    name:'黑色 SUV',       icon:'car',       desc:'多次在我家门口附近出现的黑色 SUV，疑似为同一车辆。', filter:{ type:'vehicle' } },
-    { id:'night',  name:'夜间门口活动',   icon:'moon',      desc:'夜间（22:00 之后）在门口检测到的人员活动。', filter:{ type:'person', night:true } },
-    { id:'pkg',    name:'最近包裹',       icon:'inbox',     desc:'近期送达的包裹记录。', filter:{ type:'package' } },
-    { id:'person', name:'陌生人员',       icon:'user',      desc:'长时间停留或夜间的可疑人员活动。', filter:{ type:'person', linger:true } },
-    { id:'car',    name:'频繁出现的车辆', icon:'car',       desc:'频繁出现在摄像头范围内的车辆。', filter:{ type:'vehicle' } },
-  ];
-  try {
-    var saved = JSON.parse(localStorage.getItem('micam.ai.inv') || 'null');
-    if(saved && saved.length) return saved;
-  } catch(e){}
-  return def;
-}
-
-function aiInvEvents(v){
-  // 优先用 30 天的完整列表；没加载好时退回概览的 4 条
-  var all = aiCache.invEvents || (aiCache.ov && aiCache.ov.recent) || [];
-  var f = v.filter || {};
-  return all.filter(function(e){
-    if(f.type && e.type !== f.type) return false;
-    if(f.night && !isNightTimeStr(e.time)) return false;
-    if(f.linger && !(e.duration >= 30)) return false;
-    return true;
+  // 示例问句
+  Array.prototype.forEach.call(c.querySelectorAll('[data-findex]'), function(b){
+    b.onclick = function(){
+      var el = document.getElementById('findQ');
+      if(el){ el.value = this.dataset.findex; findState.question = this.dataset.findex; }
+      doFindEstimate();
+    };
   });
+
+  // 预估
+  var go = document.getElementById('findGo');
+  if(go) go.onclick = doFindEstimate;
+
+  var q = document.getElementById('findQ');
+  if(q){
+    q.onkeydown = function(e){ if(e.key === 'Enter') doFindEstimate(); };
+  }
+
+  // 确认执行
+  var cf = document.getElementById('findConfirm');
+  if(cf) cf.onclick = doFindRun;
+
+  var ca = document.getElementById('findCancel');
+  if(ca) ca.onclick = function(){ findState.estimate = null; findState.task = null; paintFindBody(); };
+
+  var ag = document.getElementById('findAgain');
+  if(ag) ag.onclick = function(){
+    findState.estimate = null; findState.task = null; findState.question = '';
+    paintAITab();
+  };
+
+  // 证据 -> 定位回放
+  Array.prototype.forEach.call(c.querySelectorAll('[data-fev-did]'), function(el){
+    var btn = el.querySelector('[data-fev-go]');
+    var handler = function(e){
+      e.stopPropagation();
+      gotoReplay(el.dataset.fevDid, el.dataset.fevTime);
+    };
+    if(btn) btn.onclick = handler;
+    el.onclick = handler;
+  });
+}
+
+// doFindEstimate 请求成本预估（不花钱）
+function doFindEstimate(){
+  var el = document.getElementById('findQ');
+  var q = el ? el.value : findState.question;
+  if(!q || !q.trim()) return;
+  findState.question = q;
+  findState.task = null;
+
+  var box = document.getElementById('findBody');
+  if(box) box.innerHTML = loading('正在本地筛选候选…');
+
+  api('/api/ai/find/estimate', { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ question: q, maxFrames: findState.maxFrames }) })
+    .then(function(d){
+      findState.estimate = d;
+      paintFindBody();
+    })
+    .catch(function(e){
+      if(box) box.innerHTML = '<div class="ai-err">预估失败：' + esc(e.message) + '</div>';
+    });
+}
+
+// doFindRun 确认后执行
+function doFindRun(){
+  var box = document.getElementById('findBody');
+  if(box) box.innerHTML = loading('正在调用云端分析…');
+
+  api('/api/ai/find/run', { method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ question: findState.question, maxFrames: findState.maxFrames, confirmed: true }) })
+    .then(function(d){
+      if(!d.ok){ throw new Error(d.error || '执行失败'); }
+      findState.task = d.task;
+      paintFindBody();
+      pollFind(d.taskId);
+    })
+    .catch(function(e){
+      if(box) box.innerHTML = '<div class="ai-err">' + esc(e.message) + '</div>';
+    });
+}
+
+// pollFind 轮询进度
+function pollFind(id){
+  if(findState.polling) clearInterval(findState.polling);
+  findState.polling = setInterval(function(){
+    if(aiTab !== 'investigate'){ clearInterval(findState.polling); findState.polling = null; return; }
+    api('/api/ai/find/task?id=' + encodeURIComponent(id)).then(function(d){
+      findState.task = d.task;
+      paintFindBody();
+      if(d.task && (d.task.status === 'done' || d.task.status === 'failed')){
+        clearInterval(findState.polling);
+        findState.polling = null;
+        if(d.task.status === 'done' && (d.task.evidence||[]).length){
+          toast('找到 ' + d.task.evidence.length + ' 处证据', 'ok');
+        }
+      }
+    }).catch(function(){
+      clearInterval(findState.polling);
+      findState.polling = null;
+    });
+  }, 2500);
 }
 
 // ============ Tab 4：设置 ============

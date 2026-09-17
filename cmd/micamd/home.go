@@ -110,7 +110,7 @@ var motion = &motionState{
 const (
 	motionInterval = 8 * time.Second  // 采样间隔（抓帧本身要 3-9 秒）
 	motionSilence  = 30 * time.Second // 同一设备的静默期（合并连续触发）
-	motionThresh   = 6.0      // 平均绝对差阈值（0-255）
+	motionThresh   = 6.0              // 平均绝对差阈值（0-255）
 	motionW        = 160              // 降采样宽度
 	motionH        = 90
 )

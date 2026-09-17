@@ -49,7 +49,7 @@ var appDestDir string
 // startedAt 进程启动时间（状态条显示「运行时间」用）
 var startedAt = time.Now()
 
-var appVersion = "0.33.0"
+var appVersion = "0.34.0"
 
 func main() {
 	var (
@@ -167,6 +167,7 @@ func main() {
 	srv.presets = newPresetStore(*dataDir)
 	srv.marks = newMarkStore(*dataDir)
 	srv.aiw = newAIWorker(srv)
+	srv.finds = newFindStore()
 
 	// 云端已配置就启动自动分析工作器
 	if cfg.AI.CloudEnabled && cfg.AI.Mode != "local" {
@@ -303,6 +304,7 @@ type Server struct {
 	presets    *presetStore
 	marks      *markStore
 	aiw        *aiWorker
+	finds      *findStore
 	ai         *aiClient
 }
 
@@ -496,6 +498,10 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/ai/embed", s.handleAIEmbed)
 	mux.HandleFunc("/api/ai/provider/test", s.handleAIProviderTest)
 	mux.HandleFunc("/api/ai/analyze", s.handleAIAnalyze)
+	mux.HandleFunc("/api/ai/find/estimate", s.handleFindEstimate)
+	mux.HandleFunc("/api/ai/find/run", s.handleFindRun)
+	mux.HandleFunc("/api/ai/find/task", s.handleFindTask)
+	mux.HandleFunc("/api/ai/find/tasks", s.handleFindTasks)
 	mux.HandleFunc("/api/ai/jobs", s.handleAIJobs)
 
 	// 播放
