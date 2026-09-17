@@ -5985,7 +5985,8 @@ function devLogTable(list){
       + '<div>还没有请求记录</div>'
       + '<div class="dev-empty__sub">只记录 /api/ 下的请求，最多保留 200 条</div></div>';
   }
-  return '<div class="table-wrap"><table class="table">'
+  return '<div class="table-wrap"><table class="table dev-logtable">'
+    + '<colgroup><col style="width:66px"><col style="width:54px"><col><col style="width:54px"><col style="width:58px"><col style="width:86px"></colgroup>'
     + '<thead><tr><th>时间</th><th>方法</th><th>路径</th><th>状态</th><th>耗时</th><th>来源</th></tr></thead>'
     + '<tbody>'
     + list.map(function(e){

@@ -3403,10 +3403,11 @@
 .dev-method { display:inline-block; padding:1px 6px; border-radius: var(--radius-sm); font-size: var(--text-xs); font-weight: var(--weight-semibold); background: var(--surface-3); color: var(--text-secondary); }
 .dev-method.is-get { background: color-mix(in srgb, var(--online) 16%, transparent); color: var(--online); }
 .dev-method.is-post { background: var(--accent-soft); color: var(--accent); }
-.dev-path { font-family: var(--font-mono); font-size: var(--text-sm); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:0; }
-/* 日志表在右列很窄：所有单元格都不换行，路径用省略号，避免每行变两行 */
-#devBody .table td, #devBody .table th { white-space: nowrap; }
-#devBody .table td.dev-dim { font-size: var(--text-xs); }
+.dev-path { font-family: var(--font-mono); font-size: var(--text-sm); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+/* 右列窄：日志表用固定列宽，路径列吃掉剩余宽度并用省略号 */
+.dev-logtable { table-layout: fixed; }
+.dev-logtable td, .dev-logtable th { white-space: nowrap; padding-left:6px; padding-right:6px; }
+.dev-logtable td.dev-dim { font-size: var(--text-xs); }
 
 /* Webhook 测试 */
 .dev-field { display:flex; gap: var(--space-3); align-items:center; margin-bottom: var(--space-3); }

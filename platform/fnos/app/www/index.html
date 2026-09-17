@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <title>小米摄像头</title>
-<meta name="micam-build" content="2026-09-17 12:05:11">
+<meta name="micam-build" content="2026-09-17 12:06:09">
 <!-- 样式内联：飞牛网关会剥前缀，相对路径不可靠（详见 build/assemble-web.js）-->
 <style>
 
@@ -4724,10 +4724,11 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; line-h
 .dev-method { display:inline-block; padding:1px 6px; border-radius: var(--radius-sm); font-size: var(--text-xs); font-weight: var(--weight-semibold); background: var(--surface-3); color: var(--text-secondary); }
 .dev-method.is-get { background: color-mix(in srgb, var(--online) 16%, transparent); color: var(--online); }
 .dev-method.is-post { background: var(--accent-soft); color: var(--accent); }
-.dev-path { font-family: var(--font-mono); font-size: var(--text-sm); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; max-width:0; }
-/* 日志表在右列很窄：所有单元格都不换行，路径用省略号，避免每行变两行 */
-#devBody .table td, #devBody .table th { white-space: nowrap; }
-#devBody .table td.dev-dim { font-size: var(--text-xs); }
+.dev-path { font-family: var(--font-mono); font-size: var(--text-sm); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+/* 右列窄：日志表用固定列宽，路径列吃掉剩余宽度并用省略号 */
+.dev-logtable { table-layout: fixed; }
+.dev-logtable td, .dev-logtable th { white-space: nowrap; padding-left:6px; padding-right:6px; }
+.dev-logtable td.dev-dim { font-size: var(--text-xs); }
 
 /* Webhook 测试 */
 .dev-field { display:flex; gap: var(--space-3); align-items:center; margin-bottom: var(--space-3); }
@@ -11005,7 +11006,8 @@ function devLogTable(list){
       + '<div>还没有请求记录</div>'
       + '<div class="dev-empty__sub">只记录 /api/ 下的请求，最多保留 200 条</div></div>';
   }
-  return '<div class="table-wrap"><table class="table">'
+  return '<div class="table-wrap"><table class="table dev-logtable">'
+    + '<colgroup><col style="width:66px"><col style="width:54px"><col><col style="width:54px"><col style="width:58px"><col style="width:86px"></colgroup>'
     + '<thead><tr><th>时间</th><th>方法</th><th>路径</th><th>状态</th><th>耗时</th><th>来源</th></tr></thead>'
     + '<tbody>'
     + list.map(function(e){
