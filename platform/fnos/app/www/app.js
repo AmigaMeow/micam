@@ -64,6 +64,8 @@ var liveWidth = 0;      // 0 = 2K 原画
 var liveMode = "hls";   // hls / mjpeg
 var liveTimer = null;
 var APP_VER = "";        // 版本号（从 /api/health 拉取）
+var DEV_GUARD_STAMP = "";   // 本次加载时服务进程的启动时间（部署守卫用）
+var versionGuardTimer = null;
 var DEV_UNLOCKED = false; // 开发者模式是否解锁
 var devAccountFilter = 'all';
 var currentLens = 1;        // 当前镜头（双摄才有 2）
@@ -7875,7 +7877,35 @@ api("/api/health").then(function(r){
   APP_VER = r.version || "";
   var el = document.getElementById("appVer");
   if(el) el.textContent = "v" + APP_VER;
+  DEV_GUARD_STAMP = r.startedAt || "";
+  startVersionGuard();
 }).catch(function(){});
+
+// startVersionGuard 部署守卫。
+//
+// 背景：部署只换掉服务器上的 index.html，**已经打开的页面不会重新加载**，
+// 用户会一直对着旧 JS，然后来问「明明修好了怎么还报错」（今天就踩了两次）。
+//
+// 判断依据用 /api/health 的 startedAt（服务进程启动时间）而不是版本号：
+// 任何一次部署都会重启 micamd，不升版本的部署同样能被发现。
+function startVersionGuard(){
+  if(versionGuardTimer) return;
+  versionGuardTimer = setInterval(function(){
+    api("/api/health").then(function(h){
+      if(!h || !h.startedAt || !DEV_GUARD_STAMP) return;
+      if(h.startedAt === DEV_GUARD_STAMP) return;
+      if(document.getElementById("verBar")) return;
+      var bar = document.createElement("div");
+      bar.className = "verbar";
+      bar.id = "verBar";
+      bar.innerHTML = '<span>' + icon("refresh",14) + '插件服务已更新（v' + esc(h.version || "") + '），当前页面还是旧版本</span>'
+        + '<button class="btn btn--sm btn--primary" id="verReload">立即刷新</button>';
+      document.body.appendChild(bar);
+      var rb = document.getElementById("verReload");
+      if(rb) rb.onclick = function(){ location.reload(); };
+    }).catch(function(){});
+  }, 90000);
+}
 
 // 开发者模式状态
 api("/api/dev/status").then(function(r){

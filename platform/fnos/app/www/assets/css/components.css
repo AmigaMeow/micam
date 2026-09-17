@@ -125,6 +125,22 @@
   padding: var(--space-6) var(--space-6) var(--space-8);
 }
 
+/* 部署守卫：插件服务重启后（页面已过期）提示刷新 */
+.verbar {
+  position: fixed; left: 50%; bottom: 24px; z-index: 80;
+  display: flex; align-items: center; gap: var(--space-3);
+  padding: 10px 14px; border-radius: var(--radius-lg);
+  background: var(--surface-1); border: 1px solid var(--accent);
+  box-shadow: 0 10px 30px rgba(0,0,0,.35);
+  font-size: var(--text-base); color: var(--text);
+  animation: verbar-in var(--duration-normal) var(--ease-out);
+}
+@keyframes verbar-in {
+  from { opacity: 0; transform: translateX(-50%) translateY(10px); }
+  to   { opacity: 1; transform: translateX(-50%); }
+}
+@media (prefers-reduced-motion: reduce) { .verbar { animation: none; transform: translateX(-50%); } }
+
 /* 页面切换入场：只由 render() 在 page 变化时挂 .is-enter，
    同页重绘（轮询/局部刷新）不会触发，避免整页闪 */
 @keyframes page-enter {

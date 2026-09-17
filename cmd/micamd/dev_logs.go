@@ -301,6 +301,7 @@ func (s *Server) devLogMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasPrefix(r.URL.Path, "/api/") ||
 			r.URL.Path == "/api/dev/logs" ||
+			r.URL.Path == "/api/health" || // 部署守卫每 90 秒问一次，别刷满 200 条环形缓冲
 			isStreamPath(r.URL.Path) {
 			next.ServeHTTP(w, r)
 			return
