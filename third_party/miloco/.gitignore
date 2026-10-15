@@ -1,0 +1,5 @@
+# 官方闭源 C 库不进 git（8.6MB，版权属小米）
+# 用 scripts/fetch-miot-lib.sh 按需下载
+*.so
+*.dylib
+*.dll

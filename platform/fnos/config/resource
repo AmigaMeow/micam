@@ -1,0 +1,18 @@
+{
+  "api-scope": [
+    "trim.file.userAccess",
+    "trim.file.userAcl",
+    "trim.file.path",
+    "trim.system.getPlatformConfig"
+  ],
+  "data-share": {
+    "shares": [
+      {
+        "name": "micam"
+      },
+      {
+        "name": "micam/data"
+      }
+    ]
+  }
+}

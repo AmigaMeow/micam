@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="zh-CN" class="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<title>MiCam - 智能监控中心</title>
+<!-- 内联 SVG favicon（data URI）：
+     浏览器默认会请求 /favicon.ico 并得到 404（控制台报错）。
+     这里用 data URI 消除该请求 —— 同时保持「全内联、不联网」的约束。 -->
+<link rel="manifest" href="/manifest.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="MiCam">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%2312171e'/%3E%3Cg fill='none' stroke='%233b82f6' stroke-width='2' stroke-linejoin='round'%3E%3Crect x='8.5' y='11' width='15' height='11' rx='2.5'/%3E%3Cpath d='M12 11l1.4-2.2h5.2L20 11'/%3E%3Ccircle cx='16' cy='16.5' r='3.2'/%3E%3C/g%3E%3C/svg%3E">
+<!-- 样式内联：飞牛网关会剥前缀，相对路径不可靠（详见 build/assemble-web.js）-->
+<style>
+<!--INLINE_CSS-->
+</style>
+</head>
+<body>
+
+<!--SPRITE-->
+
+<!-- ===== 应用外壳（顶栏导航）===== -->
+<div class="app app--top">
+
+  <header class="topnav">
+    <div class="topnav__brand">
+      <svg class="topnav__logo" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3Z"/>
+        <circle cx="12" cy="13" r="3"/>
+      </svg>
+      <span class="topnav__name">MiCam</span>
+    </div>
+
+    <nav class="topnav__menu" id="menu" aria-label="主导航"></nav>
+
+    <div class="topnav__right">
+      <div class="topnav__search">
+        <div class="search">
+          <svg class="icon icon-sm" aria-hidden="true"><use href="#i-search"/></svg>
+          <input class="input" id="globalSearch" type="search" placeholder="搜索摄像头、事件或人员…" autocomplete="off">
+        </div>
+      </div>
+
+      <button class="topnav__icon-btn" id="btnThemeToggle" type="button" title="切换深色/浅色模式" aria-label="切换深色/浅色模式">
+        <svg class="icon" aria-hidden="true"><use id="themeIcon" href="#i-sun"/></svg>
+      </button>
+
+      <button class="topnav__icon-btn" id="btnNotify" type="button" title="事件通知">
+        <svg class="icon" aria-hidden="true"><use href="#i-bell"/></svg>
+        <span class="topnav__dot" id="notifyDot" style="display:none"></span>
+      </button>
+
+      <button class="topnav__user" id="btnUser" type="button" title="账号">
+        <span class="topnav__avatar" id="userAvatar">家</span>
+        <span class="topnav__user-name" id="userName">我的家</span>
+        <svg class="icon icon-sm" aria-hidden="true"><use href="#i-chevron-down"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <main class="page" id="content" role="main"></main>
+
+  <button class="fab-menu" id="btnMenu" type="button" aria-label="菜单" style="display:none">
+    <svg class="icon" aria-hidden="true"><use href="#i-menu"/></svg>
+  </button>
+</div>
+
+<div class="mask" id="siderMask" style="display:none"></div>
+<div class="toast-wrap" id="toastWrap"></div>
+
+<script>
+<!--APP_JS-->
+</script>
+
+</body>
+</html>

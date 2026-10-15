@@ -1,0 +1,44 @@
+
+# **13.8 MB 的二进制被误提交进仓库**（commit 6b33456）。
+accounts.json
+dist/
+docs/snapshots/
+.DS_Store
+*.dylib
+.env
+*.exe
+*.fpk
+# `go build ./cmd/micamd` 默认把二进制输出到**当前目录**，即 ./micamd。
+.idea/
+*.log
+/micamd
+*.out
+*.pem
+platform/fnos/app/server/*
+!platform/fnos/app/server/.gitkeep
+platform/fnos/app/server/micamd
+platform/fnos/micam.fpk
+*.pyc
+__pycache__/
+# Python
+*.so
+sources.json
+*.swp
+*.test
+/tmp/
+*_token.cfg
+.vscode/
+# 一次性分析用的文件快照（2026-10-12）
+# 临时
+# ⚠️ 仓库根目录的编译产物（2026-10-13 补）
+# 凭据（重要！）
+# 原来只忽略了 platform/fnos/app/server/ 下的那一份，于是根目录这份
+# 如需从历史彻底移除，需 git filter-repo（会改写历史，须与协作者协调）。
+# 小米官方闭源库，不随仓库分发（用 scripts/fetch-miot-lib.sh）
+# 有了 git 提交之后就没用了 —— git 本身就是更好的、带哈希、可寻址的快照。
+# 构建产物
+# 注：已误提交进 0637298（1.6MB，其中 index.html 793KB 是构建产物的冗余拷贝）。
+# 编译产物
+# 编译的二进制（构建时生成）
+# 编辑器
+# 这些是「工作区有未提交改动、需要固定基线」时的临时拷贝，不是源码。

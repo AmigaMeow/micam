@@ -1,0 +1,40 @@
+#!/bin/sh
+# ============================================================================
+# commit-msg：为「显式放行的跨层提交」打上可检索标记
+# ----------------------------------------------------------------------------
+# 为什么需要这个 hook（2026-10-13 补）：
+#   pre-commit 的逃生舱 ALLOW_MIXED_COMMIT=1 原本只往**终端** echo 一行，
+#   提交完成后就没了 —— 等于在刚修好的「事后找不到记录」洞底下又留一条缝。
+#
+#   现在改为：放行时往提交信息末尾追加固定 tag，
+#   使这次跨层提交永久可检索：
+#       git log --grep='mixed-commit-override'
+#   登记 docs/COMMIT-ANOMALIES.md 时也可以靠这个 tag 反查，
+#   不必全靠人记得手动补登记。
+#
+# 为什么用 commit-msg 而不是 pre-commit：
+#   git 在 pre-commit 阶段**还没有**提交信息文件；
+#   commit-msg 接收消息文件路径（$1），是唯一能改写的时机。
+#
+# 安装：bash build/install-hooks.sh
+# ============================================================================
+
+MSG_FILE="$1"
+[ -n "$MSG_FILE" ] && [ -f "$MSG_FILE" ] || exit 0
+
+HOOK_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+. "$HOOK_DIR/mixed-lib.sh"
+
+# 只有「确实是跨层」且「确实用了逃生舱」才打标
+mixed_override_used || exit 0
+mixed_scan || exit 0
+
+# 幂等：amend / 重跑时不要重复追加
+if grep -qF "$MIXED_TAG" "$MSG_FILE" 2>/dev/null; then
+  exit 0
+fi
+
+printf '\n%s 本次提交同时含前端与后端改动，经 ALLOW_MIXED_COMMIT=1 显式放行。\n' "$MIXED_TAG" >> "$MSG_FILE"
+
+echo "commit-msg: 已追加 $MIXED_TAG 标记（可用 git log --grep='mixed-commit-override' 检索）"
+exit 0

@@ -1,0 +1,59 @@
+name: Bug 报告
+description: 功能不正常
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: 哪个功能出问题
+      options:
+        - 扫码登录 / 账号
+        - 设备发现
+        - 实时预览（HLS / MJPEG）
+        - 多路预览
+        - 快照
+        - 云台控制
+        - 录像
+        - 录像回放
+        - 存储监控
+        - 事件通知
+        - 安装 / 升级
+        - 其他
+    validations:
+      required: true
+
+  - type: textarea
+    id: what
+    attributes:
+      label: 现象
+      description: 你做了什么、期望什么、实际发生了什么
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: 日志
+      description: |
+        插件 → 系统设置 → 导出诊断包（推荐）
+        或贴关键日志：`tail -50 /vol1/@appdata/micam/micamd.log`
+      render: shell
+    validations:
+      required: false
+
+  - type: input
+    id: version
+    attributes:
+      label: MiCam 版本
+      placeholder: "0.14.0"
+    validations:
+      required: true
+
+  - type: input
+    id: fnos
+    attributes:
+      label: 飞牛版本
+      placeholder: "1.2.0401"
+    validations:
+      required: true

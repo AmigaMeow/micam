@@ -1,0 +1,1328 @@
+package main
+
+// 录像回放。
+//
+// ===== 为什么需要转码 =====
+//
+// 录像文件是 MKV 容器 + HEVC 编码（摄像头原生格式，-c copy 录制）。
+// 浏览器兼容性：
+//
+//   Chrome  -> MKV 可以，HEVC 不行
+//   Safari  -> MKV 不行，HEVC 可以
+//   Firefox -> 都不行
+//
+// 所以回放必须转成 H.264 + MP4。实测（10 秒 2K 素材）：
+//
+//   libx264   6.43s  CPU 262%
+//   h264_qsv  3.33s  CPU 200%   <- 文件输入时硬件编码是稳定的
+//
+// 注意：直播时硬件编码不稳定（pipe 输入），但文件输入没问题。
+//
+// ===== 接口 =====
+//
+//   GET  /api/recordings/dates?name=xxx        可用日期
+//   GET  /api/recordings/list?name=&date=      文件列表（含时长）
+//   GET  /api/recordings/play?name=&file=&t=   转码播放（t=起始秒）
+//   GET  /api/recordings/thumb?name=&file=     缩略图
+//   GET  /api/recordings/download?name=&file=  下载原文件
+//   POST /api/recordings/delete                删除
+
+import (
+	"github.com/micam/micam/internal/record"
+	"context"
+	"encoding/json"
+	"fmt"
+	"io"
+	"math"
+	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"sort"
+	"strconv"
+	"strings"
+	"sync"
+	"time"
+)
+
+var (
+	livePlayMu        sync.Mutex
+	activeLiveStreams int
+)
+
+// ffprobePath 找 ffprobe（与 ffmpeg 同目录）。
+func (s *Server) ffprobePath() string {
+	ff := s.ffmpegPath()
+	// /usr/bin/ffmpeg -> /usr/bin/ffprobe
+	dir := filepath.Dir(ff)
+	cand := filepath.Join(dir, "ffprobe")
+	if _, err := os.Stat(cand); err == nil {
+		return cand
+	}
+	// 交给 PATH
+	if p, err := exec.LookPath("ffprobe"); err == nil {
+		return p
+	}
+	return "ffprobe"
+}
+
+// recRoot 录像根目录。
+func (s *Server) recRoot() string {
+	if s == nil || s.rec == nil {
+		if s != nil && s.dataDir != "" {
+			return filepath.Join(s.dataDir, "recordings")
+		}
+		return "/vol1/@appdata/micam/recordings"
+	}
+	cfg := s.rec.GetConfig()
+	if cfg.Dir != "" {
+		return cfg.Dir
+	}
+	return filepath.Join(s.dataDir, "recordings")
+}
+
+// safeName 目录/文件名安全化（防路径穿越）。
+func safeName(s string) string {
+	s = strings.ReplaceAll(s, "/", "_")
+	s = strings.ReplaceAll(s, "\\", "_")
+	s = strings.ReplaceAll(s, "..", "_")
+	return s
+}
+
+// ---- 元数据缓存（时长）----
+
+type recMeta struct {
+	Duration float64 `json:"duration"`
+	Size     int64   `json:"size"`
+	ModTime  int64   `json:"modTime"`
+}
+
+var (
+	metaMu    sync.Mutex
+	metaCache = map[string]recMeta{}
+	metaFile  string
+)
+
+func loadRecMeta(root string) {
+	metaFile = filepath.Join(root, ".meta.json")
+	raw, err := os.ReadFile(metaFile)
+	if err != nil {
+		return
+	}
+	metaMu.Lock()
+	_ = json.Unmarshal(raw, &metaCache)
+	metaMu.Unlock()
+}
+
+func saveRecMeta() {
+	metaMu.Lock()
+	raw, _ := json.Marshal(metaCache)
+	path := metaFile
+	metaMu.Unlock()
+	if path != "" {
+		_ = os.WriteFile(path, raw, 0o644)
+	}
+}
+
+// probeDuration 取时长（带缓存）。
+func (s *Server) probeDuration(path string) float64 {
+	fi, err := os.Stat(path)
+	if err != nil {
+		return 0
+	}
+
+	metaMu.Lock()
+	m, ok := metaCache[path]
+	metaMu.Unlock()
+	if ok && m.Size == fi.Size() && m.ModTime == fi.ModTime().Unix() {
+		return m.Duration
+	}
+
+	d := 0.0
+
+	// 先试 ffprobe
+	out, err := exec.Command(s.ffprobePath(), "-v", "error",
+		"-show_entries", "format=duration",
+		"-of", "csv=p=0", path).Output()
+	if err == nil {
+		d, _ = strconv.ParseFloat(strings.TrimSpace(string(out)), 64)
+	}
+
+	// 兜底：解析 ffmpeg 的 stderr（没有 ffprobe 时）
+	if d <= 0 {
+		c := exec.Command(s.ffmpegPath(), "-hide_banner", "-i", path)
+		var buf strings.Builder
+		c.Stderr = &buf
+		_ = c.Run()
+		// 形如 "Duration: 00:00:32.95,"
+		if i := strings.Index(buf.String(), "Duration: "); i >= 0 {
+			s := buf.String()[i+10:]
+			if j := strings.Index(s, ","); j > 0 {
+				if parts := strings.Split(strings.TrimSpace(s[:j]), ":"); len(parts) == 3 {
+					h, _ := strconv.ParseFloat(parts[0], 64)
+					m, _ := strconv.ParseFloat(parts[1], 64)
+					sec, _ := strconv.ParseFloat(parts[2], 64)
+					d = h*3600 + m*60 + sec
+				}
+			}
+		}
+	}
+
+	// 只有拿到有效时长才缓存（避免把失败结果缓存住）
+	if d > 0 {
+		metaMu.Lock()
+		metaCache[path] = recMeta{Duration: d, Size: fi.Size(), ModTime: fi.ModTime().Unix()}
+		metaMu.Unlock()
+		go saveRecMeta()
+	}
+	return d
+}
+
+// ---- 日期列表 ----
+
+// handleRecDates 返回可用日期。
+func (s *Server) handleRecDates(w http.ResponseWriter, r *http.Request) {
+	name := safeName(r.URL.Query().Get("name"))
+	root := s.recRoot()
+	loadRecMeta(root)
+
+	type dayInfo struct {
+		Date   string  `json:"date"`
+		Count  int     `json:"count"`
+		SizeMB float64 `json:"sizeMB"`
+	}
+	var out []dayInfo
+
+	var dirs []string
+	if name != "" {
+		dirs = []string{filepath.Join(root, name)}
+	} else {
+		entries, _ := os.ReadDir(root)
+		for _, e := range entries {
+			if e.IsDir() && !strings.HasPrefix(e.Name(), ".") {
+				dirs = append(dirs, filepath.Join(root, e.Name()))
+			}
+		}
+	}
+
+	agg := map[string]*dayInfo{}
+	for _, d := range dirs {
+		entries, err := os.ReadDir(d)
+		if err != nil {
+			continue
+		}
+		for _, e := range entries {
+			if !e.IsDir() {
+				continue
+			}
+			date := e.Name()
+			if agg[date] == nil {
+				agg[date] = &dayInfo{Date: date}
+			}
+			files, _ := os.ReadDir(filepath.Join(d, date))
+			for _, f := range files {
+				if f.IsDir() {
+					continue
+				}
+				agg[date].Count++
+				if info, err := f.Info(); err == nil {
+					agg[date].SizeMB += float64(info.Size()) / (1 << 20)
+				}
+			}
+		}
+	}
+
+	for _, v := range agg {
+		out = append(out, *v)
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Date > out[j].Date })
+
+	writeJSON(w, 200, map[string]any{"dates": out})
+}
+
+// ---- 文件列表 ----
+
+// handleRecList 返回某设备某日的录像文件。
+// recFileInfo 一个录像文件
+type recFileInfo struct {
+	Name      string  `json:"name"`
+	Date      string  `json:"date"`
+	SizeMB    float64 `json:"sizeMB"`
+	Duration  float64 `json:"duration"`
+	StartTime string  `json:"startTime"`
+	URL       string  `json:"url"`
+	ThumbURL  string  `json:"thumbUrl"`
+	Dev       string  `json:"dev,omitempty"`
+}
+
+// listRecDevices 列出有录像的设备目录名。
+func listRecDevices(root string) []string {
+	ents, err := os.ReadDir(root)
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, e := range ents {
+		if e.IsDir() && !strings.HasPrefix(e.Name(), ".") {
+			out = append(out, e.Name())
+		}
+	}
+	return out
+}
+
+func (s *Server) handleRecList(w http.ResponseWriter, r *http.Request) {
+	name := safeName(r.URL.Query().Get("name"))
+	date := safeName(r.URL.Query().Get("date"))
+	root := s.recRoot()
+	loadRecMeta(root)
+
+	// name 为空 = 列出**所有设备**的录像。
+	//
+	// 前端首次进回放页时还不知道哪些设备有录像，
+	// 这里聚合返回，省一次往返。
+	if name == "" {
+		names := listRecDevices(root)
+		var all []recFileInfo
+		for _, n := range names {
+			all = append(all, s.collectRecFiles(root, n, date)...)
+		}
+		sort.Slice(all, func(i, j int) bool { return all[i].StartTime > all[j].StartTime })
+		var totalMB float64
+		for _, f := range all {
+			totalMB += f.SizeMB
+		}
+		writeJSON(w, 200, map[string]any{
+			"count": len(all), "date": date, "files": all,
+			"devs": names, "totalMB": totalMB,
+		})
+		return
+	}
+
+	out := s.collectRecFiles(root, name, date)
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	var totalMB float64
+	for _, f := range out {
+		totalMB += f.SizeMB
+	}
+	writeJSON(w, 200, map[string]any{
+		"name": name, "date": date, "files": out,
+		"count": len(out), "totalMB": totalMB,
+	})
+}
+
+// collectRecFiles 收集某设备（可带日期）下的录像文件。
+func (s *Server) collectRecFiles(root, name, date string) []recFileInfo {
+	dir := filepath.Join(root, name)
+	if date != "" {
+		dir = filepath.Join(dir, date)
+	}
+
+	var out []recFileInfo
+	_ = filepath.Walk(dir, func(pth string, info os.FileInfo, err error) error {
+		if err != nil || info == nil || info.IsDir() {
+			return nil
+		}
+		if filepath.Ext(pth) != ".mkv" {
+			return nil
+		}
+		rel, _ := filepath.Rel(root, pth)
+		parts := strings.Split(rel, string(filepath.Separator))
+		st := info.ModTime().Format("2006-01-02 15:04:05")
+		base := strings.TrimSuffix(info.Name(), ".mkv")
+		if len(base) >= 15 {
+			if t, err := time.ParseInLocation("20060102_150405", base[:15], time.Local); err == nil {
+				st = t.Format("2006-01-02 15:04:05")
+			}
+		}
+		fi := recFileInfo{
+			Name:      info.Name(),
+			SizeMB:    float64(info.Size()) / (1 << 20),
+			Duration:  s.probeDuration(pth),
+			StartTime: st,
+			Dev:       name,
+		}
+		if len(parts) >= 2 {
+			fi.Date = parts[len(parts)-2]
+		}
+		q := "name=" + urlEncode(name) + "&file=" + urlEncode(fi.Name) + "&date=" + urlEncode(fi.Date)
+		fi.URL = "/api/recordings/play?" + q
+		fi.ThumbURL = "/api/recordings/thumb?" + q
+		out = append(out, fi)
+		return nil
+	})
+	return out
+}
+
+func urlEncode(s string) string {
+	return strings.ReplaceAll(strings.ReplaceAll(s, " ", "%20"), "&", "%26")
+}
+
+// ---- 播放（转码）----
+
+// handleRecPlay 把录像转码成 H.264 MP4 流式输出。
+//
+// 参数：
+//
+//	name  设备名
+//	date  日期目录（可空，会自动找）
+//	file  文件名
+//	t     起始秒数（可选，用于拖动进度）
+func (s *Server) handleRecPlay(w http.ResponseWriter, r *http.Request) {
+	name := safeName(r.URL.Query().Get("name"))
+	date := safeName(r.URL.Query().Get("date"))
+	file := safeName(r.URL.Query().Get("file"))
+	start, err := strconv.ParseFloat(r.URL.Query().Get("t"), 64)
+	if err != nil || math.IsNaN(start) || math.IsInf(start, 0) || start < 0 {
+		start = 0
+	}
+	nocache := r.URL.Query().Get("nocache") == "1"
+
+	src, err := s.findRecFile(name, date, file)
+	if err != nil {
+		writeErr(w, 404, err.Error())
+		return
+	}
+
+	// 选编码器（实测可用，进程内缓存结果）
+	enc, encArgs := s.pickFileEncoder(src)
+
+	if date == "" || name == "" {
+		rel, _ := filepath.Rel(s.recRoot(), src)
+		parts := strings.Split(rel, string(filepath.Separator))
+		if len(parts) >= 3 {
+			name = parts[0]
+			date = parts[1]
+		}
+	}
+
+	// 缓存命中 + 不需要偏移 -> 直接发文件（支持 Range，秒开可拖动）
+	dst := s.cachePath(enc, name, date, file)
+	if nocache {
+		_ = os.Remove(dst)
+	}
+	if !nocache && cacheValid(dst, src) {
+		logf("[replay] 缓存命中 %s", filepath.Base(dst))
+		_ = os.Chtimes(dst, time.Now(), time.Now())
+		w.Header().Set("Content-Type", "video/mp4")
+		w.Header().Set("Cache-Control", "public, max-age=3600")
+		http.ServeFile(w, r, dst) // ServeFile 自带 Range 支持
+		return
+	}
+
+	// 未命中：转码，同时（start==0 时）在后台写缓存
+	args := []string{
+		"-hide_banner", "-loglevel", "error",
+	}
+	if strings.HasSuffix(enc, "_qsv") {
+		args = append(args, "-hwaccel", "qsv", "-hwaccel_output_format", "qsv")
+	}
+	args = append(args,
+		"-threads", "0",
+		"-fflags", "+genpts",
+		"-avoid_negative_ts", "make_zero",
+	)
+	if start > 0 {
+		// -ss 放在 -i 前面 -> 快速定位到关键帧
+		args = append(args, "-ss", fmt.Sprintf("%.2f", start))
+	}
+	args = append(args, "-i", src)
+	args = append(args, encArgs...)
+	// 极致首帧提速：0 B帧（无重排延迟，首帧即刻解码上屏）+ 1秒一个关键帧 + 300ms 快速切片刷新！
+	args = append(args,
+		"-bf", "0",
+		"-g", "25",
+		"-frag_duration", "300000",
+		"-an",
+		"-movflags", "frag_keyframe+empty_moov+default_base_moof",
+		"-f", "mp4", "pipe:1",
+	)
+
+	// 客户端连接级 Context：只要浏览器断开连接、切换片段或刷新，立即取消 Context
+	ctx, cancel := context.WithCancel(r.Context())
+	defer cancel()
+
+	cmd := exec.CommandContext(ctx, s.ffmpegPath(), args...)
+
+	livePlayMu.Lock()
+	activeLiveStreams++
+	livePlayMu.Unlock()
+
+	// 实时播放让路：立刻中断后台闲时预热任务，但保留用户主动请求的建缓存任务
+	cacheJobMu.Lock()
+	for k, j := range activeCacheJobs {
+		if !j.isUser && j.cmd != nil && j.cmd.Process != nil {
+			logf("[replay] 实时流开始，中断后台闲时缓存任务让路 GPU: %s", filepath.Base(k))
+			_ = j.cmd.Process.Kill()
+			delete(activeCacheJobs, k)
+		}
+	}
+	cacheJobMu.Unlock()
+
+	defer func() {
+		livePlayMu.Lock()
+		activeLiveStreams--
+		stillStreaming := activeLiveStreams > 0
+		livePlayMu.Unlock()
+
+		// 实时流结束后（用户暂停、切片或离开），若无其他活动实时流，在后台闲时补齐完整 MP4 静态缓存
+		if !stillStreaming && !cacheValid(dst, src) {
+			time.AfterFunc(2*time.Second, func() {
+				livePlayMu.Lock()
+				active := activeLiveStreams > 0
+				livePlayMu.Unlock()
+				if !active && !cacheValid(dst, src) {
+					go s.buildCache(src, dst, encArgs, enc, file, false)
+				}
+			})
+		}
+	}()
+
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		writeErr(w, 500, err.Error())
+		return
+	}
+	var errBuf strings.Builder
+	cmd.Stderr = &errBuf
+	if err := cmd.Start(); err != nil {
+		writeErr(w, 500, "启动转码失败: "+err.Error())
+		return
+	}
+	defer func() {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		if errBuf.Len() > 0 {
+			msg := errBuf.String()
+			if len(msg) > 300 {
+				msg = msg[len(msg)-300:]
+			}
+			trimmed := strings.TrimSpace(msg)
+			if trimmed != "" && !strings.Contains(trimmed, "va_openDriver() returns 0") {
+				logf("[replay] ffmpeg stderr: %s", trimmed)
+			}
+		}
+	}()
+
+	logf("[replay] 转码 %s (t=%.1f, %s)", file, start, enc)
+
+	w.Header().Set("Content-Type", "video/mp4")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.WriteHeader(200)
+	if f, ok := w.(http.Flusher); ok {
+		f.Flush()
+	}
+	buf := make([]byte, 16*1024)
+	for {
+		n, err := stdout.Read(buf)
+		if n > 0 {
+			if _, werr := w.Write(buf[:n]); werr != nil {
+				// 客户端已断开（切换片段、跳转或关闭），立即终止转码输出
+				break
+			}
+			if f, ok := w.(http.Flusher); ok {
+				f.Flush()
+			}
+		}
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			break
+		}
+	}
+}
+
+type cacheJob struct {
+	dst     string
+	isUser  bool
+	started time.Time
+	cmd     *exec.Cmd
+}
+
+var (
+	cacheJobMu      sync.Mutex
+	activeCacheJobs = make(map[string]*cacheJob)
+	userActiveUntil time.Time
+)
+
+// buildCache 把文件转码成缓存 MP4。
+// isUser 表示是否为用户交互（点击回放/时间轴）触发。
+func (s *Server) buildCache(src, dst string, encArgs []string, enc, label string, isUser bool) {
+	cacheJobMu.Lock()
+	if isUser {
+		userActiveUntil = time.Now().Add(60 * time.Second)
+		// 1. 如果后台有闲时任务在跑，立即杀掉后台任务，为用户腾出 100% GPU
+		for k, j := range activeCacheJobs {
+			if !j.isUser && j.cmd != nil && j.cmd.Process != nil {
+				logf("[cache] 用户交互请求 %s，中断让路后台任务 %s", label, filepath.Base(k))
+				_ = j.cmd.Process.Kill()
+				delete(activeCacheJobs, k)
+			}
+		}
+		// 2. 如果之前有旧的用户请求，且该任务才刚启动不久(<10s)，杀掉旧任务；若已跑了较长时间(接近完成)，允许其跑完避免浪费已转进度
+		for k, j := range activeCacheJobs {
+			if k != dst && j.isUser && j.cmd != nil && j.cmd.Process != nil {
+				if time.Since(j.started) < 10*time.Second {
+					logf("[cache] 用户切换片段 %s，中断刚启动的旧任务 %s", label, filepath.Base(k))
+					_ = j.cmd.Process.Kill()
+					delete(activeCacheJobs, k)
+				}
+			}
+		}
+	} else {
+		// 后台预热：只要已有任务在跑，避让放弃
+		if len(activeCacheJobs) >= 1 {
+			cacheJobMu.Unlock()
+			return
+		}
+	}
+
+	if activeCacheJobs[dst] != nil {
+		cacheJobMu.Unlock()
+		return
+	}
+
+	job := &cacheJob{dst: dst, isUser: isUser, started: time.Now()}
+	activeCacheJobs[dst] = job
+	cacheJobMu.Unlock()
+
+	defer func() {
+		cacheJobMu.Lock()
+		delete(activeCacheJobs, dst)
+		cacheJobMu.Unlock()
+	}()
+
+	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+		return
+	}
+	tmp := dst + ".part"
+	_ = os.Remove(tmp)
+
+	t0 := time.Now()
+	args := []string{
+		"-hide_banner", "-loglevel", "error",
+	}
+	if strings.HasSuffix(enc, "_qsv") {
+		args = append(args, "-hwaccel", "qsv", "-hwaccel_output_format", "qsv")
+	}
+	args = append(args,
+		"-fflags", "+genpts",
+		"-avoid_negative_ts", "make_zero",
+		"-threads", "0",
+		"-y", "-i", src,
+	)
+	args = append(args, encArgs...)
+	args = append(args,
+		"-an",
+		"-movflags", "+faststart",
+		"-f", "mp4",
+		tmp,
+	)
+
+	cmd := exec.Command(s.ffmpegPath(), args...)
+	job.cmd = cmd
+
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		msg := strings.TrimSpace(string(out))
+		if len(msg) > 200 {
+			msg = msg[:200]
+		}
+		logf("[cache] 转码结束 %s: %s", label, msg)
+		_ = os.Remove(tmp)
+		return
+	}
+
+	if err := os.Rename(tmp, dst); err != nil {
+		_ = os.Remove(tmp)
+		return
+	}
+	if !hasMoovAtom(dst) {
+		logf("[cache] 生成失败 %s: 文件缺少 moov 原子", label)
+		_ = os.Remove(dst)
+		return
+	}
+	fi, _ := os.Stat(dst)
+	var mb float64
+	if fi != nil {
+		mb = float64(fi.Size()) / (1 << 20)
+	}
+	logf("[cache] 已生成 %s (%.1fMB, %.1fs, %s)", label, mb, time.Since(t0).Seconds(), enc)
+
+	s.evictCache()
+}
+
+// handleCacheStats 转码缓存状态。
+//
+// GET /api/recordings/cache
+func (s *Server) handleCacheStats(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, 200, s.cacheStats())
+}
+
+// handleCacheClear 清空转码缓存。
+//
+// POST /api/recordings/cache/clear
+func (s *Server) handleCacheClear(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeErr(w, 405, "只支持 POST")
+		return
+	}
+	dir := s.transcodeCacheDir()
+	var freed int64
+	var n int
+	_ = filepath.Walk(dir, func(pth string, info os.FileInfo, err error) error {
+		if err != nil || info == nil || info.IsDir() {
+			return nil
+		}
+		if err := os.Remove(pth); err == nil {
+			freed += info.Size()
+			n++
+		}
+		return nil
+	})
+	logf("[cache] 手动清理 %d 个文件，释放 %.1fGB", n, float64(freed)/(1<<30))
+	writeJSON(w, 200, map[string]any{"ok": true, "count": n, "freedMB": float64(freed) / (1 << 20)})
+}
+
+// findRecFile 定位录像文件（支持不传 date）。
+func (s *Server) findRecFile(name, date, file string) (string, error) {
+	root := s.recRoot()
+	if file == "" {
+		return "", fmt.Errorf("缺少 file")
+	}
+	if !strings.HasSuffix(file, ".mkv") {
+		return "", fmt.Errorf("只支持 mkv")
+	}
+	if name != "" {
+		if date != "" {
+		pth := filepath.Join(root, name, date, file)
+		if _, err := os.Stat(pth); err == nil {
+			return pth, nil
+		}
+	}
+	// 遍历该设备所有日期
+	base := filepath.Join(root, name)
+	entries, _ := os.ReadDir(base)
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		pth := filepath.Join(base, e.Name(), file)
+		if _, err := os.Stat(pth); err == nil {
+			return pth, nil
+		}
+	}
+	} else {
+		devEntries, _ := os.ReadDir(root)
+		for _, de := range devEntries {
+			if !de.IsDir() || strings.HasPrefix(de.Name(), ".") {
+				continue
+			}
+			devName := de.Name()
+			if date != "" {
+				pth := filepath.Join(root, devName, date, file)
+				if _, err := os.Stat(pth); err == nil {
+					return pth, nil
+				}
+			}
+			entries, _ := os.ReadDir(filepath.Join(root, devName))
+			for _, e := range entries {
+				if !e.IsDir() {
+					continue
+				}
+				pth := filepath.Join(root, devName, e.Name(), file)
+				if _, err := os.Stat(pth); err == nil {
+					return pth, nil
+				}
+			}
+		}
+	}
+	return "", fmt.Errorf("找不到文件: %s", file)
+}
+
+// ---- 缩略图 ----
+
+// handleRecThumb 生成/返回缩略图（磁盘缓存）。
+func (s *Server) handleRecThumb(w http.ResponseWriter, r *http.Request) {
+	name := safeName(r.URL.Query().Get("name"))
+	date := safeName(r.URL.Query().Get("date"))
+	file := safeName(r.URL.Query().Get("file"))
+
+	src, err := s.findRecFile(name, date, file)
+	if err != nil {
+		writeErr(w, 404, err.Error())
+		return
+	}
+
+	root := s.recRoot()
+	thumbDir := filepath.Join(root, ".thumbs", name)
+	_ = os.MkdirAll(thumbDir, 0o755)
+	dst := filepath.Join(thumbDir, file+".jpg")
+
+	// 缓存命中（比源文件新）
+	if di, err := os.Stat(dst); err == nil {
+		if si, err := os.Stat(src); err == nil && di.ModTime().After(si.ModTime()) {
+			serveJPEG(w, dst)
+			return
+		}
+	}
+
+	// 取第 1 秒的帧（避开开头黑屏）
+	cmd := exec.Command(s.ffmpegPath(),
+		"-hide_banner", "-loglevel", "error",
+		"-ss", "1", "-i", src,
+		"-frames:v", "1",
+		"-vf", "scale=320:-2",
+		"-f", "image2", "-c:v", "mjpeg",
+		"-y", dst,
+	)
+	if err := cmd.Run(); err != nil {
+		writeErr(w, 500, "生成缩略图失败")
+		return
+	}
+	serveJPEG(w, dst)
+}
+
+func serveJPEG(w http.ResponseWriter, path string) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		writeErr(w, 404, "读取失败")
+		return
+	}
+	w.Header().Set("Content-Type", "image/jpeg")
+	w.Header().Set("Cache-Control", "public, max-age=3600")
+	_, _ = w.Write(data)
+}
+
+// ---- 下载 ----
+
+// handleRecDownload 下载原始 MKV 文件（支持 Range）。
+func (s *Server) handleRecDownload(w http.ResponseWriter, r *http.Request) {
+	name := safeName(r.URL.Query().Get("name"))
+	date := safeName(r.URL.Query().Get("date"))
+	file := safeName(r.URL.Query().Get("file"))
+
+	src, err := s.findRecFile(name, date, file)
+	if err != nil {
+		writeErr(w, 404, err.Error())
+		return
+	}
+	w.Header().Set("Content-Type", "video/x-matroska")
+	w.Header().Set("Content-Disposition", "attachment; filename=\""+file+"\"")
+	http.ServeFile(w, r, src)
+}
+
+// ---- 删除 ----
+
+// handleRecDelete 删除单个录像文件。
+func (s *Server) handleRecDelete(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeErr(w, 405, "只支持 POST")
+		return
+	}
+	var req struct {
+		Name string `json:"name"`
+		Date string `json:"date"`
+		File string `json:"file"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, 400, "参数错误")
+		return
+	}
+
+	src, err := s.findRecFile(safeName(req.Name), safeName(req.Date), safeName(req.File))
+	if err != nil {
+		writeErr(w, 404, err.Error())
+		return
+	}
+
+	fi, _ := os.Stat(src)
+	var freed int64
+	if fi != nil {
+		freed = fi.Size()
+	}
+	if err := os.Remove(src); err != nil {
+		writeErr(w, 500, "删除失败: "+err.Error())
+		return
+	}
+
+	// 清掉缩略图和元数据缓存
+	_ = os.Remove(filepath.Join(s.recRoot(), ".thumbs", safeName(req.Name), safeName(req.File)+".jpg"))
+	metaMu.Lock()
+	delete(metaCache, src)
+	metaMu.Unlock()
+	go saveRecMeta()
+
+	logf("[replay] 已删除 %s (%.1fMB)", req.File, float64(freed)/(1<<20))
+	writeJSON(w, 200, map[string]any{"ok": true, "freedMB": float64(freed) / (1 << 20)})
+}
+
+var _ = time.Now
+
+// ---- 录像策略配置 ----
+
+// handleRecConfig 读写录像策略。
+//
+// GET  /api/recordings/config   读取
+// POST /api/recordings/config   修改
+//
+// POST body（都可选）：
+//
+//	{"enabled":true,"segmentSec":300,"keepDays":7,"minFreeGB":10,"cacheGB":5}
+func (s *Server) handleRecConfig(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		cfg := s.rec.GetConfig()
+		totalBytes, fileCount, _ := record.DirUsage(cfg.Dir)
+		du := record.DiskUsageOf(cfg.Dir)
+		writeJSON(w, 200, map[string]any{
+			"enabled":           s.cfg.RecordEnabled,
+			"mode":              s.cfg.RecordMode,
+			"dir":               cfg.Dir,
+			"segmentSec":        int(cfg.Segment.Seconds()),
+			"keepDays":          s.cfg.RecordKeepDays,
+			"maxStorageGB":      s.cfg.RecordMaxStorageGB,
+			"minFreeGB":         s.cfg.RecordMinFreeGB,
+			"autoClean":         s.cfg.RecordAutoClean,
+			"lowSpaceMode":      s.cfg.RecordLowSpaceMode,
+			"postRollSec":       s.cfg.RecordPostRollSec,
+			"motionSensitivity": s.cfg.RecordMotionSensitivity,
+			"cacheGB":           s.cfg.TranscodeCacheGB,
+			"usedGB":            float64(totalBytes) / (1 << 30),
+			"fileCount":         fileCount,
+			"diskFreeGB":        du.FreeGB,
+			"diskTotalGB":       du.TotalGB,
+		})
+		return
+
+	case http.MethodPost:
+		var req struct {
+			Enabled           *bool   `json:"enabled"`
+			Mode              *string `json:"mode"`
+			SegmentSec        *int    `json:"segmentSec"`
+			KeepDays          *int    `json:"keepDays"`
+			MaxStorageGB      *int    `json:"maxStorageGB"`
+			MinFreeGB         *int    `json:"minFreeGB"`
+			AutoClean         *bool   `json:"autoClean"`
+			LowSpaceMode      *string `json:"lowSpaceMode"`
+			PostRollSec       *int    `json:"postRollSec"`
+			MotionSensitivity *string `json:"motionSensitivity"`
+			CacheGB           *int    `json:"cacheGB"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeErr(w, 400, "参数错误: "+err.Error())
+			return
+		}
+
+		// 校验范围
+		if req.SegmentSec != nil && (*req.SegmentSec < 10 || *req.SegmentSec > 3600) {
+			writeErr(w, 400, "分片时长需在 10-3600 秒之间")
+			return
+		}
+		if req.KeepDays != nil && (*req.KeepDays < 0 || *req.KeepDays > 365) {
+			writeErr(w, 400, "保留天数需在 0-365 之间（0 表示不删除）")
+			return
+		}
+		if req.MaxStorageGB != nil && (*req.MaxStorageGB < 0 || *req.MaxStorageGB > 100000) {
+			writeErr(w, 400, "存储上限需在 0-100000 GB 之间（0 表示不限）")
+			return
+		}
+		if req.MinFreeGB != nil && (*req.MinFreeGB < 0 || *req.MinFreeGB > 10000) {
+			writeErr(w, 400, "磁盘最低保留需在 0-10000 GB 之间")
+			return
+		}
+		if req.CacheGB != nil && (*req.CacheGB < 1 || *req.CacheGB > 500) {
+			writeErr(w, 400, "缓存上限需在 1-500 GB 之间")
+			return
+		}
+
+		oldMode := s.cfg.RecordMode
+		oldEnabled := s.cfg.RecordEnabled
+
+		if err := s.cfg.SetRecordPolicy(req.Enabled, req.Mode, req.SegmentSec, req.KeepDays, req.MaxStorageGB, req.MinFreeGB, req.PostRollSec, req.CacheGB, req.AutoClean, req.LowSpaceMode, req.MotionSensitivity); err != nil {
+			writeErr(w, 500, "保存失败: "+err.Error())
+			return
+		}
+
+		// 同步到 rec 管理器
+		cur := s.rec.GetConfig()
+		if req.Enabled != nil {
+			cur.Enabled = *req.Enabled
+		}
+		if req.SegmentSec != nil {
+			cur.Segment = time.Duration(*req.SegmentSec) * time.Second
+		}
+		if req.KeepDays != nil {
+			cur.KeepDays = *req.KeepDays
+		}
+		if req.MinFreeGB != nil {
+			cur.MinFreeGB = *req.MinFreeGB
+		}
+		s.rec.SetConfig(cur)
+
+		// 模式响应变更
+		newMode := s.cfg.RecordMode
+		newEnabled := s.cfg.RecordEnabled
+		if newMode != oldMode || newEnabled != oldEnabled {
+			logf("[rec] 录像模式切换: %s (enabled=%v) -> %s (enabled=%v)", oldMode, oldEnabled, newMode, newEnabled)
+			if !newEnabled || newMode == "off" {
+				s.stopAllRecordings()
+			} else if newMode == "always" {
+				s.startAllRecordings()
+			} else if newMode == "motion" || newMode == "ai_event" {
+				s.stopAllRecordings()
+			}
+		}
+
+		writeJSON(w, 200, map[string]any{"ok": true, "enabled": s.cfg.RecordEnabled, "mode": s.cfg.RecordMode})
+		return
+	}
+}
+
+// handleRecBatchDelete 批量删除录像。
+//
+// POST /api/recordings/batch-delete
+//
+// body:
+//
+//	{"name":"设备名","before":"2026-09-14"}   删除该日期之前的
+//	{"name":"设备名","date":"2026-09-14"}     删除该日期全部
+//	{"files":[{"name":..,"date":..,"file":..}]}  指定文件列表
+func (s *Server) handleRecBatchDelete(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeErr(w, 405, "只支持 POST")
+		return
+	}
+	var req struct {
+		Name   string `json:"name"`
+		Date   string `json:"date"`
+		Before string `json:"before"`
+		Files  []struct {
+			Name string `json:"name"`
+			Date string `json:"date"`
+			File string `json:"file"`
+		} `json:"files"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		writeErr(w, 400, "参数错误")
+		return
+	}
+
+	var targets []string
+
+	if len(req.Files) > 0 {
+		for _, f := range req.Files {
+			pth, err := s.findRecFile(safeName(f.Name), safeName(f.Date), safeName(f.File))
+			if err == nil {
+				targets = append(targets, pth)
+			}
+		}
+	} else if req.Name != "" {
+		name := safeName(req.Name)
+		base := filepath.Join(s.recRoot(), name)
+
+		_ = filepath.Walk(base, func(pth string, info os.FileInfo, err error) error {
+			if err != nil || info == nil || info.IsDir() {
+				return nil
+			}
+			if filepath.Ext(pth) != ".mkv" {
+				return nil
+			}
+			rel, _ := filepath.Rel(base, pth)
+			parts := strings.Split(rel, string(filepath.Separator))
+			dirDate := ""
+			if len(parts) >= 2 {
+				dirDate = parts[0]
+			}
+
+			// 按日期筛选
+			if req.Date != "" && dirDate != req.Date {
+				return nil
+			}
+			// 按「之前」筛选
+			if req.Before != "" && dirDate >= req.Before {
+				return nil
+			}
+			targets = append(targets, pth)
+			return nil
+		})
+	}
+
+	var freed int64
+	var n int
+	var failed []string
+
+	for _, pth := range targets {
+		fi, err := os.Stat(pth)
+		if err != nil {
+			continue
+		}
+		if err := os.Remove(pth); err == nil {
+			freed += fi.Size()
+			n++
+		} else {
+			// 记录失败原因（常见：文件属主不是服务用户）
+			failed = append(failed, filepath.Base(pth)+": "+err.Error())
+			logf("[replay] 删除失败 %s: %v", pth, err)
+		}
+	}
+
+	logf("[replay] 批量删除 %d/%d 个文件，释放 %.1fMB", n, len(targets), float64(freed)/(1<<20))
+
+	resp := map[string]any{
+		"ok":      len(failed) == 0,
+		"deleted": n,
+		"total":   len(targets),
+		"freedMB": float64(freed) / (1 << 20),
+	}
+	if len(failed) > 0 {
+		if len(failed) > 3 {
+			failed = failed[:3]
+		}
+		resp["failed"] = failed
+		resp["msg"] = "部分文件删除失败（可能是权限问题）"
+	}
+	writeJSON(w, 200, resp)
+}
+
+// handleRecFrame 取指定时间点的帧（用于时间轴预览）。
+//
+// GET /api/recordings/frame?name=&date=&file=&t=30
+//
+// 与 thumb 的区别：
+//
+//	thumb  固定取第 1 秒，用于列表缩略图
+//	frame  取任意时间，用于拖动预览
+func (s *Server) handleRecFrame(w http.ResponseWriter, r *http.Request) {
+	name := safeName(r.URL.Query().Get("name"))
+	date := safeName(r.URL.Query().Get("date"))
+	file := safeName(r.URL.Query().Get("file"))
+	t, _ := strconv.ParseFloat(r.URL.Query().Get("t"), 64)
+	if t < 0 {
+		t = 0
+	}
+	w0, _ := strconv.Atoi(r.URL.Query().Get("w"))
+	// 上限放到 1600：云端视觉模型看车牌/门牌需要高分辨率，
+	// 而这是本地 ffmpeg 抽帧，不额外花钱。
+	if w0 <= 0 || w0 > 1600 {
+		w0 = 240
+	}
+
+	src, err := s.findRecFile(name, date, file)
+	if err != nil {
+		writeErr(w, 404, err.Error())
+		return
+	}
+
+	// 缓存：文件名带时间点（取整到秒，避免缓存爆炸）
+	key := filepath.Base(file) + fmt.Sprintf(".t%d.w%d.jpg", int(t), w0)
+	cacheDir := filepath.Join(s.recRoot(), ".frames", name)
+	dst := filepath.Join(cacheDir, key)
+
+	if fi, err := os.Stat(dst); err == nil && fi.Size() > 0 {
+		serveJPEG(w, dst)
+		return
+	}
+
+	if err := os.MkdirAll(cacheDir, 0o755); err != nil {
+		writeErr(w, 500, "创建缓存目录失败")
+		return
+	}
+
+	// -ss 放在 -i 前面 = 快速定位到关键帧
+	cmd := exec.Command(s.ffmpegPath(),
+		"-hide_banner", "-loglevel", "error",
+		"-ss", fmt.Sprintf("%.2f", t),
+		"-i", src,
+		"-frames:v", "1",
+		"-vf", fmt.Sprintf("scale=%d:-2", w0),
+		"-f", "image2", "-c:v", "mjpeg",
+		"-y", dst,
+	)
+	if err := cmd.Run(); err != nil {
+		writeErr(w, 500, "取帧失败")
+		return
+	}
+	serveJPEG(w, dst)
+}
+
+// handleRecFrameStrip 生成时间轴缩略图带（多帧拼成一张图）。
+//
+// GET /api/recordings/frame-strip?name=&date=&file=&n=10
+//
+// 返回一张横向拼接的 JPEG，前端按等分切片显示。
+// 这样一次请求就能拿到整条时间轴的预览。
+func (s *Server) handleRecFrameStrip(w http.ResponseWriter, r *http.Request) {
+	name := safeName(r.URL.Query().Get("name"))
+	date := safeName(r.URL.Query().Get("date"))
+	file := safeName(r.URL.Query().Get("file"))
+	n, _ := strconv.Atoi(r.URL.Query().Get("n"))
+	if n <= 0 || n > 30 {
+		n = 10
+	}
+
+	src, err := s.findRecFile(name, date, file)
+	if err != nil {
+		writeErr(w, 404, err.Error())
+		return
+	}
+
+	cacheDir := filepath.Join(s.recRoot(), ".frames")
+	_ = os.MkdirAll(cacheDir, 0o755)
+	dst := filepath.Join(cacheDir, filepath.Base(file)+fmt.Sprintf(".strip%d.jpg", n))
+
+	if fi, err := os.Stat(dst); err == nil && fi.Size() > 0 {
+		if si, err2 := os.Stat(src); err2 == nil && fi.ModTime().After(si.ModTime()) {
+			serveJPEG(w, dst)
+			return
+		}
+	}
+
+	dur := s.probeDuration(src)
+	if dur <= 0 {
+		writeErr(w, 500, "无法读取时长")
+		return
+	}
+
+	// 均匀取 n 帧，横向拼接
+	//
+	// fps = n / dur 会取到 t=0, dur/n, 2*dur/n, ... (n-1)*dur/n
+	// 最后一帧贴近末尾，视频结尾常有空洞 -> 出现黑边。
+	// 所以留 8% 余量：fps = n / (dur * 0.92)
+	fps := float64(n) / (dur * 0.92)
+
+	// 太短的视频减少帧数（避免重复帧）
+	if dur < float64(n)*1.5 {
+		n = int(dur / 1.5)
+		if n < 3 {
+			n = 3
+		}
+		fps = float64(n) / (dur * 0.92)
+	}
+	cmd := exec.Command(s.ffmpegPath(),
+		"-hide_banner", "-loglevel", "error",
+		"-i", src,
+		"-vf", fmt.Sprintf("fps=%.6f,scale=160:-2,tile=%dx1", fps, n),
+		"-frames:v", "1",
+		"-f", "image2", "-c:v", "mjpeg",
+		"-y", dst,
+	)
+	var errBuf strings.Builder
+	cmd.Stderr = &errBuf
+	if err := cmd.Run(); err != nil {
+		msg := strings.TrimSpace(errBuf.String())
+		if len(msg) > 150 {
+			msg = msg[:150]
+		}
+		writeErr(w, 500, "生成缩略图带失败: "+msg)
+		return
+	}
+	serveJPEG(w, dst)
+}
+
+
+// startRecCacheWorker 后台自动把最新录像转码成快开 MP4 缓存。
+func (s *Server) startRecCacheWorker() {
+	go func() {
+		time.Sleep(3 * time.Second)
+		for {
+			s.preCacheRecentRecordings()
+			time.Sleep(25 * time.Second)
+		}
+	}()
+}
+
+func (s *Server) preCacheRecentRecordings() {
+	root := s.recRoot()
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return
+	}
+	today := time.Now().Format("2006-01-02")
+	var dates []string
+	for d := 0; d < 7; d++ {
+		dates = append(dates, time.Now().AddDate(0, 0, -d).Format("2006-01-02"))
+	}
+
+	for _, devEntry := range entries {
+		if !devEntry.IsDir() || strings.HasPrefix(devEntry.Name(), ".") {
+			continue
+		}
+		devName := devEntry.Name()
+		for _, d := range dates {
+			dateDir := filepath.Join(root, devName, d)
+			files, err := os.ReadDir(dateDir)
+			if err != nil {
+				continue
+			}
+			for i := len(files) - 1; i >= 0; i-- {
+				f := files[i]
+				if f.IsDir() || !strings.HasSuffix(f.Name(), ".mkv") {
+					continue
+				}
+				info, err := f.Info()
+				if err != nil || (d == today && time.Since(info.ModTime()) < 10*time.Second) {
+					continue
+				}
+				src := filepath.Join(dateDir, f.Name())
+				enc, encArgs := s.pickFileEncoder(src)
+				dst := s.cachePath(enc, devName, d, f.Name())
+				if !cacheValid(dst, src) {
+					cacheJobMu.Lock()
+					busy := len(activeCacheJobs) >= 1
+					cacheJobMu.Unlock()
+					if busy {
+						time.Sleep(2 * time.Second)
+						continue
+					}
+					s.buildCache(src, dst, encArgs, enc, f.Name(), false)
+				}
+			}
+		}
+	}
+}
+
+// handleRecCacheStatus 查询指定录像是否已生成快开 MP4 缓存，未就绪时自动触发后台极速转码。
+func (s *Server) handleRecCacheStatus(w http.ResponseWriter, r *http.Request) {
+	name := safeName(r.URL.Query().Get("name"))
+	file := filepath.Base(r.URL.Query().Get("file"))
+	date := safeName(r.URL.Query().Get("date"))
+	if name == "" || file == "" || date == "" {
+		writeErr(w, 400, "缺少参数")
+		return
+	}
+	src, err := s.findRecFile(name, date, file)
+	if err != nil {
+		writeErr(w, 404, "文件不存在")
+		return
+	}
+	if date == "" || name == "" {
+		rel, _ := filepath.Rel(s.recRoot(), src)
+		parts := strings.Split(rel, string(filepath.Separator))
+		if len(parts) >= 3 {
+			name = parts[0]
+			date = parts[1]
+		}
+	}
+	enc, encArgs := s.pickFileEncoder(src)
+	dst := s.cachePath(enc, name, date, file)
+	ready := cacheValid(dst, src)
+
+	cacheJobMu.Lock()
+	userActiveUntil = time.Now().Add(60 * time.Second)
+	_, building := activeCacheJobs[dst]
+	cacheJobMu.Unlock()
+
+	// 关键优化：只要用户点击或进入该片段，立刻在后台生成永久快开 MP4 缓存
+	if !ready && !building {
+		if _, err := os.Stat(src); err == nil {
+			go s.buildCache(src, dst, encArgs, enc, file, true)
+			building = true
+		}
+	}
+
+	writeJSON(w, 200, map[string]any{
+		"cached":   ready,
+		"building": building,
+	})
+}

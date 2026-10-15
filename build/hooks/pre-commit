@@ -1,0 +1,71 @@
+#!/bin/sh
+# ============================================================================
+# pre-commit：阻止把「前端 + 后端」两种不相关的改动混进同一个提交
+# ----------------------------------------------------------------------------
+# 背景（2026-10-13，同一天发生两次）：
+#   并发会话在同一工作区作业时，`git add -A` 会把对方未提交的改动一起 staged。
+#
+#   第一次：本会话的 pages.css 被带进对方的提交（6b33456 一带）
+#   第二次：本会话 5 个前端文件、414 行被带进 f344fdd，
+#           而其 commit message **只写了 cmd/findcreds** ——
+#           `git log -S"advHead"` 搜不到，bisect 会误判归属，
+#           想单独回滚 findcreds 会连带撤销前端工作。
+#
+#   详见 docs/UI-SPEC.md §7 与 docs/COMMIT-ANOMALIES.md
+#
+# 为什么做成 hook：规范是当天写的、当天就被违反。**软规则挡不住高频风险**，
+#   靠"记得先跑 git status"不成立 —— 尤其在多会话各自专注时。
+#
+# 行为：
+#   staged 同时含前端与后端 -> 拒绝提交（这正是两次事故的形态）。
+#   文档 / 构建脚本 / CI 属"中立区"，可随任一侧提交。
+#
+#   显式放行：ALLOW_MIXED_COMMIT=1 git commit ...
+#     ⚠️ 放行不是"静默跳过"：commit-msg hook 会往提交信息里追加
+#        [mixed-commit-override] 标记，使这次跨层提交**事后可检索**：
+#            git log --grep='mixed-commit-override'
+#        （只 echo 到终端是不够的 —— 提交完就没了，等于重建
+#          「事后找不到记录」这个刚修好的洞。）
+#
+# 安装：bash build/install-hooks.sh
+# ============================================================================
+
+# 与本文件同目录（git 以 .git/hooks/<name> 调用，$0 即该路径）
+HOOK_DIR=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+. "$HOOK_DIR/mixed-lib.sh"
+
+mixed_scan || exit 0          # 不是跨层 -> 放行
+
+if mixed_override_used; then
+  echo "pre-commit: ALLOW_MIXED_COMMIT=1 -> 放行跨层提交"
+  echo "            提交信息将被自动追加 $MIXED_TAG 标记（见 commit-msg hook）"
+  exit 0
+fi
+
+echo ""
+echo "✋ pre-commit 拒绝提交：staged 同时包含【前端】与【后端】改动。"
+echo ""
+echo "   [前端]"
+for f in $FE; do echo "     $f"; done
+echo ""
+echo "   [后端]"
+for f in $BE; do echo "     $f"; done
+echo ""
+cat <<'EOF'
+   为什么要拦：本项目在同一天两次发生「git add -A 夹带他人改动」，
+   其中一次 commit message 完全没提被夹带的内容，导致可追溯性丢失
+   （git log -S 搜不到、bisect 误判归属、无法单独回滚）。
+   详见 docs/UI-SPEC.md §7 / docs/COMMIT-ANOMALIES.md。
+
+   怎么处理（二选一）：
+     1) 分开提交（推荐）—— 把不属于本次改动的文件移出暂存区：
+          git restore --staged <path>        # 或 git reset HEAD <path>
+        然后重新 commit。
+
+     2) 确实需要一起提交（例如新增 API + 配套 UI）：
+          ALLOW_MIXED_COMMIT=1 git commit ...
+        提交信息会自动带上 [mixed-commit-override] 标记，
+        以便日后用 git log --grep 检索到这次跨层提交。
+EOF
+echo ""
+exit 1
