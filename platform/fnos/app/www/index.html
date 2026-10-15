@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <title>MiCam - 智能监控中心</title>
-<meta name="micam-build" content="2026-10-15 17:30:48">
+<meta name="micam-build" content="2026-10-15 17:40:45">
 <!-- 内联 SVG favicon（data URI）：
      浏览器默认会请求 /favicon.ico 并得到 404（控制台报错）。
      这里用 data URI 消除该请求 —— 同时保持「全内联、不联网」的约束。 -->
@@ -11278,6 +11278,11 @@ function renderEvents(c){
     TODAY_EVENTS = r.today || 0;
     renderMenu();
 
+    // 智能自适应范围：用户未主动选过且今天无事件时，自动选最近 7 天，避免用户进入事件中心看到空页面
+    if(!evState._userChanged && evState.range === 'today' && TODAY_EVENTS === 0 && evData.length > 0){
+      evState.range = 'week';
+    }
+
     paintEvents(c);
   }).catch(function(err){
     c.innerHTML = '<div class="page__inner">' + errorCard(err, function(){ renderEvents(c); }) + '</div>';
@@ -11353,9 +11358,17 @@ function paintEvents(c){
 
   // 过滤（日期）
   var list0 = all;
-  if(evState.range === 'today')      list0 = all.filter(function(x){ return (x.time||'').slice(0,10) === todayStr; });
-  else if(evState.range === 'yesterday') list0 = all.filter(function(x){ return (x.time||'').slice(0,10) === yestStr; });
-  else if(evState.from && evState.to){
+  if(evState.range === 'today') {
+    list0 = all.filter(function(x){ return (x.time||'').slice(0,10) === todayStr; });
+  } else if(evState.range === 'yesterday') {
+    list0 = all.filter(function(x){ return (x.time||'').slice(0,10) === yestStr; });
+  } else if(evState.range === 'week') {
+    var d7 = localDate(new Date(Date.now() - 7 * 86400000));
+    list0 = all.filter(function(x){ return (x.time||'').slice(0,10) >= d7; });
+  } else if(evState.range === 'month') {
+    var d30 = localDate(new Date(Date.now() - 30 * 86400000));
+    list0 = all.filter(function(x){ return (x.time||'').slice(0,10) >= d30; });
+  } else if(evState.from && evState.to){
     list0 = all.filter(function(x){
       var d = (x.time||'').slice(0,10);
       return d >= evState.from && d <= evState.to;
@@ -11537,7 +11550,24 @@ function paintEvents(c){
       //   · 文案区分「本来就没有事件」和「筛选后没结果」——
       //     前者要引导去调检测设置/看实时画面，后者要引导放宽筛选条件
       var noData = (all.length === 0);
-      var hasFilter = !!(evState.q || evState.did || evState.type !== 'all' || evState.from);
+      var hasFilter = !!(evState.q || evState.did || evState.type !== 'all' || evState.from || evState.range !== 'week');
+      if(!noData && evState.range === 'today' && !l.length){
+        box.innerHTML = '<div class="empty empty--compact">'
+          + '<div class="empty__icon">' + icon('calendar', 22) + '</div>'
+          + '<div class="empty__title">今天暂无新事件</div>'
+          + '<div class="empty__desc">今天目前还没有侦测到异常事件动态（历史记录共 ' + all.length + ' 条）。</div>'
+          + '<div class="empty__actions">'
+          +   '<button class="btn btn--primary btn--sm" id="evQuickWeek">' + icon('clock', 13) + '查看最近 7 天事件</button>'
+          +   '<button class="btn btn--sm" data-evgo="home">' + icon('home', 13) + '查看实时监控</button>'
+          + '</div>'
+          + '</div>';
+        var qw = document.getElementById('evQuickWeek');
+        if(qw) qw.onclick = function(){ evState._userChanged = true; evState.range = 'week'; paintEvents(c); };
+        Array.prototype.forEach.call(box.querySelectorAll('[data-evgo]'), function(b){
+          b.onclick = function(){ page = this.dataset.evgo; renderMenu(); render(); };
+        });
+        return;
+      }
       if(noData){
         box.innerHTML = '<div class="empty empty--compact">'
           + '<div class="empty__icon">' + icon('bell',22) + '</div>'
@@ -18599,7 +18629,7 @@ function renderWizard(c){
     c.innerHTML = "<div class=\"wizard\">"
       + "<div class=\"card\">"
       +   "<div class=\"wizard__hero\">"
-      +     "<div class=\"wizard__logo\"><svg width=\"32\" height=\"32\" viewBox=\"0 0 24 24\" fill=\"#fff\"><path d=\"M12 0C8.016 0 4.756.255 2.493 2.516C.23 4.776 0 8.033 0 12.012s.23 7.235 2.494 9.497C4.757 23.77 8.017 24 12 24s7.243-.23 9.506-2.491S24 15.99 24 12.012c0-3.984-.233-7.243-2.502-9.504C19.234.252 15.978 0 12 0M4.906 7.405h5.624c1.47 0 3.007.068 3.764.827c.746.746.827 2.233.83 3.676v4.54a.15.15 0 0 1-.152.147h-1.947a.15.15 0 0 1-.152-.148V11.83c-.002-.806-.048-1.634-.464-2.051c-.358-.36-1.026-.441-1.72-.458H7.158a.15.15 0 0 0-.151.147v6.98a.15.15 0 0 1-.152.148H4.906a.15.15 0 0 1-.15-.148V7.554a.15.15 0 0 1 .15-.149m12.131 0h1.949a.15.15 0 0 1 .15.15v8.892a.15.15 0 0 1-.15.148h-1.949a.15.15 0 0 1-.151-.148V7.554a.15.15 0 0 1 .151-.149M8.92 10.948h2.046c.083 0 .15.066.15.147v5.352a.15.15 0 0 1-.15.148H8.92a.15.15 0 0 1-.152-.148v-5.352a.15.15 0 0 1 .152-.147\"/></svg></div>"
+      +     "<div class=\"wizard__logo\">" + icon("camera", 32) + "</div>"
       +     "<h2>" + wizTitle + "</h2>"
       +     "<p>" + wizSub + "</p>"
       +   "</div>"
