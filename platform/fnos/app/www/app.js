@@ -8778,59 +8778,154 @@ function stRecDirCard(status, stLocs){
   var spaceTitle = (curLoc.freeGB != null && curLoc.totalGB != null)
     ? ('剩余 ' + fmtGB(curLoc.freeGB) + ' 可用，总空间 ' + fmtGB(curLoc.totalGB))
     : '';
+  var usedPct = (curLoc.freeGB != null && curLoc.totalGB != null && curLoc.totalGB > 0)
+    ? Math.max(0, Math.min(100, ((curLoc.totalGB - curLoc.freeGB) / curLoc.totalGB * 100))).toFixed(1)
+    : null;
+
+  var userShares = (stLocs || []).filter(function(l){ return l.kind === 'share' || l.kind === 'volume'; });
+  var appShares = (stLocs || []).filter(function(l){ return l.kind === 'appshare' || l.kind === 'appdata' || (!l.kind && l.path !== curPath); });
+
+  function renderLocItem(l){
+    var isCur = l.path === curPath;
+    var spaceStr = (l.freeGB != null && l.totalGB != null)
+      ? ('剩余 ' + fmtGB(l.freeGB) + ' / 总计 ' + fmtGB(l.totalGB))
+      : (l.freeGB ? ('剩余 ' + fmtGB(l.freeGB)) : '');
+
+    var badgeHtml = '';
+    if(isCur){
+      badgeHtml = '<span class="badge badge--accent">' + icon('check', 11) + ' 当前生效中</span>';
+    } else if(l.writable){
+      badgeHtml = '<span class="st-tag st-tag--ok" style="background:rgba(34,197,94,0.12);color:#22c55e;border:1px solid rgba(34,197,94,0.25);border-radius:4px;padding:2px 8px;font-size:11px;font-weight:500;display:inline-flex;align-items:center;gap:4px;">' + icon('shield', 11) + ' 已授权 · 可直接使用</span>';
+    } else {
+      badgeHtml = '<span class="st-tag st-tag--warn" style="background:rgba(234,179,8,0.12);color:#eab308;border:1px solid rgba(234,179,8,0.25);border-radius:4px;padding:2px 8px;font-size:11px;font-weight:500;display:inline-flex;align-items:center;gap:4px;">' + icon('lock', 11) + ' 需在飞牛授权</span>';
+    }
+
+    var btnHtml = '';
+    if(isCur){
+      btnHtml = '<button class="btn btn--sm" disabled style="opacity:0.75">' + icon('check', 12) + ' 正在使用</button>';
+    } else if(l.writable){
+      btnHtml = '<button class="btn btn--primary btn--sm st-apply-dir" data-path="' + esc(l.path) + '">' + icon('check', 12) + ' 设为录像目录</button>';
+    } else {
+      btnHtml = '<button class="btn btn--sm st-apply-dir" data-path="' + esc(l.path) + '" title="若已在飞牛完成权限分配，可直接切换">' + icon('arrow-right', 12) + ' 设为录像目录</button>';
+    }
+
+    return '<div class="st-loc-item' + (isCur ? ' is-current' : '') + (!l.writable ? ' is-unwritable' : '') + '">'
+      + '<div class="st-loc-item__left">'
+      +   '<div class="st-loc-item__icon">' + icon(isCur ? 'folder-open' : 'folder', 18) + '</div>'
+      +   '<div class="st-loc-item__body">'
+      +     '<div class="st-loc-item__title-row">'
+      +       '<span class="st-loc-item__title">' + esc(l.name || l.path) + '</span>'
+      +       badgeHtml
+      +     '</div>'
+      +     '<div class="st-loc-item__path" title="' + esc(l.path) + '">' + esc(l.path) + '</div>'
+      +     (spaceStr ? ('<div class="st-loc-item__meta">' + esc(spaceStr) + (l.desc ? (' · ' + esc(l.desc)) : '') + '</div>') : '')
+      +   '</div>'
+      + '</div>'
+      + '<div class="st-loc-item__right">'
+      +   btnHtml
+      + '</div>'
+      + '</div>';
+  }
 
   return '<div class="st-dir-card">'
     + '<div class="st-dir-card__head">'
-    +   '<span class="st-dir-card__title">' + icon('folder-open',16) + '录像存储目录</span>'
-    +   '<span class="st-health ' + (status && status.healthy ? 'is-ok' : 'is-warn') + '">'
-    +     '<span class="status-dot ' + (status && status.healthy ? 'is-online' : '') + '"></span>'
-    +     '存储健康 <b>' + (status && status.healthy ? '就绪正常' : '偏低需关注') + '</b>'
-    +   '</span>'
+    +   '<div class="st-dir-card__title-group">'
+    +     '<span class="st-dir-card__title">' + icon('folder-open',18) + '录像存储位置与目录管理</span>'
+    +     '<span class="st-dir-card__subtitle">自动识别飞牛存储池、用户个人共享文件夹与外置存储挂载点</span>'
+    +   '</div>'
+    +   '<div class="st-dir-card__actions">'
+    +     '<button class="btn btn--sm st-locs-refresh" id="stLocsRefresh" title="重新扫描飞牛系统共享目录与存储卷">' + icon('refresh',13) + '刷新存储列表</button>'
+    +     '<span class="st-health ' + (status && status.healthy ? 'is-ok' : 'is-warn') + '">'
+    +       '<span class="status-dot ' + (status && status.healthy ? 'is-online' : '') + '"></span>'
+    +       '存储健康 <b>' + (status && status.healthy ? '就绪正常' : '偏低需关注') + '</b>'
+    +     '</span>'
+    +   '</div>'
     + '</div>'
     + '<div class="st-dir-card__body">'
-    +   '<div class="st-dir-current">'
-    +     '<span class="st-dir-current__label">当前录像保存位置</span>'
-    +     '<span class="st-dir-current__path">' + esc(curPath || '—') + '</span>'
-    +     (curLoc.name ? '<span class="badge badge--accent">' + esc(curLoc.name) + '</span>' : '')
-    +     (curLoc.badge ? '<span class="badge">' + esc(curLoc.badge) + '</span>' : '')
-    +   '</div>'
-    +   '<div class="st-dir-select-row">'
-    +     '<select class="input st-recdir-select" id="stRecDir">'
-    +       ((stLocs && stLocs.length ? stLocs : [{ path: curPath, name: '当前目录' }]).map(function(l){
-              var optFree = l.freeGB ? (' · 剩余 ' + fmtGB(l.freeGB)) : '';
-              var optBadge = l.badge ? (' [' + l.badge + ']') : '';
-              var optWritable = l.writable ? ' (已授权)' : ' (需在飞牛授权)';
-              return '<option value="' + esc(l.path) + '"' + (l.path === curPath ? ' selected' : '') + '>'
-                + esc(l.name || l.path) + optBadge + optWritable + ' — ' + esc(l.path) + optFree + '</option>';
-            }).join(''))
-    +       '<option value="__custom__">➕ 手动输入自定义路径...</option>'
-    +     '</select>'
-    +     '<button class="btn btn--primary st-recdir-save" id="stRecDirSave">' + icon('save',14) + '应用所选目录</button>'
-    +     '<button class="btn st-go-migrate" id="stGoMigrate">' + icon('move',14) + '迁移已有录像</button>'
-    +   '</div>'
-    +   '<div class="st-recdir-custom-wrap" id="stRecDirCustomWrap" style="display:none;margin-top:10px">'
-    +     '<div style="display:flex;gap:8px;align-items:center">'
-    +       '<span style="font-size:12px;color:var(--text-muted);white-space:nowrap">自定义路径:</span>'
-    +       '<input class="input st-recdir-custom-input" id="stRecDirCustom" placeholder="请输入绝对路径，例如 /vol2/recordings 或 /vol2/@appshare/micam/data/recordings" style="flex:1">'
+    +   '<div class="st-active-box">'
+    +     '<div class="st-active-box__head">'
+    +       '<div class="st-active-box__name-row">'
+    +         '<span class="badge badge--accent">' + icon('check', 11) + ' 当前生效中</span>'
+    +         '<span class="st-active-box__name">' + esc(curLoc.name || '当前录像存储目录') + '</span>'
+    +         (curLoc.writable ? '<span style="color:#22c55e;font-size:12px;font-weight:500;display:inline-flex;align-items:center;gap:4px;">' + icon('shield',12) + '读写权限正常</span>' : '<span style="color:var(--warning);font-size:12px;font-weight:500;display:inline-flex;align-items:center;gap:4px;">' + icon('alert',12) + '需在飞牛授权</span>')
+    +       '</div>'
+    +       '<div class="st-active-box__btns">'
+    +         '<button class="btn btn--sm st-go-migrate">' + icon('move',13) + '迁移已有录像</button>'
+    +         '<button class="btn btn--sm st-toggle-custom" id="stToggleCustom">' + icon('plus',13) + '自定义绝对路径</button>'
+    +       '</div>'
+    +     '</div>'
+    +     '<div class="st-active-box__path">' + icon('folder',14) + '<span>物理路径: ' + esc(curPath || '—') + '</span></div>'
+    +     '<div class="st-active-box__meta">'
+    +       '<div class="st-active-box__capacity">'
+    +         '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-secondary);margin-bottom:4px;">'
+    +           '<span>存储空间使用情况</span>'
+    +           '<b>' + esc(spaceSummary) + (usedPct != null ? (' (已用 ' + usedPct + '%)') : '') + '</b>'
+    +         '</div>'
+    +         (usedPct != null ? ('<div class="st-bar"><span style="width:' + usedPct + '%"></span></div>') : '')
+    +       '</div>'
     +     '</div>'
     +   '</div>'
-    +   '<div class="st-fnos-perm-notice" style="margin-top:14px;background:var(--surface-2);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:8px;padding:12px 16px;">'
-    +     '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;">'
-    +       '<div style="font-weight:600;font-size:13px;color:var(--text);display:flex;align-items:center;gap:6px;">'
-    +         '<span>🛡️ 飞牛 NAS 权限设置指引（更换存储位置必看）</span>'
-    +       '</div>'
-    +       '<span class="badge badge--accent" style="font-size:11px;">系统沙盒保护</span>'
+    +   '<div class="st-custom-panel" id="stCustomPanel" style="display:none;background:var(--surface-1);border:1px dashed var(--border);border-radius:var(--radius-lg);padding:14px 18px;">'
+    +     '<div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px;display:flex;align-items:center;gap:6px;">' + icon('set',14) + '输入自定义存储路径</div>'
+    +     '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'
+    +       '<input class="input st-custom-inp" id="stCustomInp" placeholder="请输入飞牛绝对路径，例如 /vol1/1000/测试小米存储 或 /vol2/cams" style="flex:1;min-width:280px;">'
+    +       '<button class="btn btn--primary st-custom-apply" id="stCustomApply">' + icon('save',13) + '应用此路径</button>'
     +     '</div>'
-    +     '<div style="font-size:12px;color:var(--text-secondary);line-height:1.7;">'
-    +       '• <b>自带目录</b>：默认的 <code>应用文件/micam</code>（物理路径 <code>/vol*/@appshare/micam</code>）已自带全部读写权限，开箱即用。<br>'
-    +       '• <b>自定义目录</b>：若需保存到任意其他文件夹（如 <code>/vol2/...</code>），受飞牛系统进程沙盒安全机制保护，<b>必须先在飞牛系统添加授权</b>：'
-    +       '<div style="background:var(--surface-3);padding:10px 14px;border-radius:6px;font-size:12px;color:var(--text);margin-top:8px;border:1px dashed var(--border);line-height:1.8;">'
-    +         '<b>飞牛授权 4 步走：</b><br>'
-    +         '① 打开飞牛 NAS 桌面 → 进入 <b>「应用中心」</b><br>'
-    +         '② 找到 <b>「小米摄像头」</b> 插件，点击进入 <b>「设置」</b><br>'
-    +         '③ 切换到顶部的 <b>「访问权限」</b> 标签页（确保开启允许普通用户授权）<br>'
-    +         '④ 在「允许访问以下文件夹」中点击 <b>「+ 添加」</b> 目标文件夹，并选择 <b>「读写」</b> 权限，保存后回到此处即可直接生效！'
+    +     '<div style="font-size:12px;color:var(--text-muted);margin-top:6px;">提示：自定义路径必须为绝对路径，且已在飞牛「应用中心 - 小米摄像头 - 设置 - 访问权限」中授予读写权限。</div>'
+    +   '</div>'
+    +   '<div class="st-locs-wrap">'
+    +     (userShares.length ? (
+            '<div class="st-loc-group">'
+            + '<div class="st-loc-group__head">'
+            +   '<span>飞牛用户共享文件夹 (' + userShares.length + ')</span>'
+            +   '<span style="font-size:12px;color:var(--text-muted)">在飞牛文件管理中可见</span>'
+            + '</div>'
+            + '<div class="st-loc-list">'
+            +   userShares.map(renderLocItem).join('')
+            + '</div>'
+            + '</div>'
+          ) : '')
+    +     (appShares.length ? (
+            '<div class="st-loc-group">'
+            + '<div class="st-loc-group__head">'
+            +   '<span>插件应用与系统目录 (' + appShares.length + ')</span>'
+            +   '<span style="font-size:12px;color:var(--text-muted)">应用专属空间</span>'
+            + '</div>'
+            + '<div class="st-loc-list">'
+            +   appShares.map(renderLocItem).join('')
+            + '</div>'
+            + '</div>'
+          ) : '')
+    +   '</div>'
+    +   '<div class="st-perm-guide">'
+    +     '<div class="st-perm-guide__head">'
+    +       '<span style="display:flex;align-items:center;gap:6px;">' + icon('shield', 15) + '飞牛 NAS 权限设置指引（更换非自带目录必看）</span>'
+    +       '<span class="badge" style="font-size:11px;">系统沙盒保护</span>'
+    +     '</div>'
+    +     '<div class="st-perm-steps">'
+    +       '<div class="st-perm-step">'
+    +         '<span class="st-perm-step__num">步骤 1</span>'
+    +         '<span class="st-perm-step__title">进入应用中心</span>'
+    +         '<span class="st-perm-step__desc">打开飞牛 NAS 桌面，点击进入「应用中心」</span>'
     +       '</div>'
+    +       '<div class="st-perm-step">'
+    +         '<span class="st-perm-step__num">步骤 2</span>'
+    +         '<span class="st-perm-step__title">打开插件设置</span>'
+    +         '<span class="st-perm-step__desc">找到「小米摄像头」插件，点击「设置」按钮</span>'
+    +       '</div>'
+    +       '<div class="st-perm-step">'
+    +         '<span class="st-perm-step__num">步骤 3</span>'
+    +         '<span class="st-perm-step__title">切换访问权限</span>'
+    +         '<span class="st-perm-step__desc">切换到顶部的「访问权限」标签页</span>'
+    +       '</div>'
+    +       '<div class="st-perm-step">'
+    +         '<span class="st-perm-step__num">步骤 4</span>'
+    +         '<span class="st-perm-step__title">添加读写授权</span>'
+    +         '<span class="st-perm-step__desc">点击「+ 添加」目标共享文件夹并勾选「读写」权限</span>'
+    +       '</div>'
+    +     '</div>'
+    +     '<div class="st-perm-guide__tip">'
+    +       '说明：飞牛系统采用进程沙盒隔离机制保护系统安全。为目标文件夹授权保存后，回到此处点击右上角「刷新存储列表」即可直接识别读写状态并切换。'
     +     '</div>'
     +   '</div>'
     +   '<div class="st-dir-meta-grid">'
@@ -8840,7 +8935,7 @@ function stRecDirCard(status, stLocs){
     +     '<div class="st-dir-meta-item"><span class="st-dir-meta-item__label">存储健康状态</span><b class="st-dir-meta-item__val" style="color:var(--online)">' + (status && status.healthy ? '正常就绪' : '需关注') + '</b></div>'
     +   '</div>'
     +   '<div class="st-dir-tips">'
-    +     '💡 <b>存储位置说明：</b>切换录像目录后，新录制的视频将保存到新路径；已有历史录像仍安全保存在原目录中。如需将历史录像整体搬移至新路径，请点击「迁移已有录像」。'
+    +     '<b>存储位置说明：</b>切换录像目录后，新录制的视频将保存到新路径；已有历史录像仍安全保存在原目录中。如需将历史录像整体搬移至新路径，请点击「迁移已有录像」。'
     +   '</div>'
     + '</div>'
     + '</div>';
@@ -9289,41 +9384,73 @@ function bindMigrate(){
 }
 
 function bindStorage(c, cams){
-  // 录像存储目录下拉框联动显示自定义输入框
-  Array.prototype.forEach.call(c.querySelectorAll('.st-recdir-select'), function(sel){
-    sel.onchange = function(){
+  function applyRecordDir(dir){
+    if(!dir) return;
+    if(!confirm('把录像存储目录切换为：\n' + dir + '\n\n新录像将自动写入新目录，已有历史录像安全保留在原路径。\n如需整体搬迁历史录像，可使用「迁移已有录像」。确定？')) return;
+    api('/api/storage/record-dir', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ dir: dir }) })
+      .then(function(r){
+        if(r && r.ok){
+          toast('录像存储目录已成功更新: ' + r.dir, 'ok');
+          setTimeout(function(){ renderStorage(c); }, 600);
+        } else {
+          toast('设置失败: ' + ((r && r.error) || (r && r.msg) || '未知错误'), 'err');
+        }
+      }).catch(function(e){ toast('设置失败：' + e.message, 'err'); });
+  }
+
+  // 刷新存储列表
+  Array.prototype.forEach.call(c.querySelectorAll('.st-locs-refresh'), function(btn){
+    btn.onclick = function(){
+      var origText = this.innerHTML;
+      var self = this;
+      self.disabled = true;
+      self.innerHTML = icon('refresh', 13) + ' 正在扫描...';
+      api('/api/storage/locations').then(function(res){
+        stLocs = (res && res.locations) || [];
+        toast('已重新扫描，发现 ' + stLocs.length + ' 个存储位置', 'ok');
+        renderStorage(c);
+      }).catch(function(err){
+        toast('扫描失败: ' + err.message, 'err');
+        self.disabled = false;
+        self.innerHTML = origText;
+      });
+    };
+  });
+
+  // 自定义绝对路径面板展开/折叠
+  Array.prototype.forEach.call(c.querySelectorAll('.st-toggle-custom'), function(btn){
+    btn.onclick = function(){
       var card = this.closest('.st-dir-card') || document;
-      var wrap = card.querySelector('.st-recdir-custom-wrap') || document.getElementById('stRecDirCustomWrap');
-      if(wrap){
-        wrap.style.display = (this.value === '__custom__') ? 'block' : 'none';
+      var pnl = card.querySelector('.st-custom-panel') || document.getElementById('stCustomPanel');
+      if(pnl){
+        pnl.style.display = (pnl.style.display === 'none') ? 'block' : 'none';
+        if(pnl.style.display === 'block'){
+          var inp = pnl.querySelector('.st-custom-inp');
+          if(inp) inp.focus();
+        }
       }
     };
   });
 
-  // 录像存储目录应用与迁移跳转
-  Array.prototype.forEach.call(c.querySelectorAll('.st-recdir-save'), function(saveBtn){
-    saveBtn.onclick = function(){
+  // 应用自定义路径
+  Array.prototype.forEach.call(c.querySelectorAll('.st-custom-apply'), function(btn){
+    btn.onclick = function(){
       var card = this.closest('.st-dir-card') || document;
-      var sel = card.querySelector('.st-recdir-select') || document.getElementById('stRecDir');
-      var dir = sel ? sel.value : '';
-      if(dir === '__custom__'){
-        var custInp = card.querySelector('.st-recdir-custom-input') || document.getElementById('stRecDirCustom');
-        dir = custInp ? custInp.value.trim() : '';
-      }
+      var inp = card.querySelector('.st-custom-inp') || document.getElementById('stCustomInp');
+      var dir = inp ? inp.value.trim() : '';
       if(!dir){
-        toast('请输入或选择有效的存储目录', 'warn');
+        toast('请输入自定义存储路径', 'warn');
         return;
       }
-      if(!confirm('把录像存储目录切换为：\n' + dir + '\n\n新录像将自动写入新目录，已有历史录像安全保留在原路径。\n如需整体搬迁历史录像，可使用「迁移已有录像」。确定？')) return;
-      api('/api/storage/record-dir', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ dir: dir }) })
-        .then(function(r){
-          if(r && r.ok){
-            toast('录像存储目录已成功更新: ' + r.dir, 'ok');
-            setTimeout(function(){ render(); }, 800);
-          } else {
-            toast('设置失败: ' + ((r && r.error) || (r && r.msg) || '未知错误'), 'err');
-          }
-        }).catch(function(e){ toast('设置失败：' + e.message, 'err'); });
+      applyRecordDir(dir);
+    };
+  });
+
+  // 快捷一键切换存储目录
+  Array.prototype.forEach.call(c.querySelectorAll('.st-apply-dir'), function(btn){
+    btn.onclick = function(){
+      var p = this.dataset.path;
+      if(p) applyRecordDir(p);
     };
   });
   Array.prototype.forEach.call(c.querySelectorAll('.st-go-migrate'), function(btn){
