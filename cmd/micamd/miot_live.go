@@ -136,7 +136,7 @@ func (s *Server) handleMiotLive(w http.ResponseWriter, r *http.Request) {
 		"--ffmpeg", s.ffm,
 		"--w", w0,
 		"--fps", fps,
-		"--infmt", "hevc",
+		"--infmt", "auto",
 		"--quality", q,
 		"--qv", qv,
 		"--out", "-",

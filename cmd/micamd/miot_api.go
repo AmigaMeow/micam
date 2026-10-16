@@ -17,6 +17,7 @@ package main
 //
 //	GET  /api/miot/bind      生成授权 URL（用户在浏览器打开）
 //	POST /api/miot/authorize 用回调的 code 换 token 并落盘
+//	POST /api/miot/auto-auth 从已登录账号一键同步授权
 //	GET  /api/miot/status    绑定状态
 //	POST /api/miot/unbind    解绑
 //
@@ -99,6 +100,69 @@ func (s *Server) handleMiotBind(w http.ResponseWriter, r *http.Request) {
 		"deviceId": cli.DeviceID,
 		"state":    cli.State,
 		"note":     "在浏览器打开 authUrl 完成授权；回调页给出的一段 base64 提交到 /api/miot/authorize",
+	})
+}
+
+// handleMiotAutoAuth POST /api/miot/auto-auth
+func (s *Server) handleMiotAutoAuth(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeErr(w, 405, "只支持 POST")
+		return
+	}
+	sessions := s.store.AllSessions()
+	if len(sessions) == 0 || sessions[0].PassToken == "" {
+		writeErr(w, 400, "尚未登录小米账号，请先扫码登录小米账号")
+		return
+	}
+	sess := sessions[0]
+
+	miotAuthMu.Lock()
+	uid := ""
+	if miotAuthSt != nil {
+		uid = miotAuthSt.DeviceUUID
+	}
+	cli := miot.NewOAuth2Client(uid, "")
+	miotAuthCli = cli
+	miotAuthMu.Unlock()
+
+	flow, err := miot.NewQRFlow(cli.DeviceUUID)
+	if err != nil {
+		writeErr(w, 500, "创建授权客户端失败: "+err.Error())
+		return
+	}
+	flow.UserID = sess.UserID
+	flow.PassToken = sess.PassToken
+	flow.State = "success"
+
+	if err := flow.FetchOAuthCodeDirect(); err != nil {
+		writeErr(w, 400, "一键同步授权失败: "+err.Error())
+		return
+	}
+
+	tok, err := cli.ExchangeCode(flow.Code)
+	if err != nil {
+		writeErr(w, 502, "换取令牌失败: "+err.Error())
+		return
+	}
+
+	a := &miotAuth{
+		DeviceUUID:   cli.DeviceUUID,
+		AccessToken:  tok.AccessToken,
+		RefreshToken: tok.RefreshToken,
+		ExpiresAt:    time.Now().Add(time.Duration(tok.ExpiresIn) * time.Second).Unix(),
+		BoundAt:      time.Now().Format(time.RFC3339),
+		RedirectURI:  cli.RedirectURI,
+	}
+	_ = saveMiotAuth(a)
+	miotAuthMu.Lock()
+	miotAuthSt = a
+	miotAuthMu.Unlock()
+
+	logf("[miot] ✅ 已登录账号一键授权成功（有效期 %d 小时）", tok.ExpiresIn/3600)
+	writeJSON(w, 200, map[string]any{
+		"ok":        true,
+		"expiresIn": tok.ExpiresIn,
+		"msg":       "一键同步授权成功！官方通道已激活。",
 	})
 }
 

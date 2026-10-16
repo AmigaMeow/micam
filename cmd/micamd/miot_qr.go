@@ -32,7 +32,14 @@ func (s *Server) handleMiotQRStart(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	flow, err := miot.NewQRFlow()
+	uid := ""
+	miotAuthMu.Lock()
+	if miotAuthSt != nil {
+		uid = miotAuthSt.DeviceUUID
+	}
+	miotAuthMu.Unlock()
+
+	flow, err := miot.NewQRFlow(uid)
 	if err != nil {
 		writeErr(w, 500, "创建会话失败: "+err.Error())
 		return
@@ -71,7 +78,7 @@ func (s *Server) handleMiotQRStart(w http.ResponseWriter, r *http.Request) {
 
 // finishMiotAuth 用扫码拿到的 code 换 token 并落盘。
 func (s *Server) finishMiotAuth(flow *miot.QRFlow) {
-	cli := miot.NewOAuth2Client("", "")
+	cli := miot.NewOAuth2Client(flow.DeviceUUID, "")
 	tok, err := cli.ExchangeCode(flow.Code)
 	if err != nil {
 		logf("[miot] 扫码后换取令牌失败: %v", err)
@@ -83,6 +90,7 @@ func (s *Server) finishMiotAuth(flow *miot.QRFlow) {
 		RefreshToken: tok.RefreshToken,
 		ExpiresAt:    time.Now().Add(time.Duration(tok.ExpiresIn) * time.Second).Unix(),
 		BoundAt:      time.Now().Format(time.RFC3339),
+		RedirectURI:  cli.RedirectURI,
 	}
 	_ = saveMiotAuth(a)
 	miotAuthMu.Lock()

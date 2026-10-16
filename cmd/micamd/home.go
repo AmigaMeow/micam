@@ -613,6 +613,7 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 		"now":         time.Now().Format("2006-01-02 15:04:05"),
 		"cameras":     camList,
 		"events":      s.eventStore.Query(event.Query{Days: 3, Limit: 5}),
+		"ui":          s.cfg.UI,
 	})
 }
 

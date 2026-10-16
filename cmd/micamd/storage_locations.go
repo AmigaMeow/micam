@@ -2,18 +2,14 @@ package main
 
 // 录像存储位置。
 //
-// ===== 飞牛的存储权限模型（实测结论）=====
+// ===== 飞牛的存储权限模型 =====
 //
-// /vol1            d--------- root     插件用户**连列出都不行**
-// /vol1/1000       d--------- 用户     插件的用户账户无权访问
-// /vol1/@appdata/<app>/   插件私有数据（卸载可能清理）
-// /vol1/@appshare/<app>/  应用共享目录（属主=插件用户）
+// /vol*            各存储池根目录（需管理员权限）
+// /vol*/@appdata/<app>/   插件私有数据（卸载可能清理）
+// /vol*/@appshare/<app>/  应用共享目录（属主=插件用户，推荐）
 //
-// 所以插件**不能**随便往用户的共享文件夹里写。
-// 正确做法是用 @appshare —— 它是飞牛给应用分配的共享空间，
-// 用户在飞牛文件管理器里能看到，但权限由飞牛管理。
-//
-// 高级用户可以手填绝对路径（前提是自己在飞牛里放过权限）。
+// 高级用户可手填绝对路径（如 /vol2/recordings 或自定义共享文件夹），
+// 前提是在飞牛文件管理器中为 micam 应用赋予读写权限。
 
 import (
 	"encoding/json"
@@ -21,13 +17,14 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"syscall"
 )
 
 type storageLocation struct {
 	Path     string  `json:"path"`
 	Name     string  `json:"name"`
-	Kind     string  `json:"kind"` // appshare / appdata / custom
+	Kind     string  `json:"kind"` // appshare / appdata / volume / custom
 	Desc     string  `json:"desc"`
 	FreeGB   float64 `json:"freeGB"`
 	TotalGB  float64 `json:"totalGB"`
@@ -57,6 +54,9 @@ func (s *Server) handleStorageLocations(w http.ResponseWriter, r *http.Request) 
 		if syscall.Statfs(path, &st) == nil {
 			freeGB = float64(st.Bavail) * float64(st.Bsize) / (1 << 30)
 			totalGB = float64(st.Blocks) * float64(st.Bsize) / (1 << 30)
+		} else if parent := filepath.Dir(path); syscall.Statfs(parent, &st) == nil {
+			freeGB = float64(st.Bavail) * float64(st.Bsize) / (1 << 30)
+			totalGB = float64(st.Blocks) * float64(st.Bsize) / (1 << 30)
 		}
 
 		out = append(out, storageLocation{
@@ -67,31 +67,51 @@ func (s *Server) handleStorageLocations(w http.ResponseWriter, r *http.Request) 
 		})
 	}
 
-	// 应用共享目录（推荐）：用户能在飞牛文件管理器看到
-	appshare := "/vol1/@appshare/micam/data/recordings"
+	// 1. 飞牛应用共享目录（TRIM_APPSHARE 环境变量）
 	if v := os.Getenv("TRIM_APPSHARE"); v != "" {
-		appshare = filepath.Join(v, "data", "recordings")
+		appshare := filepath.Join(v, "data", "recordings")
+		add(appshare, "应用共享目录", "appshare",
+			"飞牛文件管理器可见，卸载插件也不会删", "推荐")
 	}
-	add(appshare, "应用共享目录", "appshare",
-		"飞牛文件管理器可见，卸载插件也不会删", "推荐")
 
-	// 插件数据目录（默认）
-	add(filepath.Join(s.dataDir, "recordings"), "插件数据目录", "appdata",
-		"跟随插件，卸载时可能被清理", "")
-
-	// 外接/网络存储（如果有）
-	if ents, err := os.ReadDir("/vol02"); err == nil {
-		for _, ent := range ents {
-			if !ent.IsDir() {
-				continue
-			}
-			full := filepath.Join("/vol02", ent.Name())
-			add(full, "外接存储 "+ent.Name(), "external", "外接盘或网络存储", "")
+	// 2. 动态扫描所有存储卷下的 @appshare/micam (/vol1, /vol2, /vol3 等)
+	if shares, err := filepath.Glob("/vol*/@appshare/micam"); err == nil {
+		for _, sh := range shares {
+			recPath := filepath.Join(sh, "data", "recordings")
+			volName := filepath.Base(filepath.Dir(filepath.Dir(sh)))
+			add(recPath, "应用共享目录 ("+volName+")", "appshare",
+				"飞牛文件管理器可见，数据独立保存", "推荐")
 		}
 	}
 
-	// 当前值不在候选里也补上
-	add(cur, "当前使用", "custom", "手动配置的路径", "")
+	// 3. 插件数据目录（默认备选）
+	add(filepath.Join(s.dataDir, "recordings"), "插件数据目录", "appdata",
+		"跟随插件，卸载时可能被清理", "")
+
+	// 4. 扫描所有存储卷的用户文件夹与外接存储 (/vol*, /vol02 等)
+	if volRoots, err := filepath.Glob("/vol*"); err == nil {
+		for _, vr := range volRoots {
+			ents, err := os.ReadDir(vr)
+			if err != nil {
+				continue
+			}
+			volName := filepath.Base(vr)
+			for _, ent := range ents {
+				if !ent.IsDir() {
+					continue
+				}
+				name := ent.Name()
+				if strings.HasPrefix(name, "@") || strings.HasPrefix(name, ".") {
+					continue
+				}
+				cand := filepath.Join(vr, name, "recordings")
+				add(cand, volName+" / "+name, "volume", "存储池 "+volName+" 共享文件夹", "")
+			}
+		}
+	}
+
+	// 5. 当前配置的路径始终包含
+	add(cur, "当前使用路径", "custom", "当前生效的录像存储目录", "")
 
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Current != out[j].Current {
@@ -116,8 +136,8 @@ func (s *Server) handleStorageLocations(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, 200, map[string]any{
 		"locations": out,
 		"current":   cur,
-		"note": "飞牛限制：插件只能写入自己的应用目录。" +
-			"如需录到其他位置，请先在飞牛「文件管理」中给 micam 应用授权。",
+		"note": "飞牛系统提示：插件支持保存到任意存储池。如需录到非 @appshare 共享目录，" +
+			"请先在飞牛「文件管理」中为该目录分配 micam 应用的读写权限。",
 	})
 }
 
@@ -156,19 +176,23 @@ func (s *Server) handleSetRecordDir(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	clean := filepath.Clean(req.Dir)
-	for _, bad := range []string{"/", "/etc", "/usr", "/bin", "/sbin", "/proc", "/sys", "/dev", "/boot", "/var", "/vol1", "/vol02"} {
-		if clean == bad {
-			writeErr(w, 400, "不能使用系统目录: "+clean)
+	if clean == "/" || filepath.Dir(clean) == "/" {
+		writeErr(w, 400, "不能直接使用根目录或存储卷根路径: "+clean)
+		return
+	}
+	for _, bad := range []string{"/etc", "/usr", "/bin", "/sbin", "/proc", "/sys", "/dev", "/boot", "/var"} {
+		if clean == bad || strings.HasPrefix(clean, bad+"/") {
+			writeErr(w, 400, "不能使用系统核心目录: "+clean)
 			return
 		}
 	}
 
 	if err := os.MkdirAll(clean, 0o755); err != nil {
-		writeErr(w, 400, "无法创建目录（飞牛可能未给 micam 应用授权该目录）: "+err.Error())
+		writeErr(w, 400, "创建目录失败（飞牛系统未给 micam 应用授权该路径）: "+err.Error())
 		return
 	}
 	if !isWritable(clean) {
-		writeErr(w, 400, "目录不可写 —— 请在飞牛「文件管理」中给 micam 应用授权该目录")
+		writeErr(w, 400, "目录不可写 —— 飞牛权限限制：请在飞牛「文件管理」中右键该目录选择「属性」-「权限」，为 micam 用户分配读写权限")
 		return
 	}
 
@@ -177,6 +201,6 @@ func (s *Server) handleSetRecordDir(w http.ResponseWriter, r *http.Request) {
 	cur.Dir = clean
 	s.rec.SetConfig(cur)
 
-	logf("[storage] 录像目录已切换: %s", clean)
+	logf("[storage] 录像目录已成功切换至: %s", clean)
 	writeJSON(w, 200, map[string]any{"ok": true, "dir": clean})
 }

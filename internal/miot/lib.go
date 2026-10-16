@@ -28,10 +28,19 @@ func FindLib(explicit string) string {
 	if p := os.Getenv("MICAM_MIOT_LIB"); p != "" {
 		cands = append(cands, p)
 	}
+	if dest := os.Getenv("TRIM_APPDEST"); dest != "" {
+		cands = append(cands,
+			filepath.Join(dest, "lib", "libmiot_camera_lite.so"),
+			filepath.Join(dest, "libmiot_camera_lite.so"),
+		)
+	}
 	if exe, err := os.Executable(); err == nil {
 		dir := filepath.Dir(exe)
+		appRoot := filepath.Dir(dir)
 		cands = append(cands,
 			filepath.Join(dir, "libmiot_camera_lite.so"),
+			filepath.Join(dir, "..", "lib", "libmiot_camera_lite.so"),
+			filepath.Join(appRoot, "lib", "libmiot_camera_lite.so"),
 			filepath.Join(dir, "..", "third_party", "miloco", "libmiot_camera_lite.so"),
 		)
 	}
@@ -39,11 +48,21 @@ func FindLib(explicit string) string {
 		cands = append(cands,
 			filepath.Join(wd, "third_party", "miloco", "libmiot_camera_lite.so"),
 			filepath.Join(wd, "app", "miot", "libmiot_camera_lite.so"),
+			filepath.Join(wd, "lib", "libmiot_camera_lite.so"),
 		)
 	}
+
+	// 动态扫描多存储池挂载点 (/vol1, /vol2, /vol3 等)
+	for _, pattern := range []string{
+		"/vol*/@appcenter/micam/lib/libmiot_camera_lite.so",
+		"/vol*/@appdata/micam/lib/libmiot_camera_lite.so",
+	} {
+		if matches, err := filepath.Glob(pattern); err == nil {
+			cands = append(cands, matches...)
+		}
+	}
+
 	cands = append(cands,
-		"/vol1/@appcenter/micam/lib/libmiot_camera_lite.so",
-		"/vol1/@appdata/micam/lib/libmiot_camera_lite.so",
 		"/usr/local/lib/libmiot_camera_lite.so",
 		"/usr/lib/libmiot_camera_lite.so",
 	)
@@ -65,21 +84,40 @@ func FindLib(explicit string) string {
 // FindSidecar 查找 miot_mjpeg.py 的绝对路径。
 func FindSidecar() string {
 	var cands []string
+	if dest := os.Getenv("TRIM_APPDEST"); dest != "" {
+		cands = append(cands,
+			filepath.Join(dest, "miot", "miot_mjpeg.py"),
+			filepath.Join(dest, "app", "miot", "miot_mjpeg.py"),
+		)
+	}
 	if exe, err := os.Executable(); err == nil {
 		dir := filepath.Dir(exe)
+		appRoot := filepath.Dir(dir)
 		cands = append(cands,
 			filepath.Join(dir, "miot", "miot_mjpeg.py"),
 			filepath.Join(dir, "app", "miot", "miot_mjpeg.py"),
+			filepath.Join(dir, "..", "miot", "miot_mjpeg.py"),
 			filepath.Join(dir, "..", "app", "miot", "miot_mjpeg.py"),
+			filepath.Join(appRoot, "miot", "miot_mjpeg.py"),
 		)
 	}
 	if wd, err := os.Getwd(); err == nil {
-		cands = append(cands, filepath.Join(wd, "app", "miot", "miot_mjpeg.py"))
+		cands = append(cands,
+			filepath.Join(wd, "app", "miot", "miot_mjpeg.py"),
+			filepath.Join(wd, "miot", "miot_mjpeg.py"),
+		)
 	}
-	cands = append(cands,
-		"/vol1/@appcenter/micam/miot/miot_mjpeg.py",
-		"/vol1/@appcenter/micam/app/miot/miot_mjpeg.py",
-	)
+
+	// 动态扫描多存储池挂载点
+	for _, pattern := range []string{
+		"/vol*/@appcenter/micam/miot/miot_mjpeg.py",
+		"/vol*/@appcenter/micam/app/miot/miot_mjpeg.py",
+	} {
+		if matches, err := filepath.Glob(pattern); err == nil {
+			cands = append(cands, matches...)
+		}
+	}
+
 	for _, p := range cands {
 		if p == "" {
 			continue
@@ -109,28 +147,41 @@ func PythonBin() string {
 }
 
 // FindSidecarRaw 找【原始码流】sidecar（miot_camera.py）。
-//
-// 与 FindSidecar（miot_mjpeg.py）的区别：
-//
-//	miot_mjpeg.py  输出 MJPEG（已转码）—— 用于预览/缩略图
-//	miot_camera.py 输出 H264/H265 原始码流 —— 用于录像（省 CPU、无损）
 func FindSidecarRaw() string {
 	var cands []string
+	if dest := os.Getenv("TRIM_APPDEST"); dest != "" {
+		cands = append(cands,
+			filepath.Join(dest, "miot", "miot_camera.py"),
+			filepath.Join(dest, "app", "miot", "miot_camera.py"),
+		)
+	}
 	if exe, err := os.Executable(); err == nil {
 		dir := filepath.Dir(exe)
+		appRoot := filepath.Dir(dir)
 		cands = append(cands,
 			filepath.Join(dir, "miot", "miot_camera.py"),
 			filepath.Join(dir, "app", "miot", "miot_camera.py"),
+			filepath.Join(dir, "..", "miot", "miot_camera.py"),
 			filepath.Join(dir, "..", "app", "miot", "miot_camera.py"),
+			filepath.Join(appRoot, "miot", "miot_camera.py"),
 		)
 	}
 	if wd, err := os.Getwd(); err == nil {
-		cands = append(cands, filepath.Join(wd, "app", "miot", "miot_camera.py"))
+		cands = append(cands,
+			filepath.Join(wd, "app", "miot", "miot_camera.py"),
+			filepath.Join(wd, "miot", "miot_camera.py"),
+		)
 	}
-	cands = append(cands,
-		"/vol1/@appcenter/micam/miot/miot_camera.py",
-		"/vol1/@appcenter/micam/app/miot/miot_camera.py",
-	)
+
+	for _, pattern := range []string{
+		"/vol*/@appcenter/micam/miot/miot_camera.py",
+		"/vol*/@appcenter/micam/app/miot/miot_camera.py",
+	} {
+		if matches, err := filepath.Glob(pattern); err == nil {
+			cands = append(cands, matches...)
+		}
+	}
+
 	for _, p := range cands {
 		if p == "" {
 			continue
@@ -149,17 +200,36 @@ func FindSidecarRaw() string {
 // FindMiioScript 找 miio.py（本地 miIO 协议客户端）。
 func FindMiioScript() string {
 	var cands []string
+	if dest := os.Getenv("TRIM_APPDEST"); dest != "" {
+		cands = append(cands,
+			filepath.Join(dest, "miot", "miio.py"),
+			filepath.Join(dest, "app", "miot", "miio.py"),
+		)
+	}
 	if exe, err := os.Executable(); err == nil {
 		dir := filepath.Dir(exe)
+		appRoot := filepath.Dir(dir)
 		cands = append(cands,
 			filepath.Join(dir, "miot", "miio.py"),
+			filepath.Join(dir, "..", "miot", "miio.py"),
 			filepath.Join(dir, "..", "app", "miot", "miio.py"),
+			filepath.Join(appRoot, "miot", "miio.py"),
 		)
 	}
 	if wd, err := os.Getwd(); err == nil {
-		cands = append(cands, filepath.Join(wd, "app", "miot", "miio.py"))
+		cands = append(cands,
+			filepath.Join(wd, "app", "miot", "miio.py"),
+			filepath.Join(wd, "miot", "miio.py"),
+		)
 	}
-	cands = append(cands, "/vol1/@appcenter/micam/miot/miio.py")
+	for _, pattern := range []string{
+		"/vol*/@appcenter/micam/miot/miio.py",
+		"/vol*/@appcenter/micam/app/miot/miio.py",
+	} {
+		if matches, err := filepath.Glob(pattern); err == nil {
+			cands = append(cands, matches...)
+		}
+	}
 	for _, p := range cands {
 		if p == "" {
 			continue

@@ -291,10 +291,15 @@ func main() {
 	if *httpAddr != "" {
 		ln, err := net.Listen("tcp", *httpAddr)
 		if err != nil {
-			log.Fatalf("监听 TCP 失败: %v", err)
+			if len(listeners) > 0 {
+				log.Printf("⚠️ 监听 TCP %s 失败 (%v)，降级为仅监听 Unix socket", *httpAddr, err)
+			} else {
+				log.Fatalf("监听 TCP 失败: %v", err)
+			}
+		} else {
+			listeners = append(listeners, ln)
+			log.Printf("监听 TCP: %s", *httpAddr)
 		}
-		listeners = append(listeners, ln)
-		log.Printf("监听 TCP: %s", *httpAddr)
 	}
 
 	if len(listeners) == 0 {
@@ -358,7 +363,17 @@ type Server struct {
 // ffmpegPath 返回 ffmpeg 路径。
 func (s *Server) ffmpegPath() string {
 	if s.ffm != "" {
-		return s.ffm
+		if _, err := os.Stat(s.ffm); err == nil {
+			return s.ffm
+		}
+	}
+	if p, err := exec.LookPath("ffmpeg"); err == nil {
+		return p
+	}
+	for _, cand := range []string{"/usr/bin/ffmpeg", "/usr/local/bin/ffmpeg", "/bin/ffmpeg"} {
+		if _, err := os.Stat(cand); err == nil {
+			return cand
+		}
 	}
 	return "ffmpeg"
 }
@@ -531,6 +546,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	// ===== MiOT 官方通道（OAuth2 + PPCS，绕开 miss_get_vendor 限流）=====
 	mux.HandleFunc("/api/miot/bind", s.handleMiotBind)
 	mux.HandleFunc("/api/miot/authorize", s.handleMiotAuthorize)
+	mux.HandleFunc("/api/miot/auto-auth", s.handleMiotAutoAuth)
 	mux.HandleFunc("/api/miot/status", s.handleMiotStatus)
 	mux.HandleFunc("/api/miot/unbind", s.handleMiotUnbind)
 	mux.HandleFunc("/api/miot/refresh", s.handleMiotRefresh)

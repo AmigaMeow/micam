@@ -55,7 +55,7 @@ const (
 	OAuth2AuthURL         = "https://account.xiaomi.com/oauth2/authorize"
 	OAuth2APIHost         = "mico.api.mijia.tech"
 	OAuth2Project         = "mico"
-	OAuth2DefaultRedirect = "https://127.0.0.1"
+	OAuth2DefaultRedirect = "https://mico.api.mijia.tech/login_redirect"
 )
 
 // ScopeHome 智能家居服务权限（官方 scope 6000）。

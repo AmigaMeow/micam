@@ -245,6 +245,25 @@ func Default() *Config {
 
 			PrivacyCameras: map[string]bool{},
 		},
+		UI: UIConfig{
+			Theme:             "dark",
+			Language:          "zh-CN",
+			TimeFormat:        "24h",
+			DefaultQuality:    "2k",
+			DefaultProtocol:   "hls",
+			AutoplayLive:      true,
+			AutoplayMute:      true,
+			HomeShowCameras:   true,
+			HomeShowEvents:    true,
+			HomeShowStorage:   true,
+			ShowEnglishAlias:  true,
+			CompactMode:       false,
+			EventsDefaultView: "grid",
+			RecordSchedule:    "always",
+			LoopOverwrite:     true,
+			PushEnabled:       true,
+			AutoUpdate:        true,
+		},
 		Dev: DevConfig{
 			AllowLAN:   true,
 			ExposeSpec: true,
@@ -270,6 +289,7 @@ func Load(path string) *Config {
 	}
 	_ = json.Unmarshal(raw, cfg)
 	applyDevFlagDefaults(raw, cfg)
+	applyUIFlagDefaults(raw, cfg)
 	if cfg.Subtype == "" {
 		cfg.Subtype = "3"
 	}
@@ -312,6 +332,42 @@ func Load(path string) *Config {
 // 为什么需要单独做：这 3 个开关在旧文件里**不存在**，json.Unmarshal 会留成
 // false —— 升级后「实时流 / 事件推送」会被静默关掉（用户什么都没改，功能没了）。
 // 判断依据是原始 JSON 里有没有这个 key，而不是靠零值猜。
+
+func applyUIFlagDefaults(raw []byte, cfg *Config) {
+	var probe struct {
+		UI map[string]json.RawMessage `json:"ui"` 
+	}
+	if err := json.Unmarshal(raw, &probe); err != nil {
+		return
+	}
+	setTrue := func(key string, dst *bool) {
+		if _, ok := probe.UI[key]; !ok {
+			*dst = true
+		}
+	}
+	setTrue("homeShowCameras", &cfg.UI.HomeShowCameras)
+	setTrue("homeShowEvents", &cfg.UI.HomeShowEvents)
+	setTrue("homeShowStorage", &cfg.UI.HomeShowStorage)
+	setTrue("showEnglishAlias", &cfg.UI.ShowEnglishAlias)
+	setTrue("autoplayLive", &cfg.UI.AutoplayLive)
+	setTrue("autoplayMute", &cfg.UI.AutoplayMute)
+	setTrue("loopOverwrite", &cfg.UI.LoopOverwrite)
+	setTrue("pushEnabled", &cfg.UI.PushEnabled)
+	setTrue("autoUpdate", &cfg.UI.AutoUpdate)
+	if cfg.UI.Theme == "" {
+		cfg.UI.Theme = "dark"
+	}
+	if cfg.UI.DefaultQuality == "" {
+		cfg.UI.DefaultQuality = "2k"
+	}
+	if cfg.UI.DefaultProtocol == "" {
+		cfg.UI.DefaultProtocol = "hls"
+	}
+	if cfg.UI.EventsDefaultView == "" {
+		cfg.UI.EventsDefaultView = "grid"
+	}
+}
+
 func applyDevFlagDefaults(raw []byte, cfg *Config) {
 	var probe struct {
 		Dev map[string]json.RawMessage `json:"dev"`
