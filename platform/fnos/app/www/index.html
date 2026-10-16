@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <title>MiCam - 智能监控中心</title>
-<meta name="micam-build" content="2026-10-16 06:58:04">
+<meta name="micam-build" content="2026-10-16 07:22:15">
 <!-- 内联 SVG favicon（data URI）：
      浏览器默认会请求 /favicon.ico 并得到 404（控制台报错）。
      这里用 data URI 消除该请求 —— 同时保持「全内联、不联网」的约束。 -->
@@ -13029,6 +13029,36 @@ function renderAIChatBodyHTML(){
       +     icon('check', 16) + '<span>' + esc(conc) + '</span>'
       +   '</div>';
 
+    // 云端多模态视觉大模型智能回答卡片
+    if(r.cloudAnswer){
+      var modelName = r.cloudModel || 'VLM视觉模型';
+      var costTag = r.cloudCost ? (' · 预估费用 ¥' + r.cloudCost.toFixed(4)) : '';
+      var provName = r.cloudProvider ? (r.cloudProvider.toUpperCase() + ' ') : '';
+      
+      html += '<div style="margin-top:10px;padding:12px 14px;background:var(--surface-1);border:1px solid var(--brand);border-radius:var(--radius-lg);">'
+        + '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;">'
+        +   '<span class="ai-intro__badge is-cost" style="background:var(--brand-subtle);color:var(--brand);font-weight:var(--weight-medium);">'
+        +     icon('zap', 13) + '<span>云端视觉大模型回答 · ' + esc(provName + modelName) + '</span>'
+        +   '</span>'
+        +   '<span style="font-size:var(--text-xs);color:var(--text-muted);">' + esc(costTag) + '</span>'
+        + '</div>'
+        + '<div style="font-size:var(--text-sm);color:var(--text);line-height:1.65;white-space:pre-wrap;">' + esc(r.cloudAnswer) + '</div>';
+
+      if(r.inspectedThumbs && r.inspectedThumbs.length){
+        html += '<div style="font-size:var(--text-xs);color:var(--text-muted);margin:10px 0 6px;">大模型视觉核验画面依据（共 ' + r.inspectedThumbs.length + ' 帧）：</div>'
+          + '<div class="ai-chat-ev-grid" style="grid-template-columns:repeat(auto-fill, minmax(130px, 1fr));">'
+          + r.inspectedThumbs.map(function(th){
+              return '<div class="ai-chat-ev" style="cursor:pointer;" data-zoom-thumb="' + esc(th) + '">'
+                + '<div class="ai-chat-ev__img">'
+                +   '<img src="' + apiUrl('/api/events/thumb?f=' + encodeURIComponent(th)) + '" alt="" loading="lazy">'
+                + '</div>'
+                + '</div>';
+            }).join('')
+          + '</div>';
+      }
+      html += '</div>';
+    }
+
     if(list.length){
       html += '<div style="font-size:var(--text-xs);color:var(--text-muted);margin:8px 0 4px;">抓拍证据（共 ' + list.length + ' 处，展示前 4 处）：</div>'
         + '<div class="ai-chat-ev-grid">'
@@ -13142,6 +13172,15 @@ function bindAIChatEvents(){
     };
   });
 
+  // 缩略图全屏放大点击
+  Array.prototype.forEach.call(c.querySelectorAll('[data-zoom-thumb]'), function(el){
+    el.onclick = function(e){
+      e.stopPropagation();
+      var th = this.dataset.zoomThumb;
+      if(th) window.open(apiUrl('/api/events/thumb?f=' + encodeURIComponent(th)), '_blank');
+    };
+  });
+
   // 录像回放点击
   Array.prototype.forEach.call(c.querySelectorAll('[data-ev-did]'), function(el){
     el.onclick = function(e){
@@ -13157,14 +13196,6 @@ function bindAIChatEvents(){
       var msg = aiChatHistory[idx];
       if(!msg || !msg.result) return;
       var q = msg.result.q || '监控事件核查';
-
-      // 检查是否有候选
-      var p = (msg.result.deepInvestigation && msg.result.deepInvestigation.plan) || {};
-      if((p.candidates || 0) === 0){
-        msg.deepReport = '已复核选定时段内的所有录像切片（时间覆盖率 100%），没有发现符合条件的候选画面，因此无需调用云端大模型做额外扣费分析。';
-        paintAIChat();
-        return;
-      }
 
       msg.deepProgress = '正在启动云端大模型进行逐帧画面深度核验…';
       paintAIChat();
