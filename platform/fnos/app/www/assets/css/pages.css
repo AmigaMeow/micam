@@ -6591,3 +6591,19 @@
   border-radius: 50%; display: inline-block;
   animation: spin 1s linear infinite; flex-shrink: 0;
 }
+
+/* AI 深度分析卡片 */
+.ai-deep-card { margin-top: 12px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px 14px; }
+.ai-deep-card__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ai-deep-card__title { font-size: var(--text-sm); font-weight: var(--weight-medium); color: var(--text); }
+.ai-deep-card__desc { font-size: var(--text-xs); color: var(--text-muted); margin-top: 4px; line-height: 1.5; }
+.ai-deep-action-slot { margin-top: 8px; }
+.ai-chat-ev__video { width: 100%; max-height: 240px; border-radius: var(--radius-sm); background: #000; }
+
+/* 多路九宫格辅助 */
+.gtile-heat-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 5; opacity: .75; border-radius: inherit; }
+.grid-pip { position: fixed; bottom: 80px; right: 20px; width: 260px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; z-index: 9999; box-shadow: 0 4px 20px rgba(0,0,0,.5); cursor: pointer; }
+.gtile-badge { position: absolute; top: 6px; right: 6px; background: #ef4444; color: #fff; border-radius: 999px; font-size: 11px; font-weight: 700; padding: 1px 5px; z-index: 10; min-width: 18px; text-align: center; line-height: 16px; }
+
+/* 飞牛权限指引通知卡片 */
+.st-fnos-perm-notice { margin-top: 14px; background: var(--surface-2); border: 1px solid var(--border); border-left: 4px solid var(--accent); border-radius: 8px; padding: 12px 16px; }

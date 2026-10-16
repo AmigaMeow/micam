@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <title>MiCam - 智能监控中心</title>
-<meta name="micam-build" content="2026-10-16 06:25:29">
+<meta name="micam-build" content="2026-10-16 06:58:04">
 <!-- 内联 SVG favicon（data URI）：
      浏览器默认会请求 /favicon.ico 并得到 404（控制台报错）。
      这里用 data URI 消除该请求 —— 同时保持「全内联、不联网」的约束。 -->
@@ -57,6 +57,7 @@
      ——「次要文字」在亮色下没有层次，且不报错、CI 也发现不了。
      2026-10-12 补到 :root，恢复亮暗对称。 */
   --text-1:         var(--text);
+  --text-main:      var(--text);
   --text-2:         var(--text-secondary);
   --text-3:         var(--text-muted);
 
@@ -95,6 +96,7 @@
      这两个变量从未定义过（声明无效 -> 颜色继承父级）。
      补上别名，让「次要/弱化文字」的层次真正生效。 */
   --text-1:         var(--text);
+  --text-main:      var(--text);
   --text-2:         var(--text-secondary);
   --text-3:         var(--text-muted);
 
@@ -1741,6 +1743,14 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; line-h
 /* 复选框 13x13 太小（实测），真实加大到 16px 视觉 + 用 label 承载热区。
    直接撑 .hit-area 会盖住右侧文字，所以只把控件本身放大。 */
 input[type="checkbox"]:not(.switch input) { width: 16px; height: 16px; flex: 0 0 auto; }
+
+/* 自定义录像路径 */
+.st-recdir-custom-wrap { margin-top: 10px; }
+.st-recdir-custom-input { flex: 1; }
+
+/* 徽章成功与警告点 */
+.badge--success { background: rgba(34, 197, 94, .15); color: #22c55e; }
+.status-dot.is-warning { background: var(--warning); }
 
 
 /* ===== assets/css/pages.css ===== */
@@ -8337,6 +8347,22 @@ input[type="checkbox"]:not(.switch input) { width: 16px; height: 16px; flex: 0 0
   border-radius: 50%; display: inline-block;
   animation: spin 1s linear infinite; flex-shrink: 0;
 }
+
+/* AI 深度分析卡片 */
+.ai-deep-card { margin-top: 12px; background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius-md); padding: 12px 14px; }
+.ai-deep-card__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ai-deep-card__title { font-size: var(--text-sm); font-weight: var(--weight-medium); color: var(--text); }
+.ai-deep-card__desc { font-size: var(--text-xs); color: var(--text-muted); margin-top: 4px; line-height: 1.5; }
+.ai-deep-action-slot { margin-top: 8px; }
+.ai-chat-ev__video { width: 100%; max-height: 240px; border-radius: var(--radius-sm); background: #000; }
+
+/* 多路九宫格辅助 */
+.gtile-heat-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 5; opacity: .75; border-radius: inherit; }
+.grid-pip { position: fixed; bottom: 80px; right: 20px; width: 260px; background: var(--surface-2); border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; z-index: 9999; box-shadow: 0 4px 20px rgba(0,0,0,.5); cursor: pointer; }
+.gtile-badge { position: absolute; top: 6px; right: 6px; background: #ef4444; color: #fff; border-radius: 999px; font-size: 11px; font-weight: 700; padding: 1px 5px; z-index: 10; min-width: 18px; text-align: center; line-height: 16px; }
+
+/* 飞牛权限指引通知卡片 */
+.st-fnos-perm-notice { margin-top: 14px; background: var(--surface-2); border: 1px solid var(--border); border-left: 4px solid var(--accent); border-radius: 8px; padding: 12px 16px; }
 
 
 </style>
@@ -17373,8 +17399,9 @@ function stRecDirCard(status, stLocs){
     +       ((stLocs && stLocs.length ? stLocs : [{ path: curPath, name: '当前目录' }]).map(function(l){
               var optFree = l.freeGB ? (' · 剩余 ' + fmtGB(l.freeGB)) : '';
               var optBadge = l.badge ? (' [' + l.badge + ']') : '';
+              var optWritable = l.writable ? ' (已授权)' : ' (需在飞牛授权)';
               return '<option value="' + esc(l.path) + '"' + (l.path === curPath ? ' selected' : '') + '>'
-                + esc(l.name || l.path) + optBadge + ' — ' + esc(l.path) + optFree + '</option>';
+                + esc(l.name || l.path) + optBadge + optWritable + ' — ' + esc(l.path) + optFree + '</option>';
             }).join(''))
     +       '<option value="__custom__">➕ 手动输入自定义路径...</option>'
     +     '</select>'
@@ -17385,6 +17412,25 @@ function stRecDirCard(status, stLocs){
     +     '<div style="display:flex;gap:8px;align-items:center">'
     +       '<span style="font-size:12px;color:var(--text-muted);white-space:nowrap">自定义路径:</span>'
     +       '<input class="input st-recdir-custom-input" id="stRecDirCustom" placeholder="请输入绝对路径，例如 /vol2/recordings 或 /vol2/@appshare/micam/data/recordings" style="flex:1">'
+    +     '</div>'
+    +   '</div>'
+    +   '<div class="st-fnos-perm-notice" style="margin-top:14px;background:var(--surface-2);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:8px;padding:12px 16px;">'
+    +     '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;">'
+    +       '<div style="font-weight:600;font-size:13px;color:var(--text);display:flex;align-items:center;gap:6px;">'
+    +         '<span>🛡️ 飞牛 NAS 权限设置指引（更换存储位置必看）</span>'
+    +       '</div>'
+    +       '<span class="badge badge--accent" style="font-size:11px;">系统沙盒保护</span>'
+    +     '</div>'
+    +     '<div style="font-size:12px;color:var(--text-secondary);line-height:1.7;">'
+    +       '• <b>自带目录</b>：默认的 <code>应用文件/micam</code>（物理路径 <code>/vol*/@appshare/micam</code>）已自带全部读写权限，开箱即用。<br>'
+    +       '• <b>自定义目录</b>：若需保存到任意其他文件夹（如 <code>/vol2/...</code>），受飞牛系统进程沙盒安全机制保护，<b>必须先在飞牛系统添加授权</b>：'
+    +       '<div style="background:var(--surface-3);padding:10px 14px;border-radius:6px;font-size:12px;color:var(--text);margin-top:8px;border:1px dashed var(--border);line-height:1.8;">'
+    +         '<b>飞牛授权 4 步走：</b><br>'
+    +         '① 打开飞牛 NAS 桌面 → 进入 <b>「应用中心」</b><br>'
+    +         '② 找到 <b>「小米摄像头」</b> 插件，点击进入 <b>「设置」</b><br>'
+    +         '③ 切换到顶部的 <b>「访问权限」</b> 标签页（确保开启允许普通用户授权）<br>'
+    +         '④ 在「允许访问以下文件夹」中点击 <b>「+ 添加」</b> 目标文件夹，并选择 <b>「读写」</b> 权限，保存后回到此处即可直接生效！'
+    +       '</div>'
     +     '</div>'
     +   '</div>'
     +   '<div class="st-dir-meta-grid">'

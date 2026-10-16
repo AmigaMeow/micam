@@ -37,6 +37,7 @@
      ——「次要文字」在亮色下没有层次，且不报错、CI 也发现不了。
      2026-10-12 补到 :root，恢复亮暗对称。 */
   --text-1:         var(--text);
+  --text-main:      var(--text);
   --text-2:         var(--text-secondary);
   --text-3:         var(--text-muted);
 
@@ -75,6 +76,7 @@
      这两个变量从未定义过（声明无效 -> 颜色继承父级）。
      补上别名，让「次要/弱化文字」的层次真正生效。 */
   --text-1:         var(--text);
+  --text-main:      var(--text);
   --text-2:         var(--text-secondary);
   --text-3:         var(--text-muted);
 

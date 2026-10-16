@@ -1303,3 +1303,11 @@ textarea.input { height: auto; padding: var(--space-3); resize: vertical; line-h
 /* 复选框 13x13 太小（实测），真实加大到 16px 视觉 + 用 label 承载热区。
    直接撑 .hit-area 会盖住右侧文字，所以只把控件本身放大。 */
 input[type="checkbox"]:not(.switch input) { width: 16px; height: 16px; flex: 0 0 auto; }
+
+/* 自定义录像路径 */
+.st-recdir-custom-wrap { margin-top: 10px; }
+.st-recdir-custom-input { flex: 1; }
+
+/* 徽章成功与警告点 */
+.badge--success { background: rgba(34, 197, 94, .15); color: #22c55e; }
+.status-dot.is-warning { background: var(--warning); }

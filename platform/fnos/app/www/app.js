@@ -8768,8 +8768,9 @@ function stRecDirCard(status, stLocs){
     +       ((stLocs && stLocs.length ? stLocs : [{ path: curPath, name: '当前目录' }]).map(function(l){
               var optFree = l.freeGB ? (' · 剩余 ' + fmtGB(l.freeGB)) : '';
               var optBadge = l.badge ? (' [' + l.badge + ']') : '';
+              var optWritable = l.writable ? ' (已授权)' : ' (需在飞牛授权)';
               return '<option value="' + esc(l.path) + '"' + (l.path === curPath ? ' selected' : '') + '>'
-                + esc(l.name || l.path) + optBadge + ' — ' + esc(l.path) + optFree + '</option>';
+                + esc(l.name || l.path) + optBadge + optWritable + ' — ' + esc(l.path) + optFree + '</option>';
             }).join(''))
     +       '<option value="__custom__">➕ 手动输入自定义路径...</option>'
     +     '</select>'
@@ -8780,6 +8781,25 @@ function stRecDirCard(status, stLocs){
     +     '<div style="display:flex;gap:8px;align-items:center">'
     +       '<span style="font-size:12px;color:var(--text-muted);white-space:nowrap">自定义路径:</span>'
     +       '<input class="input st-recdir-custom-input" id="stRecDirCustom" placeholder="请输入绝对路径，例如 /vol2/recordings 或 /vol2/@appshare/micam/data/recordings" style="flex:1">'
+    +     '</div>'
+    +   '</div>'
+    +   '<div class="st-fnos-perm-notice" style="margin-top:14px;background:var(--surface-2);border:1px solid var(--border);border-left:4px solid var(--accent);border-radius:8px;padding:12px 16px;">'
+    +     '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px;">'
+    +       '<div style="font-weight:600;font-size:13px;color:var(--text);display:flex;align-items:center;gap:6px;">'
+    +         '<span>🛡️ 飞牛 NAS 权限设置指引（更换存储位置必看）</span>'
+    +       '</div>'
+    +       '<span class="badge badge--accent" style="font-size:11px;">系统沙盒保护</span>'
+    +     '</div>'
+    +     '<div style="font-size:12px;color:var(--text-secondary);line-height:1.7;">'
+    +       '• <b>自带目录</b>：默认的 <code>应用文件/micam</code>（物理路径 <code>/vol*/@appshare/micam</code>）已自带全部读写权限，开箱即用。<br>'
+    +       '• <b>自定义目录</b>：若需保存到任意其他文件夹（如 <code>/vol2/...</code>），受飞牛系统进程沙盒安全机制保护，<b>必须先在飞牛系统添加授权</b>：'
+    +       '<div style="background:var(--surface-3);padding:10px 14px;border-radius:6px;font-size:12px;color:var(--text);margin-top:8px;border:1px dashed var(--border);line-height:1.8;">'
+    +         '<b>飞牛授权 4 步走：</b><br>'
+    +         '① 打开飞牛 NAS 桌面 → 进入 <b>「应用中心」</b><br>'
+    +         '② 找到 <b>「小米摄像头」</b> 插件，点击进入 <b>「设置」</b><br>'
+    +         '③ 切换到顶部的 <b>「访问权限」</b> 标签页（确保开启允许普通用户授权）<br>'
+    +         '④ 在「允许访问以下文件夹」中点击 <b>「+ 添加」</b> 目标文件夹，并选择 <b>「读写」</b> 权限，保存后回到此处即可直接生效！'
+    +       '</div>'
     +     '</div>'
     +   '</div>'
     +   '<div class="st-dir-meta-grid">'
