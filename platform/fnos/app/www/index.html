@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <title>MiCam - 智能监控中心</title>
-<meta name="micam-build" content="2026-10-16 08:25:28">
+<meta name="micam-build" content="2026-10-16 15:14:52">
 <!-- 内联 SVG favicon（data URI）：
      浏览器默认会请求 /favicon.ico 并得到 404（控制台报错）。
      这里用 data URI 消除该请求 —— 同时保持「全内联、不联网」的约束。 -->
@@ -13821,8 +13821,32 @@ function renderAIChatBodyHTML(){
         + '<div style="display:flex;align-items:center;gap:6px;font-weight:var(--weight-medium);margin-bottom:6px;">'
         +   icon('layers', 14) + '<span>云端大模型深度核验报告</span>'
         + '</div>'
-        + '<div style="font-size:var(--text-sm);color:var(--text);line-height:1.5;">' + esc(m.deepReport) + '</div>'
-        + '</div>';
+        + '<div style="font-size:var(--text-sm);color:var(--text);line-height:1.5;">' + esc(m.deepReport) + '</div>';
+
+      if(m.deepEvidence && m.deepEvidence.length){
+        html += '<div style="font-size:var(--text-xs);color:var(--text-muted);margin:10px 0 6px;">深度核验视觉证据（共 ' + m.deepEvidence.length + ' 处）：</div>'
+          + '<div class="ai-chat-ev-grid">'
+          + m.deepEvidence.map(function(ev, evIdx){
+              var slotId = 'deepSlot_' + idx + '_' + evIdx;
+              return '<div class="ai-chat-ev">'
+                + '<div class="ai-chat-ev__img" id="' + slotId + '">'
+                +   (ev.thumb ? '<img src="' + apiUrl('/api/events/thumb?f=' + encodeURIComponent(ev.thumb)) + '" alt="">' : '')
+                + '</div>'
+                + '<div class="ai-chat-ev__body">'
+                +   '<div class="ai-chat-ev__time">' + icon('clock', 12) + esc(ev.time || '') + '</div>'
+                +   '<div class="ai-chat-ev__dev">' + icon('camera', 12) + esc(ev.device || '') + '</div>'
+                +   (ev.note ? '<div style="font-size:var(--text-xs);color:var(--text-secondary);margin-top:2px;">' + esc(ev.note) + '</div>' : '')
+                +   '<div style="display:flex;gap:4px;margin-top:4px;">'
+                +     '<button class="btn btn--sm" style="flex:1;" title="跳转完整回放" data-ev-did="' + esc(ev.did||'') + '" data-ev-time="' + esc(ev.time||'') + '">'
+                +       icon('chevron-right', 12) + '查看回放</button>'
+                +   '</div>'
+                + '</div>'
+                + '</div>';
+            }).join('')
+          + '</div>';
+      }
+
+      html += '</div>';
     } else if(m.deepProgress){
       html += '<div style="margin-top:12px;padding:12px;background:var(--surface-1);border:1px solid var(--border-subtle);border-radius:var(--radius-lg);display:flex;align-items:center;gap:8px;font-size:var(--text-sm);color:var(--text-secondary);">'
         + '<span class="spinner spinner--sm"></span> <span>' + esc(m.deepProgress) + '</span>'
@@ -13963,6 +13987,8 @@ function pollChatDeepTask(msgIndex, taskId){
         var ans = t.answer || '核查完毕';
         var evCount = (t.evidence||[]).length;
         msg.deepReport = ans + (evCount ? ('（命中 ' + evCount + ' 处视觉证据，消耗 ¥' + (t.costCny||0).toFixed(4) + '）') : '（未发现违规或异常线索）');
+        msg.deepEvidence = t.evidence || [];
+        saveAIChatSession();
         paintAIChat();
       } else if(t.status === 'error'){
         clearInterval(timer);
