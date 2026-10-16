@@ -227,7 +227,7 @@ func (s *Server) handleMiotLive(w http.ResponseWriter, r *http.Request) {
 	realFrames := 0
 	sentBytes := 0
 	startAt := time.Now()
-	skipN := 2 // 跳过前几帧（解码器从流中途开始，参考帧不全会花屏）
+	skipN := 0 // 极速首帧优化：首帧一解码立即推送给前端，零丢弃等待
 
 	for {
 		n, rerr := stdout.Read(readBuf)

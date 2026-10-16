@@ -75,7 +75,10 @@ def main():
     vf = "scale=%d:-1" % args.width if args.width > 0 else "null"
     cmd = [
         args.ffmpeg, "-hide_banner", "-loglevel", "warning",
-        "-fflags", "nobuffer", "-flags", "low_delay",
+        "-fflags", "nobuffer+flush_packets+fastseek",
+        "-flags", "low_delay",
+        "-probesize", "32768",
+        "-analyzeduration", "0",
         "-threads", "2",
         "-f", infmt, "-i", "pipe:0",
         "-fps_mode", "passthrough",
