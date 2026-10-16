@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <title>MiCam - 智能监控中心</title>
-<meta name="micam-build" content="2026-10-16 05:11:15">
+<meta name="micam-build" content="2026-10-16 05:26:38">
 <!-- 内联 SVG favicon（data URI）：
      浏览器默认会请求 /favicon.ico 并得到 404（控制台报错）。
      这里用 data URI 消除该请求 —— 同时保持「全内联、不联网」的约束。 -->
@@ -20759,7 +20759,7 @@ function paintSetMain(){
               hwStatusHtml),
         ])
       + section('系统偏好', 'System Preferences', [
-          row('自动更新', '有新版本时自动提示。', sw('uiAutoUpd', cfg.autoUpdate!==false)),
+          row('自动检查更新', '定时从 GitHub 检查新版本，有可用更新时推送提醒。', '<div style="display:flex;gap:10px;align-items:center;">' + sw('uiAutoUpd', cfg.autoUpdate!==false) + '<button class="btn btn--sm" id="btnCheckUpdate">' + icon('refresh-cw', 13) + '立即检查更新</button></div>'),
           row('AI 设置', '本地识别与云端视觉分析的详细配置。',
               '<button class="btn" id="setGoAI">' + icon('zap',14) + '前往 AI 智能页面' + icon('chevron-right',13) + '</button>'),
           row('存储路径状态栏', '存储页底部那条「录像目录 / 数据路径」状态栏。', 
@@ -20780,7 +20780,7 @@ function paintSetMain(){
         ])
       + section('关于与合规声明', 'About & Legal Disclaimer', [
           row('应用名称', '', '<span class="set3__val">MiCam (非官方社区版)</span>'),
-          row('开源版本', '', '<span class="set3__val set-mono">' + esc(APP_VER || '0.41.0') + '</span>'),
+          row('开源版本', '', '<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;"><span class="set3__val set-mono">v' + esc(APP_VER || '0.41.0') + '</span><button class="btn btn--sm btn--primary" id="btnCheckUpdateAbout">' + icon('download', 13) + '检查新版本</button></div>'),
           row('开源许可', '', '<span class="set3__val">GNU AGPL v3.0 (自由开源软件)</span>'),
           row('项目定位', '', '<span class="set3__val">非官方第三方社区桥接套件 · 独立逆向兼容 · 绝无盈利收费</span>'),
           row('法律免责声明',
@@ -21059,6 +21059,76 @@ function bindSetMain(){
     if(el) el.onclick = function(){ page = target; renderMenu(); render(); };
   };
   go('setGoRec','recordings'); go('setGoStorage','storage'); go('setGoAI','ai'); go('setGoDev','devices'); go('setGoWizard','setup');
+  // 检查更新函数
+  function doCheckUpdate(btn, isAuto){
+    if(btn) {
+      btn.disabled = true;
+      btn.innerHTML = icon('refresh-cw', 13) + ' 正在检查…';
+    }
+    api('/api/system/update?force=1').then(function(res){
+      if(btn) {
+        btn.disabled = false;
+        btn.innerHTML = icon('refresh-cw', 13) + ' 立即检查更新';
+      }
+      if(!res) return;
+      if(res.hasUpdate){
+        openUpdateModal(res);
+        var dot = document.getElementById('dotSettingUpdate');
+        if(dot) dot.style.display = 'inline-block';
+      } else if(!isAuto) {
+        if(res.error) {
+          toast(res.error, 'err');
+        } else {
+          toast('🎉 当前已是最新版本 (v' + (res.currentVersion || APP_VER || '0.41.0') + ')，无需更新', 'ok');
+        }
+      }
+    }).catch(function(e){
+      if(btn) {
+        btn.disabled = false;
+        btn.innerHTML = icon('refresh-cw', 13) + ' 立即检查更新';
+      }
+      if(!isAuto) toast('检查更新失败: ' + e.message, 'err');
+    });
+  }
+
+  function openUpdateModal(data){
+    var changelogHtml = esc(data.changelog || '无更新说明').replace(/\n/g, '<br>');
+    var body = '<div style="padding:4px 0;">'
+      + '<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;">'
+      +   '<span style="font-size:18px;font-weight:700;color:var(--accent);">🎉 发现新版本 ' + esc(data.latestVersion) + '</span>'
+      +   '<span class="badge badge--success" style="padding:2px 8px;border-radius:12px;font-size:11px;background:rgba(34,197,94,0.15);color:#22c55e;">GitHub Release</span>'
+      + '</div>'
+      + '<div style="font-size:13px;color:var(--text-muted);margin-bottom:14px;">'
+      +   '当前安装版本：<code>v' + esc(data.currentVersion) + '</code> ➔ 最新版本：<code style="color:var(--accent);font-weight:600;">v' + esc(data.latestVersion) + '</code>'
+      +   (data.publishedAt ? '（发布于 ' + esc(data.publishedAt.slice(0,10)) + '）' : '')
+      + '</div>'
+      + '<div style="margin-bottom:14px;">'
+      +   '<div style="font-weight:600;font-size:13px;margin-bottom:6px;color:var(--text-main);">更新说明 (Changelog)：</div>'
+      +   '<div style="max-height:200px;overflow-y:auto;background:var(--surface-2);border-radius:var(--radius-md);padding:10px 14px;font-size:12px;line-height:1.6;color:var(--text-secondary);border:1px solid var(--border);word-break:break-word;">'
+      +     changelogHtml
+      +   '</div>'
+      + '</div>'
+      + '<div style="background:rgba(59,130,246,0.08);border:1px solid rgba(59,130,246,0.25);border-radius:var(--radius-md);padding:10px 12px;font-size:12px;line-height:1.6;color:var(--text-secondary);margin-bottom:18px;">'
+      +   '<b>💡 平滑升级指南：</b><br>'
+      +   '1. 点击下方按钮下载 <code>.fpk</code> 插件升级包。<br>'
+      +   '2. 在飞牛 OS 桌面打开 <b>「应用中心」</b> ➔ 右上角 <b>「手动安装」</b> ➔ 选择该 <code>.fpk</code> 文件。<br>'
+      +   '3. 系统将执行平滑覆盖安装，<b>无需卸载，您的摄像头配置、录像视频与历史事件 100% 完整保留</b>！'
+      + '</div>'
+      + '<div style="display:flex;gap:10px;justify-content:flex-end;align-items:center;flex-wrap:wrap;">'
+      +   '<button class="btn" onclick="closeModal()">稍后提醒</button>'
+      +   (data.releaseUrl ? '<a class="btn" href="' + esc(data.releaseUrl) + '" target="_blank" rel="noopener">' + icon('external-link',13) + ' 查看 GitHub</a>' : '')
+      +   (data.downloadUrl ? '<a class="btn btn--primary" href="' + esc(data.downloadUrl) + '" target="_blank" download>' + icon('download',14) + ' 下载更新包 (.fpk)</a>' : '')
+      + '</div>'
+      + '</div>';
+
+    openModal('MiCam 插件更新', body);
+  }
+
+  var btnUpd1 = document.getElementById('btnCheckUpdate');
+  if(btnUpd1) btnUpd1.onclick = function(){ doCheckUpdate(this, false); };
+  var btnUpd2 = document.getElementById('btnCheckUpdateAbout');
+  if(btnUpd2) btnUpd2.onclick = function(){ doCheckUpdate(this, false); };
+
 
   var db = document.getElementById('btnDiagBundle');
   if(db) db.onclick = function(){ window.open(apiUrl('/api/diag/bundle'), '_blank'); };
