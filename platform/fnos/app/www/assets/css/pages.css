@@ -7720,6 +7720,11 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+  transition: all 0.2s ease;
+}
+.st-perm-guide.is-expanded {
+  border-color: rgba(59, 130, 246, 0.35);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 .st-perm-guide__head {
   display: flex;
@@ -7728,6 +7733,10 @@
   gap: 8px;
   cursor: pointer;
   user-select: none;
+  padding: 2px 0;
+}
+.st-perm-guide__head:hover .st-perm-guide__title {
+  color: var(--accent);
 }
 .st-perm-guide__title {
   font-size: 13px;
@@ -7736,6 +7745,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
+  transition: color 0.15s ease;
 }
 .st-perm-guide__badge {
   font-size: 11px;
@@ -7749,17 +7759,31 @@
   color: var(--accent);
   font-weight: 500;
   background: var(--accent-soft);
-  padding: 3px 10px;
+  padding: 4px 10px;
   border-radius: var(--radius-sm);
   border: 1px solid rgba(59, 130, 246, 0.2);
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.st-perm-guide__toggle-btn:hover {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
 }
 .st-perm-body {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding-top: 10px;
+  gap: 12px;
+  padding-top: 12px;
   border-top: 1px solid var(--border-subtle);
+  animation: stPermFadeIn 0.2s ease-out;
+}
+@keyframes stPermFadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 .st-perm-steps {
   display: grid;
@@ -7768,6 +7792,9 @@
 }
 @media (max-width: 860px) {
   .st-perm-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 480px) {
+  .st-perm-steps { grid-template-columns: 1fr; }
 }
 .st-perm-step {
   background: var(--surface-1);
@@ -7798,6 +7825,13 @@
   font-size: 12px;
   color: var(--text-secondary);
   line-height: 1.5;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  background: var(--surface-1);
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  border-left: 3px solid var(--accent);
 }
 
 /* 智能深度清理看板（解决多列错乱与亮暗主题兼容） */

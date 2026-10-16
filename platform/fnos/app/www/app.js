@@ -8813,6 +8813,12 @@ function stRecDirCard(status, stLocs, unified){
     ? Math.max(0, Math.min(100, ((curLoc.totalGB - curLoc.freeGB) / curLoc.totalGB * 100))).toFixed(1)
     : null;
 
+  var needPerm = curLoc && curLoc.writable === false;
+  var guideInitStyle = needPerm ? 'display:flex;' : 'display:none;';
+  var guideBtnText = needPerm ? '收起指引' : '展开指引';
+  var guideBtnIcon = needPerm ? 'chevron-up' : 'chevron-down';
+  var guideCardClass = 'st-perm-guide' + (needPerm ? ' is-expanded' : '');
+
   var u = unified || stUnified || {};
   var totalFiles = u.totalFiles || 0;
   var totalGB = u.totalGB || 0;
@@ -8920,7 +8926,7 @@ function stRecDirCard(status, stLocs, unified){
     +     '<div class="st-active-status-bar__left">'
     +       '<span class="st-active-status-bar__pill">当前写入</span>'
     +       '<span class="st-active-status-bar__name" title="' + esc(curPath) + '">' + esc(curLoc.name || curPath) + '</span>'
-    +       (curLoc.writable ? '<span class="st-perm-badge is-ok">读写正常</span>' : '<span class="st-perm-badge is-warn">需在飞牛授权</span>')
+    +       (curLoc.writable ? '<span class="st-perm-badge is-ok">读写正常</span>' : '<span class="st-perm-badge is-warn st-jump-perm" style="cursor:pointer;" title="未授予读写权限，点击查看权限配置指南">需在飞牛授权</span>')
     +     '</div>'
     +     '<div class="st-active-status-bar__right">'
     +       '<span class="st-active-status-bar__space">剩余 <b>' + fmtGB(curLoc.freeGB) + '</b>' + (usedPct != null ? (' · 已用 ' + usedPct + '%') : '') + '</span>'
@@ -8939,39 +8945,44 @@ function stRecDirCard(status, stLocs, unified){
     +   '</div>'
 
     // 5. 飞牛权限设置指引
-    +   '<div class="st-perm-guide">'
-    +     '<div class="st-perm-guide__head" id="stPermToggle">'
+    +   '<div class="' + guideCardClass + '">'
+    +     '<div class="st-perm-guide__head" role="button" tabindex="0" title="点击展开/收起权限指引">'
     +       '<div class="st-perm-guide__title">'
+    +         icon('shield', 15)
     +         '<span>飞牛 NAS 权限配置指南</span>'
     +         '<span class="st-perm-guide__badge">非自带目录必读</span>'
     +       '</div>'
-    +       '<button type="button" class="st-perm-guide__toggle-btn" id="stPermToggleBtn">展开指引</button>'
+    +       '<button type="button" class="st-perm-guide__toggle-btn">'
+    +         '<span class="st-perm-guide__toggle-text">' + guideBtnText + '</span>'
+    +         '<span class="st-perm-guide__toggle-icon">' + icon(guideBtnIcon, 13) + '</span>'
+    +       '</button>'
     +     '</div>'
-    +     '<div class="st-perm-body" id="stPermBody" style="display:none;">'
+    +     '<div class="st-perm-body" style="' + guideInitStyle + '">'
     +       '<div class="st-perm-steps">'
     +         '<div class="st-perm-step">'
-    +           '<span class="st-perm-step__badge">01</span>'
+    +           '<span class="st-perm-step__badge">步骤 01</span>'
     +           '<span class="st-perm-step__title">进入应用中心</span>'
     +           '<span class="st-perm-step__desc">打开飞牛 NAS 桌面，进入「应用中心」</span>'
     +         '</div>'
     +         '<div class="st-perm-step">'
-    +           '<span class="st-perm-step__badge">02</span>'
+    +           '<span class="st-perm-step__badge">步骤 02</span>'
     +           '<span class="st-perm-step__title">打开插件设置</span>'
-    +           '<span class="st-perm-step__desc">找到「小米摄像头」，点击「设置」</span>'
+    +           '<span class="st-perm-step__desc">找到「小米摄像头」，点击卡片右下角「设置」</span>'
     +         '</div>'
     +         '<div class="st-perm-step">'
-    +           '<span class="st-perm-step__badge">03</span>'
+    +           '<span class="st-perm-step__badge">步骤 03</span>'
     +           '<span class="st-perm-step__title">切换访问权限</span>'
-    +           '<span class="st-perm-step__desc">点击顶部的「访问权限」标签页</span>'
+    +           '<span class="st-perm-step__desc">在弹窗顶部标签栏中，点击「访问权限」</span>'
     +         '</div>'
     +         '<div class="st-perm-step">'
-    +           '<span class="st-perm-step__badge">04</span>'
+    +           '<span class="st-perm-step__badge">步骤 04</span>'
     +           '<span class="st-perm-step__title">添加读写授权</span>'
-    +           '<span class="st-perm-step__desc">点击「+ 添加」目标共享文件夹并勾选「读写」</span>'
+    +           '<span class="st-perm-step__desc">点击「+ 添加」选择目标文件夹，勾选「读写」并保存</span>'
     +         '</div>'
     +       '</div>'
     +       '<div class="st-perm-guide__tip">'
-    +         '说明：飞牛系统采用进程沙盒隔离机制保护系统安全。为目标文件夹授权保存后，点击上方「刷新存储」即可自动识别读写权限。'
+    +         icon('info', 14)
+    +         '<span>说明：飞牛系统采用进程沙盒隔离机制保护系统安全。为目标文件夹授权保存后，点击上方「刷新存储」即可自动识别读写权限。</span>'
     +       '</div>'
     +     '</div>'
     +   '</div>'
@@ -9635,6 +9646,60 @@ function bindStorage(c, cams){
     };
   });
 
+  // 飞牛权限指引折叠/展开与快捷跳转
+  Array.prototype.forEach.call(c.querySelectorAll('.st-perm-guide'), function(guide){
+    var head = guide.querySelector('.st-perm-guide__head');
+    var btn = guide.querySelector('.st-perm-guide__toggle-btn');
+    var body = guide.querySelector('.st-perm-body');
+    var txt = guide.querySelector('.st-perm-guide__toggle-text');
+    var icn = guide.querySelector('.st-perm-guide__toggle-icon');
+    if(!head || !body) return;
+
+    var toggle = function(e){
+      if(e){
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      var isHidden = (body.style.display === 'none' || getComputedStyle(body).display === 'none');
+      body.style.display = isHidden ? 'flex' : 'none';
+      guide.classList.toggle('is-expanded', isHidden);
+      if(txt) txt.textContent = isHidden ? '收起指引' : '展开指引';
+      else if(btn) btn.textContent = isHidden ? '收起指引' : '展开指引';
+      if(icn) icn.innerHTML = icon(isHidden ? 'chevron-up' : 'chevron-down', 13);
+    };
+
+    head.onclick = toggle;
+    head.onkeydown = function(e){
+      if(e.key === 'Enter' || e.key === ' '){
+        toggle(e);
+      }
+    };
+    if(btn){
+      btn.onclick = toggle;
+    }
+  });
+
+  // 点击未授权提示徽章，平滑滚动至指引并自动展开
+  Array.prototype.forEach.call(c.querySelectorAll('.st-jump-perm'), function(badge){
+    badge.onclick = function(e){
+      e.stopPropagation();
+      var card = this.closest('.st-dir-card') || document;
+      var guide = card.querySelector('.st-perm-guide');
+      if(guide){
+        var body = guide.querySelector('.st-perm-body');
+        var txt = guide.querySelector('.st-perm-guide__toggle-text');
+        var icn = guide.querySelector('.st-perm-guide__toggle-icon');
+        if(body){
+          body.style.display = 'flex';
+          guide.classList.add('is-expanded');
+          if(txt) txt.textContent = '收起指引';
+          if(icn) icn.innerHTML = icon('chevron-up', 13);
+        }
+        guide.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    };
+  });
+
   // 应用自定义路径
   Array.prototype.forEach.call(c.querySelectorAll('.st-custom-apply'), function(btn){
     btn.onclick = function(){
@@ -9730,6 +9795,24 @@ function bindStorage(c, cams){
         recDirApply.classList.add('btn--pulse');
       } else {
         recDirApply.classList.remove('btn--pulse');
+      }
+
+      var selVal = recDirSelect.value;
+      var selLoc = (stLocs || []).filter(function(l){ return l.path === selVal; })[0];
+      if(selLoc && selLoc.writable === false){
+        var card = recDirSelect.closest('.st-dir-card') || document;
+        var guide = card.querySelector('.st-perm-guide');
+        if(guide){
+          var body = guide.querySelector('.st-perm-body');
+          var txt = guide.querySelector('.st-perm-guide__toggle-text');
+          var icn = guide.querySelector('.st-perm-guide__toggle-icon');
+          if(body && (body.style.display === 'none' || getComputedStyle(body).display === 'none')){
+            body.style.display = 'flex';
+            guide.classList.add('is-expanded');
+            if(txt) txt.textContent = '收起指引';
+            if(icn) icn.innerHTML = icon('chevron-up', 13);
+          }
+        }
       }
     };
     recDirApply.onclick = function(){

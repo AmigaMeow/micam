@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <title>MiCam - 智能监控中心</title>
-<meta name="micam-build" content="2026-10-16 16:41:47">
+<meta name="micam-build" content="2026-10-16 18:39:28">
 <!-- 内联 SVG favicon（data URI）：
      浏览器默认会请求 /favicon.ico 并得到 404（控制台报错）。
      这里用 data URI 消除该请求 —— 同时保持「全内联、不联网」的约束。 -->
@@ -9476,6 +9476,11 @@ input[type="checkbox"]:not(.switch input) { width: 16px; height: 16px; flex: 0 0
   display: flex;
   flex-direction: column;
   gap: 8px;
+  transition: all 0.2s ease;
+}
+.st-perm-guide.is-expanded {
+  border-color: rgba(59, 130, 246, 0.35);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 .st-perm-guide__head {
   display: flex;
@@ -9484,6 +9489,10 @@ input[type="checkbox"]:not(.switch input) { width: 16px; height: 16px; flex: 0 0
   gap: 8px;
   cursor: pointer;
   user-select: none;
+  padding: 2px 0;
+}
+.st-perm-guide__head:hover .st-perm-guide__title {
+  color: var(--accent);
 }
 .st-perm-guide__title {
   font-size: 13px;
@@ -9492,6 +9501,7 @@ input[type="checkbox"]:not(.switch input) { width: 16px; height: 16px; flex: 0 0
   display: flex;
   align-items: center;
   gap: 8px;
+  transition: color 0.15s ease;
 }
 .st-perm-guide__badge {
   font-size: 11px;
@@ -9505,17 +9515,31 @@ input[type="checkbox"]:not(.switch input) { width: 16px; height: 16px; flex: 0 0
   color: var(--accent);
   font-weight: 500;
   background: var(--accent-soft);
-  padding: 3px 10px;
+  padding: 4px 10px;
   border-radius: var(--radius-sm);
   border: 1px solid rgba(59, 130, 246, 0.2);
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+.st-perm-guide__toggle-btn:hover {
+  background: var(--accent);
+  color: #fff;
+  border-color: var(--accent);
 }
 .st-perm-body {
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding-top: 10px;
+  gap: 12px;
+  padding-top: 12px;
   border-top: 1px solid var(--border-subtle);
+  animation: stPermFadeIn 0.2s ease-out;
+}
+@keyframes stPermFadeIn {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
 }
 .st-perm-steps {
   display: grid;
@@ -9524,6 +9548,9 @@ input[type="checkbox"]:not(.switch input) { width: 16px; height: 16px; flex: 0 0
 }
 @media (max-width: 860px) {
   .st-perm-steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 480px) {
+  .st-perm-steps { grid-template-columns: 1fr; }
 }
 .st-perm-step {
   background: var(--surface-1);
@@ -9554,6 +9581,13 @@ input[type="checkbox"]:not(.switch input) { width: 16px; height: 16px; flex: 0 0
   font-size: 12px;
   color: var(--text-secondary);
   line-height: 1.5;
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  background: var(--surface-1);
+  padding: 8px 12px;
+  border-radius: var(--radius-md);
+  border-left: 3px solid var(--accent);
 }
 
 /* 智能深度清理看板（解决多列错乱与亮暗主题兼容） */
@@ -18433,14 +18467,14 @@ var recCachePollTimer = null;
 var recLoadSeq = 0;
 
 function isStaticMP4Cache(v, expectedDur){
-  if(!v || !isFinite(v.duration) || v.duration <= 5) return false;
+  if(!v || !isFinite(v.duration) || v.duration <= 2) return false;
   var dur = expectedDur || 0;
   if(dur <= 0){
     var f = curRecFileObj();
     if(f && f.duration > 0) dur = f.duration;
   }
-  // 严格判定：只有当 video.duration 确实接近文件总时长（误差在 15 秒内或达到 90% 以上）才是本地静态 MP4 缓存
-  return (dur > 0 && (Math.abs(v.duration - dur) < 15 || v.duration >= dur * 0.9));
+  if(dur <= 0) return true;
+  return (Math.abs(v.duration - dur) < 25 || v.duration >= dur * 0.75);
 }
 
 function updateRecBadge(f){
@@ -18734,7 +18768,11 @@ function cleanupRecordings(){
   api('/api/recordings/cleanup-preview').then(function(d){
     if(!d.fileCount){ toast('没有可清理的文件（保留 ' + d.keepDays + ' 天）', 'ok'); return; }
     if(!confirm('将清理 ' + d.fileCount + ' 个文件，释放 ' + fmtSizeMB(d.totalMB) + '\n保留最近 ' + d.keepDays + ' 天\n\n确定？')) return;
-    api('/api/recordings/cleanup', { method:'POST' }).then(function(r){
+    api('/api/recordings/cleanup', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ days: String(d.keepDays || 7), allPools: true })
+    }).then(function(r){
       toast('已清理 ' + (r.deleted||0) + ' 个，释放 ' + fmtSizeMB(r.freedMB||0), 'ok');
       setTimeout(function(){ page='recordings'; render(); }, 1200);
     }).catch(function(e){ toast('清理失败：' + e.message, 'err'); });
@@ -18810,6 +18848,12 @@ function stRecDirCard(status, stLocs, unified){
   var usedPct = (curLoc.freeGB != null && curLoc.totalGB != null && curLoc.totalGB > 0)
     ? Math.max(0, Math.min(100, ((curLoc.totalGB - curLoc.freeGB) / curLoc.totalGB * 100))).toFixed(1)
     : null;
+
+  var needPerm = curLoc && curLoc.writable === false;
+  var guideInitStyle = needPerm ? 'display:flex;' : 'display:none;';
+  var guideBtnText = needPerm ? '收起指引' : '展开指引';
+  var guideBtnIcon = needPerm ? 'chevron-up' : 'chevron-down';
+  var guideCardClass = 'st-perm-guide' + (needPerm ? ' is-expanded' : '');
 
   var u = unified || stUnified || {};
   var totalFiles = u.totalFiles || 0;
@@ -18918,7 +18962,7 @@ function stRecDirCard(status, stLocs, unified){
     +     '<div class="st-active-status-bar__left">'
     +       '<span class="st-active-status-bar__pill">当前写入</span>'
     +       '<span class="st-active-status-bar__name" title="' + esc(curPath) + '">' + esc(curLoc.name || curPath) + '</span>'
-    +       (curLoc.writable ? '<span class="st-perm-badge is-ok">读写正常</span>' : '<span class="st-perm-badge is-warn">需在飞牛授权</span>')
+    +       (curLoc.writable ? '<span class="st-perm-badge is-ok">读写正常</span>' : '<span class="st-perm-badge is-warn st-jump-perm" style="cursor:pointer;" title="未授予读写权限，点击查看权限配置指南">需在飞牛授权</span>')
     +     '</div>'
     +     '<div class="st-active-status-bar__right">'
     +       '<span class="st-active-status-bar__space">剩余 <b>' + fmtGB(curLoc.freeGB) + '</b>' + (usedPct != null ? (' · 已用 ' + usedPct + '%') : '') + '</span>'
@@ -18937,39 +18981,44 @@ function stRecDirCard(status, stLocs, unified){
     +   '</div>'
 
     // 5. 飞牛权限设置指引
-    +   '<div class="st-perm-guide">'
-    +     '<div class="st-perm-guide__head" id="stPermToggle">'
+    +   '<div class="' + guideCardClass + '">'
+    +     '<div class="st-perm-guide__head" role="button" tabindex="0" title="点击展开/收起权限指引">'
     +       '<div class="st-perm-guide__title">'
+    +         icon('shield', 15)
     +         '<span>飞牛 NAS 权限配置指南</span>'
     +         '<span class="st-perm-guide__badge">非自带目录必读</span>'
     +       '</div>'
-    +       '<button type="button" class="st-perm-guide__toggle-btn" id="stPermToggleBtn">展开指引</button>'
+    +       '<button type="button" class="st-perm-guide__toggle-btn">'
+    +         '<span class="st-perm-guide__toggle-text">' + guideBtnText + '</span>'
+    +         '<span class="st-perm-guide__toggle-icon">' + icon(guideBtnIcon, 13) + '</span>'
+    +       '</button>'
     +     '</div>'
-    +     '<div class="st-perm-body" id="stPermBody" style="display:none;">'
+    +     '<div class="st-perm-body" style="' + guideInitStyle + '">'
     +       '<div class="st-perm-steps">'
     +         '<div class="st-perm-step">'
-    +           '<span class="st-perm-step__badge">01</span>'
+    +           '<span class="st-perm-step__badge">步骤 01</span>'
     +           '<span class="st-perm-step__title">进入应用中心</span>'
     +           '<span class="st-perm-step__desc">打开飞牛 NAS 桌面，进入「应用中心」</span>'
     +         '</div>'
     +         '<div class="st-perm-step">'
-    +           '<span class="st-perm-step__badge">02</span>'
+    +           '<span class="st-perm-step__badge">步骤 02</span>'
     +           '<span class="st-perm-step__title">打开插件设置</span>'
-    +           '<span class="st-perm-step__desc">找到「小米摄像头」，点击「设置」</span>'
+    +           '<span class="st-perm-step__desc">找到「小米摄像头」，点击卡片右下角「设置」</span>'
     +         '</div>'
     +         '<div class="st-perm-step">'
-    +           '<span class="st-perm-step__badge">03</span>'
+    +           '<span class="st-perm-step__badge">步骤 03</span>'
     +           '<span class="st-perm-step__title">切换访问权限</span>'
-    +           '<span class="st-perm-step__desc">点击顶部的「访问权限」标签页</span>'
+    +           '<span class="st-perm-step__desc">在弹窗顶部标签栏中，点击「访问权限」</span>'
     +         '</div>'
     +         '<div class="st-perm-step">'
-    +           '<span class="st-perm-step__badge">04</span>'
+    +           '<span class="st-perm-step__badge">步骤 04</span>'
     +           '<span class="st-perm-step__title">添加读写授权</span>'
-    +           '<span class="st-perm-step__desc">点击「+ 添加」目标共享文件夹并勾选「读写」</span>'
+    +           '<span class="st-perm-step__desc">点击「+ 添加」选择目标文件夹，勾选「读写」并保存</span>'
     +         '</div>'
     +       '</div>'
     +       '<div class="st-perm-guide__tip">'
-    +         '说明：飞牛系统采用进程沙盒隔离机制保护系统安全。为目标文件夹授权保存后，点击上方「刷新存储」即可自动识别读写权限。'
+    +         icon('info', 14)
+    +         '<span>说明：飞牛系统采用进程沙盒隔离机制保护系统安全。为目标文件夹授权保存后，点击上方「刷新存储」即可自动识别读写权限。</span>'
     +       '</div>'
     +     '</div>'
     +   '</div>'
@@ -19633,6 +19682,60 @@ function bindStorage(c, cams){
     };
   });
 
+  // 飞牛权限指引折叠/展开与快捷跳转
+  Array.prototype.forEach.call(c.querySelectorAll('.st-perm-guide'), function(guide){
+    var head = guide.querySelector('.st-perm-guide__head');
+    var btn = guide.querySelector('.st-perm-guide__toggle-btn');
+    var body = guide.querySelector('.st-perm-body');
+    var txt = guide.querySelector('.st-perm-guide__toggle-text');
+    var icn = guide.querySelector('.st-perm-guide__toggle-icon');
+    if(!head || !body) return;
+
+    var toggle = function(e){
+      if(e){
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      var isHidden = (body.style.display === 'none' || getComputedStyle(body).display === 'none');
+      body.style.display = isHidden ? 'flex' : 'none';
+      guide.classList.toggle('is-expanded', isHidden);
+      if(txt) txt.textContent = isHidden ? '收起指引' : '展开指引';
+      else if(btn) btn.textContent = isHidden ? '收起指引' : '展开指引';
+      if(icn) icn.innerHTML = icon(isHidden ? 'chevron-up' : 'chevron-down', 13);
+    };
+
+    head.onclick = toggle;
+    head.onkeydown = function(e){
+      if(e.key === 'Enter' || e.key === ' '){
+        toggle(e);
+      }
+    };
+    if(btn){
+      btn.onclick = toggle;
+    }
+  });
+
+  // 点击未授权提示徽章，平滑滚动至指引并自动展开
+  Array.prototype.forEach.call(c.querySelectorAll('.st-jump-perm'), function(badge){
+    badge.onclick = function(e){
+      e.stopPropagation();
+      var card = this.closest('.st-dir-card') || document;
+      var guide = card.querySelector('.st-perm-guide');
+      if(guide){
+        var body = guide.querySelector('.st-perm-body');
+        var txt = guide.querySelector('.st-perm-guide__toggle-text');
+        var icn = guide.querySelector('.st-perm-guide__toggle-icon');
+        if(body){
+          body.style.display = 'flex';
+          guide.classList.add('is-expanded');
+          if(txt) txt.textContent = '收起指引';
+          if(icn) icn.innerHTML = icon('chevron-up', 13);
+        }
+        guide.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+      }
+    };
+  });
+
   // 应用自定义路径
   Array.prototype.forEach.call(c.querySelectorAll('.st-custom-apply'), function(btn){
     btn.onclick = function(){
@@ -19698,7 +19801,11 @@ function bindStorage(c, cams){
   var cg = document.getElementById('stCleanGo');
   if(cg) cg.onclick = function(){
     if(!confirm('确认清理过期录像？\n\n此操作不可恢复。')) return;
-    api('/api/recordings/cleanup', { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' })
+    api('/api/recordings/cleanup', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ days: '7', allPools: true })
+    })
       .then(function(r){ toast('已清理 ' + (r.deleted||0) + ' 个文件，释放 ' + Math.round(r.freedMB||0) + ' MB', 'ok'); render(); })
       .catch(function(e){ toast('清理失败：' + e.message, 'err'); });
   };
@@ -19724,6 +19831,24 @@ function bindStorage(c, cams){
         recDirApply.classList.add('btn--pulse');
       } else {
         recDirApply.classList.remove('btn--pulse');
+      }
+
+      var selVal = recDirSelect.value;
+      var selLoc = (stLocs || []).filter(function(l){ return l.path === selVal; })[0];
+      if(selLoc && selLoc.writable === false){
+        var card = recDirSelect.closest('.st-dir-card') || document;
+        var guide = card.querySelector('.st-perm-guide');
+        if(guide){
+          var body = guide.querySelector('.st-perm-body');
+          var txt = guide.querySelector('.st-perm-guide__toggle-text');
+          var icn = guide.querySelector('.st-perm-guide__toggle-icon');
+          if(body && (body.style.display === 'none' || getComputedStyle(body).display === 'none')){
+            body.style.display = 'flex';
+            guide.classList.add('is-expanded');
+            if(txt) txt.textContent = '收起指引';
+            if(icn) icn.innerHTML = icon('chevron-up', 13);
+          }
+        }
       }
     };
     recDirApply.onclick = function(){
@@ -19834,7 +19959,7 @@ function bindStorage(c, cams){
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
-          days: parseInt(days, 10),
+          days: String(days),
           device: dev,
           protectAI: ai,
           cleanCache: cache,
@@ -23438,7 +23563,11 @@ function stopRec(did){
 }
 
 function cleanup(){
-  api("/api/recordings/cleanup", {method:"POST"}).then(function(r){
+  api("/api/recordings/cleanup", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ days: "7", allPools: true })
+  }).then(function(r){
     toast("已清理 "+(r.deleted||0)+" 个文件，释放 "+(r.freedMB||0)+" MB","ok");
   });
 }
