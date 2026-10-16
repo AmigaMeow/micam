@@ -40,6 +40,7 @@ func aiConfigFromUser(c config.AIConfig) aiConfig {
 		ProviderName:   c.ProviderName,
 		ProviderModel:  c.ProviderModel,
 		ProviderURL:    c.ProviderURL,
+		ProviderReady:  loadProviderKey() != "" || isLocalBaseURL(c.ProviderURL),
 		APITimeout:     c.APITimeout,
 		MaxConcurrent:  c.MaxConcurrent,
 		MaxTokens:      c.MaxTokens,
@@ -267,7 +268,7 @@ func (s *Server) handleAIConfig(w http.ResponseWriter, r *http.Request) {
 
 	// 云端开关/模式变了 -> 启停自动分析
 	if s.aiw != nil {
-		shouldRun := neu.CloudEnabled && neu.Mode != "local" && loadProviderKey() != ""
+		shouldRun := neu.CloudEnabled && neu.Mode != "local" && (loadProviderKey() != "" || isLocalBaseURL(neu.ProviderURL))
 		if shouldRun && !s.aiw.isRunning() {
 			s.aiw.Start()
 		} else if !shouldRun && s.aiw.isRunning() {

@@ -89,15 +89,31 @@ type aiProviderClient struct {
 	cacheDir  string
 }
 
+// isLocalBaseURL 检查是否为局域网或本地私有大模型地址（如 Ollama / vLLM）
+func isLocalBaseURL(url string) bool {
+	u := strings.ToLower(strings.TrimSpace(url))
+	return strings.Contains(u, "localhost") || strings.Contains(u, "127.0.0.1") ||
+		strings.Contains(u, "192.168.") || strings.Contains(u, "10.") ||
+		strings.Contains(u, "172.16.") || strings.Contains(u, "172.17.") ||
+		strings.Contains(u, "172.18.") || strings.Contains(u, "172.19.") ||
+		strings.Contains(u, "172.2") || strings.Contains(u, "172.3") ||
+		strings.Contains(u, ":11434") || strings.Contains(u, ":8000") ||
+		strings.Contains(u, ":5000") || strings.Contains(u, ":8080")
+}
+
 // providerFromConfig 按当前配置构造客户端（未配置返回 nil）
 func providerFromConfig(cfg aiConfig) *aiProviderClient {
-	key := loadProviderKey()
-	if strings.TrimSpace(key) == "" {
-		return nil
-	}
 	url := strings.TrimRight(strings.TrimSpace(cfg.ProviderURL), "/")
 	if url == "" {
 		url = "https://api.deepseek.com/v1"
+	}
+	key := loadProviderKey()
+	if strings.TrimSpace(key) == "" {
+		if isLocalBaseURL(url) {
+			key = "local-ollama-key"
+		} else {
+			return nil
+		}
 	}
 	to := cfg.APITimeout
 	if to <= 0 {

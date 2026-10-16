@@ -41,8 +41,12 @@ func (s *Server) handleAIProviderTest(w http.ResponseWriter, r *http.Request) {
 
 	c := providerFromConfig(cfg)
 	if c == nil && tmpKey == "" {
-		writeJSON(w, 200, map[string]any{"ok": false, "error": "还没有配置 API 密钥"})
-		return
+		if isLocalBaseURL(cfg.ProviderURL) {
+			tmpKey = "local-ollama-key"
+		} else {
+			writeJSON(w, 200, map[string]any{"ok": false, "error": "还没有配置 API 密钥（局域网私有模型可配置本地地址免密钥）"})
+			return
+		}
 	}
 	if tmpKey != "" {
 		if c == nil {
