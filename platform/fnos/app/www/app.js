@@ -6892,11 +6892,8 @@ function renderLive(c){
     var bf = $("#btnFull");
     if(bf) bf.onclick = function(){
       var wrap = document.querySelector('.player-wrap');
-      if(!wrap) return;
-      try {
-        if(document.fullscreenElement) document.exitFullscreen();
-        else wrap.requestFullscreen();
-      } catch(e){ toast('全屏不可用：' + e.message, 'warn'); }
+      var vid = document.getElementById('liveVideo');
+      toggleFullscreen(wrap, vid);
     };
 
     // 左侧列表缩略图
@@ -8326,8 +8323,8 @@ function bindReplay(c){
   var bf = document.getElementById('btnFull');
   if(bf) bf.onclick = function(){
     var w = document.querySelector('.player-wrap');
-    if(!w) return;
-    if(document.fullscreenElement) document.exitFullscreen(); else w.requestFullscreen();
+    var vid = document.getElementById('recVideo');
+    toggleFullscreen(w, vid);
   };
 
   // ---- 逐帧（用户反馈第 4 条）----

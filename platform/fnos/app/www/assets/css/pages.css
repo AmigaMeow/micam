@@ -8040,3 +8040,29 @@
   line-height: 1.5;
   text-align: center;
 }
+
+/* ===== 移动端视口伪全屏支持 ===== */
+.player-wrap.is-mobile-fullscreen {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  max-width: 100vw !important;
+  max-height: 100vh !important;
+  z-index: 999999 !important;
+  background: #000 !important;
+  margin: 0 !important;
+  border-radius: 0 !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+.player-wrap.is-mobile-fullscreen video,
+.player-wrap.is-mobile-fullscreen img {
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: contain !important;
+}
+body.has-mobile-fullscreen {
+  overflow: hidden !important;
+}
