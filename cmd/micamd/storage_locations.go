@@ -33,6 +33,17 @@ type storageLocation struct {
 	Badge    string  `json:"badge"` // 推荐 / 默认
 }
 
+func friendlyVolName(vol string) string {
+	v := strings.ToLower(vol)
+	if strings.HasPrefix(v, "vol0") {
+		return "存储空间 " + strings.TrimPrefix(v, "vol0")
+	}
+	if strings.HasPrefix(v, "vol") {
+		return "存储空间 " + strings.TrimPrefix(v, "vol")
+	}
+	return vol
+}
+
 // handleStorageLocations 列出可选的录像存储位置。
 func (s *Server) handleStorageLocations(w http.ResponseWriter, r *http.Request) {
 	cur := s.rec.GetConfig().Dir
@@ -70,7 +81,7 @@ func (s *Server) handleStorageLocations(w http.ResponseWriter, r *http.Request) 
 	// 1. 飞牛应用共享目录（TRIM_APPSHARE 环境变量）
 	if v := os.Getenv("TRIM_APPSHARE"); v != "" {
 		appshare := filepath.Join(v, "data", "recordings")
-		add(appshare, "应用共享目录", "appshare",
+		add(appshare, "应用共享目录 (开箱即用)", "appshare",
 			"飞牛文件管理器可见，卸载插件也不会删", "推荐")
 	}
 
@@ -78,24 +89,53 @@ func (s *Server) handleStorageLocations(w http.ResponseWriter, r *http.Request) 
 	if shares, err := filepath.Glob("/vol*/@appshare/micam"); err == nil {
 		for _, sh := range shares {
 			recPath := filepath.Join(sh, "data", "recordings")
-			volName := filepath.Base(filepath.Dir(filepath.Dir(sh)))
+			volName := friendlyVolName(filepath.Base(filepath.Dir(filepath.Dir(sh))))
 			add(recPath, "应用共享目录 ("+volName+")", "appshare",
 				"飞牛文件管理器可见，数据独立保存", "推荐")
 		}
 	}
 
 	// 3. 插件数据目录（默认备选）
-	add(filepath.Join(s.dataDir, "recordings"), "插件数据目录", "appdata",
+	add(filepath.Join(s.dataDir, "recordings"), "插件数据目录 (默认)", "appdata",
 		"跟随插件，卸载时可能被清理", "")
 
-	// 4. 扫描所有存储卷的用户文件夹与外接存储 (/vol*, /vol02 等)
+	// 4. 重点：读取飞牛系统用户共享目录配置（/etc/samba/users/*.share.conf）
+	// 这包含了用户在飞牛 NAS 中创建的所有共享文件夹（如「测试小米存储」、「摄像头」等）
+	if confFiles, err := filepath.Glob("/etc/samba/users/*.share.conf"); err == nil {
+		for _, cf := range confFiles {
+			raw, err := os.ReadFile(cf)
+			if err != nil {
+				continue
+			}
+			lines := strings.Split(string(raw), "\n")
+			currentSection := ""
+			for _, l := range lines {
+				l = strings.TrimSpace(l)
+				if strings.HasPrefix(l, "[") && strings.HasSuffix(l, "]") {
+					currentSection = l[1 : len(l)-1]
+				} else if strings.HasPrefix(l, "path =") && currentSection != "" {
+					p := strings.TrimSpace(strings.TrimPrefix(l, "path ="))
+					if p != "" {
+						vol := "存储空间"
+						parts := strings.Split(strings.TrimPrefix(p, "/"), "/")
+						if len(parts) > 0 {
+							vol = friendlyVolName(parts[0])
+						}
+						add(p, vol+" / "+currentSection, "share", "飞牛用户共享文件夹", "")
+					}
+				}
+			}
+		}
+	}
+
+	// 5. 扫描所有存储卷的用户文件夹与外接存储 (/vol*, /vol02 等)
 	if volRoots, err := filepath.Glob("/vol*"); err == nil {
 		for _, vr := range volRoots {
 			ents, err := os.ReadDir(vr)
 			if err != nil {
 				continue
 			}
-			volName := filepath.Base(vr)
+			volName := friendlyVolName(filepath.Base(vr))
 			for _, ent := range ents {
 				if !ent.IsDir() {
 					continue
@@ -104,18 +144,34 @@ func (s *Server) handleStorageLocations(w http.ResponseWriter, r *http.Request) 
 				if strings.HasPrefix(name, "@") || strings.HasPrefix(name, ".") {
 					continue
 				}
-				cand := filepath.Join(vr, name, "recordings")
-				add(cand, volName+" / "+name, "volume", "存储池 "+volName+" 共享文件夹", "")
+
+				// 若为用户 UID 目录（如 1000），扫描其下的实际文件夹
+				subEnts, subErr := os.ReadDir(filepath.Join(vr, name))
+				if subErr == nil && len(subEnts) > 0 {
+					for _, se := range subEnts {
+						if !se.IsDir() || strings.HasPrefix(se.Name(), ".") || strings.HasPrefix(se.Name(), "@") {
+							continue
+						}
+						p := filepath.Join(vr, name, se.Name())
+						add(p, volName+" / "+se.Name(), "share", "飞牛个人文件夹", "")
+					}
+				} else {
+					cand := filepath.Join(vr, name, "recordings")
+					add(cand, volName+" / "+name, "volume", "存储池 "+volName+" 文件夹", "")
+				}
 			}
 		}
 	}
 
-	// 5. 当前配置的路径始终包含
+	// 6. 当前配置的路径始终包含
 	add(cur, "当前使用路径", "custom", "当前生效的录像存储目录", "")
 
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Current != out[j].Current {
 			return out[i].Current
+		}
+		if out[i].Writable != out[j].Writable {
+			return out[i].Writable
 		}
 		// 推荐的排前面
 		r := func(x storageLocation) int {
