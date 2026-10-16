@@ -33,7 +33,7 @@ echo "--- 2) 组装前端（内联 JS/CSS）"
 node build/assemble-web.js | tail -2 | sed 's/^/    /'
 
 echo "--- 3) 停服务"
-pkill -9 -f "micamd " 2>/dev/null || true
+killall -9 micamd 2>/dev/null || pkill -9 micamd 2>/dev/null || true
 sleep 2
 
 echo "--- 4) 复制"
