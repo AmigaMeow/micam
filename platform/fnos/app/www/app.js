@@ -1340,7 +1340,7 @@ function camCardHTML(d){
   var preview, offBlock = '';
   if (on) {
     preview = '<img data-snap="' + esc(d.did) + '" alt="">'
-      + '<button class="cam-card__refresh" data-refresh-thumb="' + esc(d.did) + '" title="刷新封面画面">' + icon('rotate-cw', 13) + '</button>'
+      + '<button class="cam-card__refresh" data-refresh-thumb="' + esc(d.did) + '" title="刷新封面画面">' + icon('refresh-cw', 13) + '</button>'
       + '<div class="cam-card__time"><span class="rec-dot"></span>'
       + '<span data-clock="' + esc(d.did) + '">' + clockNow() + '</span></div>'
       + statusBadge;
@@ -1436,7 +1436,7 @@ function showCamMenu(anchor, d, cb, online){
     +   icon('star', 15) + (isFav(d.did) ? '取消收藏' : '收藏') + '</button>'
     + (online
         ? '<button class="cam-menu__item" data-cm="refresh-snap" role="menuitem">'
-          + icon('rotate-cw', 15) + '刷新封面画面</button>'
+          + icon('refresh-cw', 15) + '刷新封面画面</button>'
           + '<button class="cam-menu__item" data-cm="live" role="menuitem">'
           + icon('play', 15) + '查看实时画面</button>'
         : '<button class="cam-menu__item is-danger" data-cm="del" role="menuitem">'
