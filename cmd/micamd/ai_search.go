@@ -14,6 +14,8 @@ package main
 // 关键原则：绝不让 LLM 直接扫视频 —— 它只解析查询，不碰画面。
 
 import (
+	"context"
+	"os"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -565,14 +567,97 @@ func (s *Server) handleAISearch(w http.ResponseWriter, r *http.Request) {
 	cfg := aiConfigFromUser(s.cfg.AI)
 	deepReady := providerFromConfig(cfg) != nil
 
+	var cloudAnswer string
+	var cloudCost float64
+	var cloudModel string
+	var cloudProvider string
+	var inspectedThumbs []string
+
+	// 如果配置了外部视觉大模型，自动结合实时关键帧或录像进行智能多模态视觉问答
+	if deepReady && cfg.CloudEnabled {
+		client := providerFromConfig(cfg)
+		if client != nil {
+			var visualImages [][]byte
+
+			// 1. 若本地规则检索有候选事件，抽取前 3 个事件画面作为大模型判据
+			if len(hit) > 0 {
+				for i := 0; i < len(hit) && len(visualImages) < 3; i++ {
+					ev := &hit[i]
+					imgs := s.gatherEventImages(ev, "snapshot")
+					if len(imgs) > 0 {
+						visualImages = append(visualImages, imgs[0])
+						if ev.Thumb != "" {
+							inspectedThumbs = append(inspectedThumbs, ev.Thumb)
+						}
+					}
+				}
+			}
+
+			// 2. 若本地规则候选数为 0（例如小狗趴地未被小模型检测到），
+			// 绝不轻易放弃！从今日各监控画面最近帧或实时抓拍帧中抽取关键证据
+			if len(visualImages) == 0 {
+				cams := s.allCameras()
+				for _, c := range cams {
+					if len(visualImages) >= 3 {
+						break
+					}
+					// 从该设备今日最新事件取图
+					recentEvs := s.eventStore.Query(event.Query{Days: 1, Did: c.Did, Limit: 2})
+					for _, rev := range recentEvs {
+						if rev.Thumb != "" {
+							if raw, err := os.ReadFile(s.eventStore.ThumbPath(rev.Thumb)); err == nil && len(raw) > 1024 {
+								visualImages = append(visualImages, raw)
+								inspectedThumbs = append(inspectedThumbs, rev.Thumb)
+								break
+							}
+						}
+					}
+					// 若无历史事件，直接抓取在线高清实时帧
+					if len(visualImages) < 3 && c.IsOnline {
+						if hi := s.captureHiRes(c.Did); len(hi) > 2048 {
+							tName := s.eventStore.SaveThumb(hi)
+							visualImages = append(visualImages, hi)
+							if tName != "" {
+								inspectedThumbs = append(inspectedThumbs, tName)
+							}
+						}
+					}
+				}
+			}
+
+			if len(visualImages) > 0 {
+				ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
+				vAnswer, usage, err := client.AnswerVisualQuery(ctx, req.Q, visualImages, parsed.Parsed)
+				cancel()
+				if err == nil && vAnswer != "" {
+					fee := estimateCostCNY(usage.PromptTokens, usage.CompletionTokens)
+					s.ai.addCost(fee)
+					s.ai.addImages(len(visualImages))
+					cloudAnswer = vAnswer
+					cloudCost = fee
+					cloudModel = client.model
+					cloudProvider = cfg.ProviderName
+					logf("[ai-ask] 云端多模态视觉问答成功: q=%s tokens=%d+%d fee=¥%.4f", req.Q, usage.PromptTokens, usage.CompletionTokens, fee)
+				} else if err != nil {
+					logf("[ai-ask] 云端视觉大模型调用失败: %v", err)
+				}
+			}
+		}
+	}
+
 	writeJSON(w, 200, map[string]any{
-		"q":              req.Q,
-		"parsed":         parsed.Parsed,
-		"query":          parsed,
-		"events":         hit,
-		"count":          len(hit),
-		"ruleConclusion": ruleConclusion,
-		"provider":       "local",
+		"q":               req.Q,
+		"parsed":          parsed.Parsed,
+		"query":           parsed,
+		"events":          hit,
+		"count":           len(hit),
+		"ruleConclusion":  ruleConclusion,
+		"cloudAnswer":     cloudAnswer,
+		"cloudCost":       cloudCost,
+		"cloudModel":      cloudModel,
+		"cloudProvider":   cloudProvider,
+		"inspectedThumbs": inspectedThumbs,
+		"provider":        "local",
 		"deepInvestigation": map[string]any{
 			"plan":     deepPlan,
 			"coverage": deepCov,

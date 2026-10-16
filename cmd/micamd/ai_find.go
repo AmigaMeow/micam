@@ -295,6 +295,23 @@ func (s *Server) collectCandidates(plan findPlan) []event.Event {
 		}
 		out = append(out, e)
 	}
+
+	// 智能回退保底：如果本地规则筛选后候选数为 0（本地轻量 YOLO 漏检，或用户提问包含特殊目标），
+	// 提取近期有图录像关键帧或事件作为候选，确保云端视觉大模型能介入深度推演
+	if len(out) == 0 && len(list) > 0 {
+		for _, e := range list {
+			if plan.Did != "" && e.Did != plan.Did {
+				continue
+			}
+			if e.Thumb != "" {
+				out = append(out, e)
+				if len(out) >= 15 {
+					break
+				}
+			}
+		}
+	}
+
 	return out
 }
 

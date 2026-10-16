@@ -447,4 +447,60 @@ func estimateCostCNY(promptTok, compTok int) float64 {
 	return (float64(promptTok)*priceInCNY + float64(compTok)*priceOutCNY) / 1e6
 }
 
+// AnswerVisualQuery 用外部视觉大模型回答关于监控画面的自然语言提问（多模态视觉问答）。
+func (c *aiProviderClient) AnswerVisualQuery(ctx context.Context, question string, images [][]byte, contextInfo string) (string, tokenUsage, error) {
+	var u tokenUsage
+	if len(images) == 0 {
+		return "", u, fmt.Errorf("无可用画面可供多模态分析")
+	}
+
+	var parts []oaiContentPart
+	promptText := "用户查询问题：" + question
+	if contextInfo != "" {
+		promptText += "\n背景参考信息：" + contextInfo
+	}
+	promptText += "\n请仔细查看以下所附的真实监控画面截图，给出精准、实事求是且条理清晰的中文回答。"
+	parts = append(parts, oaiContentPart{Type: "text", Text: promptText})
+
+	for _, img := range images {
+		parts = append(parts, oaiContentPart{
+			Type:     "image_url",
+			ImageURL: &oaiImg{URL: "data:image/jpeg;base64," + b64(img)},
+		})
+	}
+
+	const visualQASystemPrompt = `你是一个专业的家庭监控智能管家视觉大模型。
+用户正在向你提问关于家庭监控画面的真实情况。
+请仔细观察用户提供的多张监控画面截图，实事求是地回答问题。
+
+回答规范：
+1. 真实客观：严格依据监控画面中实际呈现的物体、人物、动物、车辆回答，绝不凭空推测或编造。
+2. 细节明确：
+   - 如果画面中发现了用户询问的目标（如小狗、猫咪、特定车辆、人员、包裹等），请明确指出它的位置（如“大门右侧花纹地毯上”、“画面右下方”）、状态动作（如“正趴着休息”、“正在走动”）、外观特征（如“浅黄色毛发”、“车牌号”）以及对应的画面细节。
+   - 如果画面中确实没有用户询问的目标，请客观如实告知未发现，并简要说明当前画面中实际存在的主要物体或状态。
+3. 语气友好、重点突出、使用清晰规范的中文排版回答。`
+
+	r, err := c.do(ctx, oaiReq{
+		Model: c.model,
+		Messages: []oaiMessage{
+			{Role: "system", Content: visualQASystemPrompt},
+			{Role: "user", Content: parts},
+		},
+		MaxTokens: c.maxTokens,
+	})
+	if err != nil {
+		return "", u, err
+	}
+
+	u.PromptTokens = r.Usage.PromptTokens
+	u.CompletionTokens = r.Usage.CompletionTokens
+
+	choice := r.Choices[0]
+	txt := choice.Message.Content
+	if strings.TrimSpace(txt) == "" {
+		txt = choice.Message.ReasoningContent
+	}
+	return strings.TrimSpace(txt), u, nil
+}
+
 var _ = bytes.NewReader

@@ -15,15 +15,17 @@ import (
 )
 
 type trackedObject struct {
-	TrackID   int       `json:"trackId"`
-	Cls       string    `json:"cls"`
-	Box       []int     `json:"box"`
-	Plate     string    `json:"plate"`
-	FirstSeen time.Time `json:"firstSeen"`
-	LastEvent time.Time `json:"lastEvent"`
-	LastSeen  time.Time `json:"lastSeen"`
-	HitCount  int       `json:"hitCount"` // 累计命中帧数 (对应 Clearcam: tracklet_len)
-	Speed     float64   `json:"speed"`    // 像素位移速度 (对应 Clearcam: speed)
+	TrackID      int       `json:"trackId"`
+	Cls          string    `json:"cls"`
+	Box          []int     `json:"box"`
+	Plate        string    `json:"plate"`
+	FirstSeen    time.Time `json:"firstSeen"`
+	LastEvent    time.Time `json:"lastEvent"`
+	LastSeen     time.Time `json:"lastSeen"`
+	HitCount     int       `json:"hitCount"` // 累计命中帧数
+	Speed        float64   `json:"speed"`    // 像素位移速度
+	Status       string    `json:"status"`   // moving / parked
+	EmittedCount int       `json:"emittedCount"`
 }
 
 var (
@@ -160,7 +162,26 @@ func (s *Server) scanSingleRecFile(devName, date, file string) ([]event.Event, e
 			continue
 		}
 
-		// 记录所有置信度合格的目标，按类型产生事件
+		// 动态目标优先级排序：人员 > 宠物 > 包裹 > 动态 > 车辆
+		// 严防院内已停放的静态车辆掩盖走动的人员与小动物
+		sort.SliceStable(res.Objects, func(i, j int) bool {
+			priority := func(cls string) int {
+				switch mapObjType(cls) {
+				case "person":
+					return 5
+				case "animal":
+					return 4
+				case "package":
+					return 3
+				case "motion":
+					return 2
+				default:
+					return 1
+				}
+			}
+			return priority(res.Objects[i].Cls) > priority(res.Objects[j].Cls)
+		})
+
 		seenTypes := make(map[string]bool)
 		for _, obj := range res.Objects {
 			evType := obj.Type
@@ -184,7 +205,7 @@ func (s *Server) scanSingleRecFile(devName, date, file string) ([]event.Event, e
 				sameCategory := (t.Cls == aiCls) || (evType == "vehicle" && mapObjType(t.Cls) == "vehicle")
 				if sameCategory {
 					iou := boxIoU(obj.Box, t.Box)
-					if iou > 0.35 && iou > maxIoU {
+					if iou > 0.30 && iou > maxIoU {
 						maxIoU = iou
 						matchedTrk = t
 					}
@@ -206,24 +227,40 @@ func (s *Server) scanSingleRecFile(devName, date, file string) ([]event.Event, e
 				matchedTrk.LastSeen = evTime
 				matchedTrk.Box = obj.Box
 
-				// 速度门控：若该目标已经产生过事件且位移微小 (原地震颤/树影晃动)，判定为静止，抑制重复事件
+				// 静止车辆抑制：如果目标是车辆，且重合度高 (IoU > 0.35 或中心位移 < 60px)，且此前已产生过事件
+				// 判定为【静止停放车辆】，坚决抑制重复的“车辆驶入”警报！
+				isVehicle := (evType == "vehicle" || aiCls == "car" || aiCls == "truck")
+				if isVehicle && matchedTrk.EmittedCount > 0 {
+					if maxIoU > 0.35 || disp < 3600.0 {
+						matchedTrk.Status = "parked"
+						// 只要车辆保持停放状态，完全抑制后续重复报警
+						trackerMu.Unlock()
+						continue
+					}
+				}
+
+				// 普通速度门控：微小位移防抖
 				if disp < 225.0 && evTime.Sub(matchedTrk.LastEvent) < 30*time.Minute {
 					trackerMu.Unlock()
 					continue
 				}
+
+				matchedTrk.EmittedCount++
 				matchedTrk.LastEvent = evTime
 				trackerMu.Unlock()
 			} else {
 				// 新轨迹
 				newTrk := &trackedObject{
-					TrackID:   len(trackedList) + 1,
-					Cls:       aiCls,
-					Box:       obj.Box,
-					FirstSeen: evTime,
-					LastEvent: evTime,
-					LastSeen:  evTime,
-					HitCount:  1,
-					Speed:     400.0,
+					TrackID:      len(trackedList) + 1,
+					Cls:          aiCls,
+					Box:          obj.Box,
+					FirstSeen:    evTime,
+					LastEvent:    evTime,
+					LastSeen:     evTime,
+					HitCount:     1,
+					Speed:        400.0,
+					Status:       "moving",
+					EmittedCount: 1,
 				}
 				cameraTrackers[devName] = append(cameraTrackers[devName], newTrk)
 				var activeTrackers []*trackedObject
@@ -234,6 +271,14 @@ func (s *Server) scanSingleRecFile(devName, date, file string) ([]event.Event, e
 				}
 				cameraTrackers[devName] = activeTrackers
 				trackerMu.Unlock()
+			}
+
+			// 单文件内车辆事件去重：同 60 秒录像分片内绝不重复发射两起车辆进出事件
+			if evType == "vehicle" && seenTypes["emitted_vehicle_file"] {
+				continue
+			}
+			if evType == "vehicle" {
+				seenTypes["emitted_vehicle_file"] = true
 			}
 
 			var evDesc string
@@ -366,6 +411,18 @@ func (s *Server) scanAllRecordings(maxFiles int) (int, int, error) {
 
 	scannedCount := 0
 	newEventsCount := 0
+
+	// 预热已扫描的录像索引缓存，避免服务重启后全量重复扫描
+	recScanMu.Lock()
+	if len(recScannedMap) == 0 {
+		for _, ev := range s.eventStore.Query(event.Query{Days: 2, Limit: 5000}) {
+			if ev.RecFile != "" && len(ev.Time) >= 10 {
+				k := filepath.Join(ev.Device, ev.Time[:10], ev.RecFile)
+				recScannedMap[k] = true
+			}
+		}
+	}
+	recScanMu.Unlock()
 
 	// 查今天和昨天的目录
 	dates := []string{

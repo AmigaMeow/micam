@@ -101,7 +101,7 @@ func NewStore(dir string, keepDays int) *Store {
 	return s
 }
 
-// Add 追加一条事件。
+// Add 追加一条事件（带录像分片与时间去重，防重复插入）。
 func (s *Store) Add(ev Event) {
 	if ev.ID == "" {
 		ev.ID = fmt.Sprintf("%d", time.Now().UnixNano())
@@ -111,9 +111,39 @@ func (s *Store) Add(ev Event) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	// 录像分片与事件去重：相同设备、相同录像文件及偏移的事件严禁重复插入
+	if len(ev.Time) >= 10 {
+		day := ev.Time[:10]
+		existing := s.readDayLocked(day)
+		for _, ex := range existing {
+			if ex.Did == ev.Did {
+				if ev.RecFile != "" && ex.RecFile == ev.RecFile && ex.RecOff == ev.RecOff {
+					return
+				}
+				if ev.RecFile == "" && ex.Time == ev.Time && ex.Type == ev.Type {
+					return
+				}
+			}
+		}
+	}
+
 	if err := s.appendLocked(ev); err != nil {
 		log.Printf("[event] 写入事件失败 id=%s: %v", ev.ID, err)
 	}
+}
+
+// HasRecFile 检查指定设备在某天是否已经索引过某录像分片
+func (s *Store) HasRecFile(did, file, day string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	existing := s.readDayLocked(day)
+	for _, ex := range existing {
+		if (ex.Did == did || ex.Device == did) && ex.RecFile == file {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Store) appendLocked(ev Event) error {
