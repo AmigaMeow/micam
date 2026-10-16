@@ -188,11 +188,11 @@ func (s *Server) handleSetRecordDir(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := os.MkdirAll(clean, 0o755); err != nil {
-		writeErr(w, 400, "创建目录失败（飞牛系统未给 micam 应用授权该路径）: "+err.Error())
+		writeErr(w, 400, "创建目录失败（无权限）：飞牛系统限制了应用跨目录写入。请在飞牛桌面打开「应用中心」→「小米摄像头」→「设置」→「访问权限」中点击「+ 添加」该文件夹并赋予读写权限，或在文件管理中右键赋予 micam 用户权限: "+err.Error())
 		return
 	}
 	if !isWritable(clean) {
-		writeErr(w, 400, "目录不可写 —— 飞牛权限限制：请在飞牛「文件管理」中右键该目录选择「属性」-「权限」，为 micam 用户分配读写权限")
+		writeErr(w, 400, "目录不可写（无写入权限）：请在飞牛桌面打开「应用中心」→「小米摄像头」→「设置」→「访问权限」中点击「+ 添加」该文件夹并赋予读写权限，或在文件管理中右键该文件夹属性为 micam 用户分配读写权限")
 		return
 	}
 

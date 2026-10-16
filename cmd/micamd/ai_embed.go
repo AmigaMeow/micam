@@ -13,7 +13,6 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"sort"
 	"strings"
 
@@ -126,9 +125,9 @@ type embedResult struct {
 
 // embedCompare 调 python 算「查询图 vs 候选图」的相似度。
 func (s *Server) embedCompare(query string, cands []string) (*embedResult, error) {
-	script := filepath.Join(appDestDir, "ai", "embed.py")
-	if _, err := os.Stat(script); err != nil {
-		script = filepath.Join("platform", "fnos", "app", "ai", "embed.py")
+	script := findAIScript("embed.py")
+	if script == "" {
+		return nil, fmt.Errorf("未找到 embed.py 脚本")
 	}
 	pyExe := "/usr/bin/python3"
 	pyPath := ""

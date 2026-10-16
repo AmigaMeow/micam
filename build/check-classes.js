@@ -626,11 +626,11 @@ function scanThemeScopes(css) {
     }
     const body = css.slice(open + 1, j - 1);
 
-    /* 取该选择器最后一个逗号分隔项，判断是不是 :root / .dark */
-    const last = sel.split(',').pop().trim();
+    /* 取该选择器逗号分隔项，判断是不是包含 :root / .dark */
+    const parts = sel.split(",").map(function (s) { return s.trim(); });
     let target = null;
-    if (last === ':root' || /^html:root$/.test(last)) target = light;
-    else if (last === '.dark' || /^html\.dark$/.test(last)) target = dark;
+    if (parts.indexOf(":root") >= 0 || parts.some(function (p) { return /^html:root$/.test(p); })) target = light;
+    else if (parts.indexOf(".dark") >= 0 || parts.some(function (p) { return /^html\.dark$/.test(p); })) target = dark;
 
     if (target) {
       const vr = /(--[A-Za-z0-9_-]+)\s*:/g;

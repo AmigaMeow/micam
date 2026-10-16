@@ -72,6 +72,9 @@ func (s *Server) recRoot() string {
 		if s != nil && s.dataDir != "" {
 			return filepath.Join(s.dataDir, "recordings")
 		}
+		if matches, err := filepath.Glob("/vol*/@appdata/micam/recordings"); err == nil && len(matches) > 0 {
+			return matches[0]
+		}
 		return "/vol1/@appdata/micam/recordings"
 	}
 	cfg := s.rec.GetConfig()

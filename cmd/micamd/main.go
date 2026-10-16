@@ -152,7 +152,7 @@ func main() {
 		Segment:    time.Duration(cfg.RecordSegment) * time.Second,
 		KeepDays:   cfg.RecordKeepDays,
 		MinFreeGB:  cfg.RecordMinFreeGB,
-		FFmpegPath: *ffmpegPath,
+		FFmpegPath: srv.ffmpegPath(),
 	})
 	log.Printf("录像目录: %s (启用=%v)", recDir, cfg.RecordEnabled)
 
@@ -205,9 +205,9 @@ func main() {
 	}
 
 	// AI 推理客户端（默认关闭；开启且环境可用时才启动子进程）
-	aiScript := filepath.Join(*appDest, "ai", "infer.py")
-	if _, err := os.Stat(aiScript); err != nil {
-		aiScript = filepath.Join("platform", "fnos", "app", "ai", "infer.py")
+	aiScript := findAIScript("infer.py")
+	if aiScript == "" {
+		aiScript = filepath.Join(*appDest, "ai", "infer.py")
 	}
 	srv.ai = newAIClient(*dataDir, aiScript)
 	loadCostState(srv.ai) // 恢复今日费用记账（否则重启就绕过预算上限）
@@ -437,8 +437,35 @@ func srvCleanHLS(dataDir string) {
 // 但服务以 package 用户运行时读应用目录不方便，
 // 复制到 TRIM_PKGVAR/web 后统一从数据目录提供。
 func deployWeb(dataDir string) {
-	src := filepath.Join(os.Getenv("TRIM_APPDEST"), "www", "index.html")
-	if src == "/www/index.html" {
+	var candDirs []string
+	if dest := os.Getenv("TRIM_APPDEST"); dest != "" {
+		candDirs = append(candDirs, filepath.Join(dest, "www"))
+	}
+	if appDestDir != "" {
+		candDirs = append(candDirs, filepath.Join(appDestDir, "www"))
+	}
+	if exe, err := os.Executable(); err == nil {
+		dir := filepath.Dir(exe)
+		candDirs = append(candDirs,
+			filepath.Join(dir, "www"),
+			filepath.Join(dir, "..", "www"),
+			filepath.Join(filepath.Dir(dir), "www"),
+		)
+	}
+	if matches, err := filepath.Glob("/vol*/@appcenter/micam/www"); err == nil {
+		candDirs = append(candDirs, matches...)
+	}
+	candDirs = append(candDirs, filepath.Join("platform", "fnos", "app", "www"), "www")
+
+	var src string
+	for _, cd := range candDirs {
+		p := filepath.Join(cd, "index.html")
+		if st, err := os.Stat(p); err == nil && !st.IsDir() {
+			src = p
+			break
+		}
+	}
+	if src == "" {
 		return
 	}
 	dstDir := filepath.Join(dataDir, "web")
@@ -984,8 +1011,25 @@ func (s *Server) handleDevices(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) staticHandler() http.Handler {
 	dir := filepath.Join(s.dataDir, "web")
-	if _, err := os.Stat(dir); err != nil {
-		dir = "web"
+	if st, err := os.Stat(filepath.Join(dir, "index.html")); err != nil || st.IsDir() {
+		for _, cand := range []string{
+			filepath.Join(os.Getenv("TRIM_APPDEST"), "www"),
+			filepath.Join(appDestDir, "www"),
+		} {
+			if cand != "" {
+				if st2, err2 := os.Stat(filepath.Join(cand, "index.html")); err2 == nil && !st2.IsDir() {
+					dir = cand
+					break
+				}
+			}
+		}
+		if st, err := os.Stat(filepath.Join(dir, "index.html")); err != nil || st.IsDir() {
+			if matches, err := filepath.Glob("/vol*/@appcenter/micam/www/index.html"); err == nil && len(matches) > 0 {
+				dir = filepath.Dir(matches[0])
+			} else {
+				dir = "web"
+			}
+		}
 	}
 	fs := http.FileServer(http.Dir(dir))
 

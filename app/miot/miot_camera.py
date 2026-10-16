@@ -47,18 +47,27 @@ RAW_CB  = CFUNCTYPE(None, POINTER(FrameHeader), POINTER(c_uint8))
 # ---------- 库加载 ----------
 
 def find_lib(explicit=None):
+    import glob
     cands = []
     if explicit:
         cands.append(explicit)
     if os.environ.get("MICAM_MIOT_LIB"):
         cands.append(os.environ["MICAM_MIOT_LIB"])
+    if os.environ.get("TRIM_APPDEST"):
+        cands.append(os.path.join(os.environ["TRIM_APPDEST"], "lib", "libmiot_camera_lite.so"))
+    if os.environ.get("TRIM_PKGVAR"):
+        cands.append(os.path.join(os.environ["TRIM_PKGVAR"], "lib", "libmiot_camera_lite.so"))
     here = os.path.dirname(os.path.abspath(__file__))
     cands += [
         os.path.join(here, "libmiot_camera_lite.so"),
         os.path.join(here, "..", "third_party", "miloco", "libmiot_camera_lite.so"),
-        "/vol1/@appcenter/micam/lib/libmiot_camera_lite.so",
-        "/vol1/@appdata/micam/lib/libmiot_camera_lite.so",
+        os.path.join(here, "..", "lib", "libmiot_camera_lite.so"),
+    ]
+    cands += glob.glob("/vol*/@appcenter/micam/lib/libmiot_camera_lite.so")
+    cands += glob.glob("/vol*/@appdata/micam/lib/libmiot_camera_lite.so")
+    cands += [
         "/usr/local/lib/libmiot_camera_lite.so",
+        "/usr/lib/libmiot_camera_lite.so",
     ]
     for p in cands:
         if p and os.path.exists(p):
@@ -290,34 +299,36 @@ def main():
     #
     #   所以：sidecar 自己写原始 .265 分片，写完一个就用 ffmpeg 转成 mkv，
     #   再删掉 .265。这是官方 Miloco 的做法（它也是落文件）。
-    seg = {"n": 0, "t0": time.time(), "fh": None, "path": None}
+    seg = {"n": 0, "t0": time.time(), "fh": None, "path": None, "codec": None}
     outdir = args.out
     if args.segment > 0:
         os.makedirs(outdir, exist_ok=True)
 
     def seg_open(now):
         ts = time.strftime("%Y%m%d_%H%M%S", time.localtime(now))
-        seg["path"] = os.path.join(outdir, "%s_%d.265" % (ts, seg["n"]))
+        ext = "264" if seg.get("codec") == 4 else "265"
+        seg["path"] = os.path.join(outdir, "%s_%d.%s" % (ts, seg["n"], ext))
         seg["fh"] = open(seg["path"], "wb")
         seg["n"] += 1
         seg["t0"] = now
 
     def seg_roll(now):
-        """关闭当前分片并转封装。"""
+        """关闭当前分片并转封装（动态支持 H.264 / HEVC 编码）。"""
         if seg["fh"]:
             seg["fh"].close()
             raw = seg["path"]
             if os.path.getsize(raw) > 1024:
-                dst = raw[:-4] + ".mkv"
+                dst = raw.rsplit(".", 1)[0] + ".mkv"
+                in_fmt = "h264" if seg.get("codec") == 4 else "hevc"
                 try:
                     subprocess.run(
                         [args.ffmpeg, "-hide_banner", "-loglevel", "error",
-                         "-f", "hevc", "-i", raw, "-c", "copy", dst],
+                         "-f", in_fmt, "-i", raw, "-c", "copy", dst],
                         timeout=60)
                     if os.path.exists(dst) and os.path.getsize(dst) > 1024:
                         os.remove(raw)
-                        print("[seg] %s (%d 字节)" % (os.path.basename(dst),
-                                                      os.path.getsize(dst)),
+                        print("[seg] %s (%d 字节, %s)" % (os.path.basename(dst),
+                                                      os.path.getsize(dst), in_fmt),
                               file=sys.stderr, flush=True)
                     else:
                         os.remove(dst)
@@ -349,7 +360,10 @@ def main():
         if args.segment > 0:
             now = time.time()
             if seg["fh"] is None:
+                seg["codec"] = codec
                 seg_open(now)
+            elif seg.get("codec") is None:
+                seg["codec"] = codec
             try:
                 seg["fh"].write(data)
             except Exception:

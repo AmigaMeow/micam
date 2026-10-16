@@ -186,11 +186,20 @@ func (s *Server) performLibFetch() {
 			continue
 		}
 
-		// 同步到 @appcenter 目录（若存在）
-		appcenterLib := filepath.Join("/vol1/@appcenter/micam/lib", fileName)
-		_ = os.MkdirAll(filepath.Dir(appcenterLib), 0755)
-		if copyBackupFile(targetFile, appcenterLib) == nil {
-			_ = os.Chmod(appcenterLib, 0755)
+		// 同步到所有存储卷下的 @appcenter 目录（若存在）
+		var appcenterDirs []string
+		if dest := os.Getenv("TRIM_APPDEST"); dest != "" {
+			appcenterDirs = append(appcenterDirs, filepath.Join(dest, "lib"))
+		}
+		if matches, err := filepath.Glob("/vol*/@appcenter/micam/lib"); err == nil {
+			appcenterDirs = append(appcenterDirs, matches...)
+		}
+		for _, ad := range appcenterDirs {
+			al := filepath.Join(ad, fileName)
+			_ = os.MkdirAll(ad, 0755)
+			if copyBackupFile(targetFile, al) == nil {
+				_ = os.Chmod(al, 0755)
+			}
 		}
 
 		success = true
@@ -259,10 +268,19 @@ func (s *Server) handleMiotLibUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	appcenterLib := filepath.Join("/vol1/@appcenter/micam/lib", "libmiot_camera_lite.so")
-	_ = os.MkdirAll(filepath.Dir(appcenterLib), 0755)
-	if copyBackupFile(targetFile, appcenterLib) == nil {
-		_ = os.Chmod(appcenterLib, 0755)
+	var appcenterDirs []string
+	if dest := os.Getenv("TRIM_APPDEST"); dest != "" {
+		appcenterDirs = append(appcenterDirs, filepath.Join(dest, "lib"))
+	}
+	if matches, err := filepath.Glob("/vol*/@appcenter/micam/lib"); err == nil {
+		appcenterDirs = append(appcenterDirs, matches...)
+	}
+	for _, ad := range appcenterDirs {
+		al := filepath.Join(ad, "libmiot_camera_lite.so")
+		_ = os.MkdirAll(ad, 0755)
+		if copyBackupFile(targetFile, al) == nil {
+			_ = os.Chmod(al, 0755)
+		}
 	}
 
 	checkMiotLib()
@@ -344,27 +362,45 @@ type ghRelease struct {
 }
 
 func fetchLatestReleaseInfo() (*updateInfo, error) {
-	req, err := http.NewRequest("GET", "https://api.github.com/repos/AmigaMeow/micam/releases/latest", nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("User-Agent", "MiCam-NAS/" + appVersion)
-	req.Header.Set("Accept", "application/vnd.github.v3+json")
-
-	client := &http.Client{Timeout: 8 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("GitHub API 返回 HTTP %d", resp.StatusCode)
+	urls := []string{
+		"https://api.github.com/repos/AmigaMeow/micam/releases/latest",
+		"https://mirror.ghproxy.com/https://api.github.com/repos/AmigaMeow/micam/releases/latest",
 	}
 
 	var rel ghRelease
-	if err := json.NewDecoder(resp.Body).Decode(&rel); err != nil {
-		return nil, err
+	var lastErr error
+	client := &http.Client{Timeout: 8 * time.Second}
+
+	for _, u := range urls {
+		req, err := http.NewRequest("GET", u, nil)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		req.Header.Set("User-Agent", "MiCam-NAS/" + appVersion)
+		req.Header.Set("Accept", "application/vnd.github.v3+json")
+
+		resp, err := client.Do(req)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			lastErr = fmt.Errorf("HTTP %d (%s)", resp.StatusCode, u)
+			continue
+		}
+
+		err = json.NewDecoder(resp.Body).Decode(&rel)
+		resp.Body.Close()
+		if err == nil {
+			lastErr = nil
+			break
+		}
+		lastErr = err
+	}
+	if lastErr != nil {
+		return nil, lastErr
 	}
 
 	latestVer := strings.TrimPrefix(rel.TagName, "v")

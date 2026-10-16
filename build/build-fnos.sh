@@ -37,7 +37,9 @@ echo "==> 复制应用核心资源到 app_root"
 cp -r "$PLATFORM/app/ui" "$APP_DIR/ui"
 cp -r "$PLATFORM/app/www" "$APP_DIR/www"
 cp "$PLATFORM/app/shell.html" "$APP_DIR/shell.html"
-if [ -d "$ROOT/app/ai" ]; then
+if [ -d "$PLATFORM/app/ai" ]; then
+  cp -r "$PLATFORM/app/ai" "$APP_DIR/ai"
+elif [ -d "$ROOT/app/ai" ]; then
   cp -r "$ROOT/app/ai" "$APP_DIR/ai"
 fi
 if [ -d "$ROOT/app/miot" ]; then

@@ -336,17 +336,66 @@ func newAIClient(dataDir, scriptPath string) *aiClient {
 	}
 }
 
+// findAIScript 寻找应用内置的 AI 脚本（infer.py / embed.py / lpr.py）。
+func findAIScript(name string) string {
+	var cands []string
+	if appDestDir != "" {
+		cands = append(cands, filepath.Join(appDestDir, "ai", name))
+	}
+	if dest := os.Getenv("TRIM_APPDEST"); dest != "" {
+		cands = append(cands, filepath.Join(dest, "ai", name))
+	}
+	if exe, err := os.Executable(); err == nil {
+		dir := filepath.Dir(exe)
+		appRoot := filepath.Dir(dir)
+		cands = append(cands,
+			filepath.Join(dir, "ai", name),
+			filepath.Join(dir, "..", "ai", name),
+			filepath.Join(appRoot, "ai", name),
+		)
+	}
+	// 动态扫描多存储池挂载点 (/vol1, /vol2 等)
+	if matches, err := filepath.Glob("/vol*/@appcenter/micam/ai/" + name); err == nil {
+		cands = append(cands, matches...)
+	}
+	if wd, err := os.Getwd(); err == nil {
+		cands = append(cands,
+			filepath.Join(wd, "platform", "fnos", "app", "ai", name),
+			filepath.Join(wd, "app", "ai", name),
+		)
+	}
+	cands = append(cands,
+		filepath.Join("platform", "fnos", "app", "ai", name),
+		filepath.Join("app", "ai", name),
+	)
+	for _, p := range cands {
+		if p == "" {
+			continue
+		}
+		if st, err := os.Stat(p); err == nil && !st.IsDir() {
+			if abs, err := filepath.Abs(p); err == nil {
+				return abs
+			}
+			return p
+		}
+	}
+	return ""
+}
 // findPythonPath 自动探测飞牛 AI 运行时。
 //
 // 飞牛自带 AI 应用会装 onnxruntime 到 @sysappmeta，
 // 但那个 python3 指向系统解释器，所以要靠 PYTHONPATH 指到 site-packages。
 func findPythonPath() (pythonExe string, pythonPath string, err error) {
-	// 候选 site-packages（按版本号从新到旧）
-	candidates := []string{
+	// 候选 site-packages（动态扫描所有存储卷挂载点，并按版本从新到旧排）
+	var candidates []string
+	if matches, err := filepath.Glob("/vol*/@sysappmeta/ai-manager/python/*/lib/*/site-packages"); err == nil {
+		candidates = append(candidates, matches...)
+	}
+	candidates = append(candidates,
 		"/vol1/@sysappmeta/ai-manager/python/3_11_x86/lib/python3.11/site-packages",
 		"/vol1/@sysappmeta/ai-manager/python/3_12_x86/lib/python3.12/site-packages",
 		"/vol1/@sysappmeta/ai-manager/python/3_10_x86/lib/python3.10/site-packages",
-	}
+	)
 	for _, sp := range candidates {
 		if _, e := os.Stat(filepath.Join(sp, "onnxruntime", "__init__.py")); e == nil {
 			pythonPath = sp
@@ -354,23 +403,31 @@ func findPythonPath() (pythonExe string, pythonPath string, err error) {
 		}
 	}
 	if pythonPath == "" {
-		// 兜底：扫一遍 ai-manager/python/*
-		base := "/vol1/@sysappmeta/ai-manager/python"
-		if ents, e := os.ReadDir(base); e == nil {
-			for _, ent := range ents {
-				p := filepath.Join(base, ent.Name(), "lib")
-				if subs, e2 := os.ReadDir(p); e2 == nil {
-					for _, sub := range subs {
-						sp := filepath.Join(p, sub.Name(), "site-packages")
-						if _, e3 := os.Stat(filepath.Join(sp, "onnxruntime", "__init__.py")); e3 == nil {
-							pythonPath = sp
-							break
+		// 兜底：扫一遍所有 /vol*/@sysappmeta/ai-manager/python/*
+		bases, _ := filepath.Glob("/vol*/@sysappmeta/ai-manager/python")
+		if len(bases) == 0 {
+			bases = []string{"/vol1/@sysappmeta/ai-manager/python"}
+		}
+		for _, base := range bases {
+			if ents, e := os.ReadDir(base); e == nil {
+				for _, ent := range ents {
+					p := filepath.Join(base, ent.Name(), "lib")
+					if subs, e2 := os.ReadDir(p); e2 == nil {
+						for _, sub := range subs {
+							sp := filepath.Join(p, sub.Name(), "site-packages")
+							if _, e3 := os.Stat(filepath.Join(sp, "onnxruntime", "__init__.py")); e3 == nil {
+								pythonPath = sp
+								break
+							}
 						}
 					}
+					if pythonPath != "" {
+						break
+					}
 				}
-				if pythonPath != "" {
-					break
-				}
+			}
+			if pythonPath != "" {
+				break
 			}
 		}
 	}

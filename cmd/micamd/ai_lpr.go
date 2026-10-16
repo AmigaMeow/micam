@@ -56,11 +56,7 @@ func lprPaths() (string, string, string, bool) {
 	base := filepath.Join(dataDirPath, "lpr")
 	lib := filepath.Join(base, "lib", "libhyperlpr3.so")
 	models := filepath.Join(base, "models")
-	script := filepath.Join(appDestDir, "ai", "lpr.py")
-	if _, err := os.Stat(script); err != nil {
-		// 开发环境兜底
-		script = filepath.Join("platform", "fnos", "app", "ai", "lpr.py")
-	}
+	script := findAIScript("lpr.py")
 	_, e1 := os.Stat(lib)
 	_, e2 := os.Stat(models)
 	_, e3 := os.Stat(script)

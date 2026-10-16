@@ -146,7 +146,7 @@ func (j *miotRecJob) run(ctx context.Context, s *Server, libPath, sidecar, model
 			"--quality", j.quality,
 			"--segment", fmt.Sprint(j.segment),
 			"--out", j.dir,
-			"--ffmpeg", s.ffm,
+			"--ffmpeg", s.ffmpegPath(),
 		)
 		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 		stderr, _ := cmd.StderrPipe()

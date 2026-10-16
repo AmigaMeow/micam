@@ -121,8 +121,8 @@ func (s *Server) grabFrameViaMiot(did string) ([]byte, error) {
 		"--ip", ip,
 		"--channel", "1",
 		"--quality", "3", // 高清抓帧（LOW 只有 640x360，太糊）
-		"--ffmpeg", s.ffm,
-		"--infmt", "hevc",
+		"--ffmpeg", s.ffmpegPath(),
+		"--infmt", "auto",
 		"--w", "1280", // 缩略图 1280 宽更清晰
 		"--fps", "2",
 		"--out", "-",

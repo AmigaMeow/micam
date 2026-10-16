@@ -19,7 +19,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const ROOT = '/root/Deepseek/micam/platform/fnos/app';
+const ROOT = path.resolve(__dirname, '../platform/fnos/app');
 const W = ROOT + '/www';
 const SKEL = ROOT + '/shell.html';
 // 前端源文件：**优先仓库内**（v0.39.1 起纳管）
