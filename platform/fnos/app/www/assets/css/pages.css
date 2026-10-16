@@ -6559,3 +6559,35 @@
   gap: 6px;
   flex-shrink: 0;
 }
+
+/* ===== 实时预览秒开优化（即时封面底图 + 丝滑无缝切流） ===== */
+.player__stage {
+  position: relative; width: 100%; height: 100%;
+  overflow: hidden; background: #000;
+}
+.live-poster {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%; object-fit: contain;
+  display: block; z-index: 1; transition: opacity .35s ease-out;
+}
+.live-stream-img {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%; object-fit: contain;
+  display: block; z-index: 2; transition: opacity .25s ease-in;
+}
+.live-connecting-pill {
+  position: absolute; top: 16px; right: 16px; z-index: 5;
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 14px; background: rgba(15, 23, 42, .85);
+  backdrop-filter: blur(8px); border: 1px solid rgba(255, 255, 255, .15);
+  border-radius: 20px; color: #fff; font-size: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .4); transition: all .3s ease;
+  pointer-events: none;
+}
+.spinner-sm {
+  width: 12px; height: 12px;
+  border: 2px solid rgba(255, 255, 255, .25);
+  border-top-color: var(--primary, #1890ff);
+  border-radius: 50%; display: inline-block;
+  animation: spin 1s linear infinite; flex-shrink: 0;
+}

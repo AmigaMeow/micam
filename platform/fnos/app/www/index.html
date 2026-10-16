@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <title>MiCam - 智能监控中心</title>
-<meta name="micam-build" content="2026-10-16 04:19:27">
+<meta name="micam-build" content="2026-10-16 04:40:16">
 <!-- 内联 SVG favicon（data URI）：
      浏览器默认会请求 /favicon.ico 并得到 404（控制台报错）。
      这里用 data URI 消除该请求 —— 同时保持「全内联、不联网」的约束。 -->
@@ -8306,6 +8306,38 @@ input[type="checkbox"]:not(.switch input) { width: 16px; height: 16px; flex: 0 0
   flex-shrink: 0;
 }
 
+/* ===== 实时预览秒开优化（即时封面底图 + 丝滑无缝切流） ===== */
+.player__stage {
+  position: relative; width: 100%; height: 100%;
+  overflow: hidden; background: #000;
+}
+.live-poster {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%; object-fit: contain;
+  display: block; z-index: 1; transition: opacity .35s ease-out;
+}
+.live-stream-img {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%; object-fit: contain;
+  display: block; z-index: 2; transition: opacity .25s ease-in;
+}
+.live-connecting-pill {
+  position: absolute; top: 16px; right: 16px; z-index: 5;
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 14px; background: rgba(15, 23, 42, .85);
+  backdrop-filter: blur(8px); border: 1px solid rgba(255, 255, 255, .15);
+  border-radius: 20px; color: #fff; font-size: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, .4); transition: all .3s ease;
+  pointer-events: none;
+}
+.spinner-sm {
+  width: 12px; height: 12px;
+  border: 2px solid rgba(255, 255, 255, .25);
+  border-top-color: var(--primary, #1890ff);
+  border-radius: 50%; display: inline-block;
+  animation: spin 1s linear infinite; flex-shrink: 0;
+}
+
 
 </style>
 </head>
@@ -14964,10 +14996,10 @@ function liveCredGuard(did){
 }
 
 function renderLive(c){
-  c.innerHTML = loading();
-  // 凭据受限时顶部提示（实时预览最容易受影响）
+  // 凭据受限时顶部提示
   checkCredBanner();
-  loadDevices().then(function(st){
+
+  function paintLiveUI(st){
     if(st.needLogin || !devices.length){
       c.innerHTML = '<div class="page__inner"><div class="card">'
         + empty('camera','请先添加账号并发现设备','在「账号」里扫码登录','') + '</div></div>';
@@ -15377,6 +15409,21 @@ function renderLive(c){
     startLive(currentDid);
     startLiveClock();
     loadLiveVersion();
+  }
+
+  // 极速直出优化：若内存已有设备缓存，0ms 同步直出页面并启动拉流，告别全屏 loading 闪烁
+  if(devices && devices.length > 0){
+    paintLiveUI({ needLogin: false });
+    loadDevices().then(function(st){
+      if(st && st.needLogin) paintLiveUI(st);
+    });
+    return;
+  }
+
+  // 冷启动首次访问
+  c.innerHTML = loading();
+  loadDevices().then(function(st){
+    paintLiveUI(st);
   });
 }
 
@@ -15402,7 +15449,7 @@ function fillLiveInfo(){
 
   // 分辨率：<video>（HLS）或 <img>（MJPEG）哪个有值就用哪个
   var v = document.querySelector('#player video');
-  var im = document.querySelector('#player img');
+  var im = document.querySelector('#player #liveStreamImg') || document.querySelector('#player .live-stream-img') || document.querySelector('#player img');
   var w = 0, h = 0;
   if(v && v.videoWidth){ w = v.videoWidth; h = v.videoHeight; }
   else if(im && im.naturalWidth){ w = im.naturalWidth; h = im.naturalHeight; }
@@ -15921,130 +15968,92 @@ function startLiveMJPEG(did){
   var box = $("#player");
   var st = $("#liveState");
   var hint = $("#liveHint");
-  // 进度覆盖层（在画面内显示，不在外面）
+  if(!box) return;
 
-  var pct = 0;
-  // 说明：部分机型（如 CW500）关键帧间隔长达 15 秒以上，
-  // 首帧可能要等 20-40 秒，所以进度提示要耐心。
-  var steps = [
-    [5,  "正在连接摄像头…"],
-    [15, "建立 P2P 通道…"],
-    [30, "等待视频流…"],
-    [50, "等待关键帧（部分机型较慢）…"],
-    [70, "解码首帧…"],
-    [85, "即将显示…"]
-  ];
+  if(st) st.textContent = "连接中";
+  if(hint) hint.textContent = "正在建立实时视频流…";
 
-  // 进度覆盖层直接放在画面里
-  box.innerHTML = "<div class=\"player__overlay\" id=\"liveOverlay\">"
-    + "<img class=\"live-ph\" alt=\"\" onerror=\"this.remove()\" src=\""
-    +   apiUrl("/api/live/thumb?did=" + encodeURIComponent(did) + "&w=640") + "\">"
-    + "<div class=\"spinner\"></div>"
-    + "<div class=\"player__step\" id=\"liveStep\">正在连接摄像头…</div>"
-    + "<div style=\"width:200px\"><div class=\"progress\" style=\"margin-top:0\">"
-    +   "<div class=\"progress__bar\" id=\"liveBar\" style=\"width:5%\"></div>"
-    + "</div></div>"
-    + "<div class=\"player__step\" id=\"livePct\" style=\"font-size:12px;opacity:.7\">5%</div>"
+  // 极速秒开设计（零黑屏、零转圈、无缝切流）：
+  // 1. 底层：最新高清封面图 (livePoster) —— 用户点击瞬间画面立即呈现（0毫秒感知）
+  // 2. 中层：真实实时视频流 (liveStreamImg) —— 初始透明，首帧就绪后渐显
+  // 3. 顶层：轻量指示胶囊 (liveConnecting) —— 极简非侵入提示，首帧到达后自动隐退
+  var posterUrl = apiUrl("/api/live/thumb?did=" + encodeURIComponent(did) + "&w=1280&t=" + Date.now());
+  var streamUrl = liveStreamURL(did, 15, liveWidth, currentLens);
+
+  box.innerHTML = ""
+    + "<div class=\"player__stage\" style=\"position:relative;width:100%;height:100%;overflow:hidden;background:#000;\">"
+    +   "<img id=\"livePoster\" class=\"live-poster\" src=\"" + posterUrl + "\" alt=\"\" style=\"position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;transition:opacity .35s ease-out;z-index:1;\">"
+    +   "<img id=\"liveStreamImg\" class=\"live-stream-img\" src=\"" + streamUrl + "\" alt=\"\" style=\"position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;opacity:0;transition:opacity .25s ease-in;z-index:2;\">"
+    +   "<div id=\"liveConnecting\" class=\"live-connecting-pill\" style=\"position:absolute;top:16px;right:16px;z-index:5;display:inline-flex;align-items:center;gap:8px;padding:6px 14px;background:rgba(15,23,42,.85);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.15);border-radius:20px;color:#fff;font-size:12px;box-shadow:0 4px 16px rgba(0,0,0,.4);transition:all .3s ease;pointer-events:none;\">"
+    +     "<span class=\"spinner-sm\" style=\"width:12px;height:12px;border:2px solid rgba(255,255,255,.25);border-top-color:#1890ff;border-radius:50%;display:inline-block;animation:spin 1s linear infinite;flex-shrink:0;\"></span>"
+    +     "<span>正在建立实时连线…</span>"
+    +   "</div>"
     + "</div>";
 
-  var stepIdx = 0;
-  var progTimer = setInterval(function(){
-    stepIdx++;
-    if(stepIdx < steps.length){
-      pct = steps[stepIdx][0];
-      var bar = document.getElementById("liveBar");
-      var stp = document.getElementById("liveStep");
-      var pctEl = document.getElementById("livePct");
-      if(bar) bar.style.width = pct + "%";
-      if(stp) stp.textContent = steps[stepIdx][1];
-      if(pctEl) pctEl.textContent = pct + "%";
-    } else {
-      pct = Math.min(pct + 1, 95);
-      var bar2 = document.getElementById("liveBar");
-      var pctEl2 = document.getElementById("livePct");
-      if(bar2) bar2.style.width = pct + "%";
-      if(pctEl2) pctEl2.textContent = pct + "%";
-    }
-  }, 2500);
+  var poster = document.getElementById("livePoster");
+  var stream = document.getElementById("liveStreamImg");
+  var pill = document.getElementById("liveConnecting");
+  var pbLive = document.getElementById("pbLive");
 
-  function clearProg(){
-    if(progTimer) clearInterval(progTimer);
-    var ov = document.getElementById("liveOverlay");
-    if(ov) ov.remove();
+  if(poster){
+    poster.onerror = function(){
+      this.style.display = "none";
+    };
   }
-  window.__clearProg = clearProg;
-  if(st) st.textContent = "连接中";
-  if(hint) hint.textContent = "首次连接约 3-10 秒";
 
-  var img = new Image();
-  img.style.cssText = "width:100%;height:100%;object-fit:contain;display:block";
-  img.onload = function(){
+  var frameRevealed = false;
+  function revealLiveStream(){
+    if(frameRevealed) return;
+    frameRevealed = true;
+    if(checkTimer) clearInterval(checkTimer);
+    if(liveTimer) clearTimeout(liveTimer);
+
+    if(stream) stream.style.opacity = "1";
+    if(poster) {
+      setTimeout(function(){ if(poster) poster.style.opacity = "0"; }, 250);
+    }
+    if(pill) {
+      pill.style.opacity = "0";
+      setTimeout(function(){ if(pill) pill.remove(); }, 350);
+    }
     if(st) st.textContent = "播放中";
     if(hint) hint.textContent = "";
-    if(window.__clearProg) window.__clearProg();
-  };
-  // MJPEG 是流，onload 可能不触发，用定时器兜底清除
-  setTimeout(function(){
-    if(window.__clearProg) window.__clearProg();
-  }, 45000);
-  img.onerror = function(){
-    box.innerHTML = "<div class=\"player__ph\">"+icon("cam-off",40)+"<span>播放失败</span></div>";
-    if(st) st.textContent = "失败";
-    if(hint) hint.textContent = "摄像头可能被米家 App 占用";
-    if(window.__clearProg) window.__clearProg();
-  };
-  // 画质参数：w=0 表示不缩放（保持源分辨率 2K = 2560x1440）
-  // 需要降低带宽时可以改成 w=1280 或 w=640
-  img.src = liveStreamURL(did, 15, liveWidth, currentLens);
-
-  // 关键：不能清空后再放 img，否则加载层被删掉（黑屏无转圈）。
-  // 顺序：清空 -> img（底层）-> overlay（上层）
-  img.style.position = "absolute";
-  img.style.inset = "0";
-  img.style.width = "100%";
-  img.style.height = "100%";
-  img.style.objectFit = "contain";
-  box.innerHTML = "";
-  box.appendChild(img);
-
-  var ov = document.getElementById("liveOverlay");
-  if(!ov){
-    ov = document.createElement("div");
-    ov.className = "player__overlay";
-    ov.id = "liveOverlay";
-    ov.innerHTML = "<img class=\"live-ph\" alt=\"\" onerror=\"this.remove()\" src=\""
-        + apiUrl("/api/live/thumb?did=" + encodeURIComponent(did) + "&w=640") + "\">"
-      + "<div class=\"spinner\"></div>"
-      + "<div class=\"player__step\">正在连接摄像头…</div>";
-    box.appendChild(ov);
-  } else {
-    // 重新挂到最上层
-    box.appendChild(ov);
+    if(pbLive) pbLive.innerHTML = "<span class=\"status-dot is-online\"></span>LIVE";
   }
 
-  // 首帧到达时移除加载层
-  img.onload = function(){
-    if(st) st.textContent = "播放中";
-    if(hint) hint.textContent = "兼容模式（MJPEG）";
-    if(window.__clearProg) window.__clearProg();
+  // 50ms 高频自然宽高探测器，一旦首帧数据抵达立刻无缝淡入
+  var checkTimer = setInterval(function(){
+    if(stream && stream.naturalWidth > 0 && stream.naturalHeight > 0){
+      revealLiveStream();
+    }
+  }, 50);
+
+  stream.onload = function(){
+    revealLiveStream();
   };
-  // MJPEG 是无限流，onload 可能不触发，用定时器兜底
+
+  stream.onerror = function(){
+    if(checkTimer) clearInterval(checkTimer);
+    if(pill) {
+      pill.innerHTML = "<span class=\"status-dot is-offline\"></span><span>连接未就绪，重试中…</span>";
+      pill.style.borderColor = "rgba(255,77,79,.4)";
+    }
+    if(st) st.textContent = "失败";
+    if(hint) hint.textContent = "摄像头可能暂时被米家 App 或其它设备占用";
+  };
+
   if(liveTimer) clearTimeout(liveTimer);
   liveTimer = setTimeout(function(){
-    if(st && st.textContent === "连接中"){
-      st.textContent = "已连接";
-      if(hint) hint.textContent = "";
-    }
-    if(window.__clearProg) window.__clearProg();
-  }, 40000);   // 部分机型首帧慢，给 40 秒
+    if(!frameRevealed) revealLiveStream();
+  }, 30000);
 }
 
 function stopLive(){
   if(liveTimer){ clearTimeout(liveTimer); liveTimer = null; }
   var box = $("#player");
   if(box){
-    var img = box.querySelector("img");
-    if(img) img.src = "";
+    var stream = box.querySelector("#liveStreamImg") || box.querySelector(".live-stream-img") || box.querySelector("img");
+    if(stream) stream.src = "";
     box.innerHTML = "<div class=\"player__ph\">"+icon("play",40)+"<span>已停止</span></div>";
   }
   var st = $("#liveState");
