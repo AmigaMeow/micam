@@ -18,6 +18,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/micam/micam/internal/event"
 	"github.com/micam/micam/internal/record"
 )
 
@@ -158,58 +159,165 @@ func (s *Server) handleStorage(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-// handleCleanupPreview 预览可清理的内容。
+// handleCleanupPreview 预览可清理的内容（支持按时间段、摄像头、AI智能瘦身、转码缓存等精准维度）。
 //
-// GET /api/storage/cleanup-preview?keepDays=7
+// GET /api/storage/cleanup-preview?days=7&device=...&protectAI=1&allPools=1&cleanCache=1
 func (s *Server) handleCleanupPreview(w http.ResponseWriter, r *http.Request) {
-	cfg := s.rec.GetConfig()
-	recDir := cfg.Dir
-	if recDir == "" {
-		recDir = filepath.Join(s.dataDir, "recordings")
+	daysParam := r.URL.Query().Get("days")
+	keepDaysParam := r.URL.Query().Get("keepDays")
+	targetDev := strings.TrimSpace(r.URL.Query().Get("device"))
+	protectAI := r.URL.Query().Get("protectAI") == "1" || r.URL.Query().Get("protectAI") == "true"
+	includeCache := r.URL.Query().Get("cleanCache") == "1" || r.URL.Query().Get("cleanCache") == "true"
+	allPools := r.URL.Query().Get("allPools") != "0" // 默认聚合所有已知录像池
+
+	var deadline time.Time
+	now := time.Now()
+	cleanAll := false
+
+	if daysParam == "all" {
+		cleanAll = true
+		deadline = now.Add(24 * time.Hour)
+	} else if daysParam == "0" {
+		// 仅保留今天（清理今天零点之前）
+		deadline = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	} else if n, err := strconv.Atoi(daysParam); err == nil && n > 0 {
+		deadline = now.AddDate(0, 0, -n)
+	} else if n, err := strconv.Atoi(keepDaysParam); err == nil && n > 0 {
+		deadline = now.AddDate(0, 0, -n)
+	} else {
+		// 默认 7 天
+		deadline = now.AddDate(0, 0, -7)
 	}
 
-	keepDays := cfg.KeepDays
-	if v := r.URL.Query().Get("keepDays"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil && n > 0 {
-			keepDays = n
+	var roots []string
+	if allPools {
+		roots = s.recRoots()
+	} else {
+		roots = []string{s.recRoot()}
+	}
+
+	aiFiles := make(map[string]bool)
+	if protectAI && s.eventStore != nil {
+		evs := s.eventStore.Query(event.Query{Days: 60})
+		for _, e := range evs {
+			if e.RecFile != "" {
+				aiFiles[e.RecFile] = true
+			}
 		}
 	}
 
-	deadline := time.Now().AddDate(0, 0, -keepDays)
-
-	type oldFile struct {
+	type cleanItem struct {
 		Name    string  `json:"name"`
 		Path    string  `json:"path"`
 		SizeMB  float64 `json:"sizeMB"`
 		ModTime string  `json:"modTime"`
+		Device  string  `json:"device"`
+		Pool    string  `json:"pool"`
 	}
-	var files []oldFile
-	var totalMB float64
 
-	_ = filepath.Walk(recDir, func(p string, info os.FileInfo, err error) error {
-		if err != nil || info == nil || info.IsDir() {
-			return nil
+	var files []cleanItem
+	var totalMB float64
+	var protectedAICount int
+	var protectedAIMB float64
+	var cacheMB float64
+	var cacheFiles int
+
+	seenFiles := make(map[string]bool)
+
+	for _, root := range roots {
+		ents, err := os.ReadDir(root)
+		if err != nil {
+			continue
 		}
-		if info.ModTime().Before(deadline) {
-			mb := float64(info.Size()) / (1 << 20)
-			files = append(files, oldFile{
-				Name:    info.Name(),
-				Path:    p,
-				SizeMB:  mb,
-				ModTime: info.ModTime().Format("2006-01-02 15:04:05"),
+		for _, de := range ents {
+			if !de.IsDir() || strings.HasPrefix(de.Name(), ".") || strings.HasPrefix(de.Name(), "@") {
+				continue
+			}
+			devName := de.Name()
+			if targetDev != "" && devName != targetDev {
+				continue
+			}
+			devDir := filepath.Join(root, devName)
+			dateEnts, err := os.ReadDir(devDir)
+			if err != nil {
+				continue
+			}
+			for _, dateE := range dateEnts {
+				if !dateE.IsDir() || strings.HasPrefix(dateE.Name(), ".") {
+					continue
+				}
+				dateDir := filepath.Join(devDir, dateE.Name())
+				fileEnts, err := os.ReadDir(dateDir)
+				if err != nil {
+					continue
+				}
+				for _, fe := range fileEnts {
+					if fe.IsDir() || !strings.HasSuffix(fe.Name(), ".mkv") {
+						continue
+					}
+					info, err := fe.Info()
+					if err != nil {
+						continue
+					}
+					mb := float64(info.Size()) / (1 << 20)
+
+					if cleanAll || info.ModTime().Before(deadline) {
+						if protectAI && aiFiles[fe.Name()] {
+							protectedAICount++
+							protectedAIMB += mb
+							continue
+						}
+						fKey := root + "/" + devName + "/" + dateE.Name() + "/" + fe.Name()
+						if seenFiles[fKey] {
+							continue
+						}
+						seenFiles[fKey] = true
+
+						files = append(files, cleanItem{
+							Name:    fe.Name(),
+							Path:    filepath.Join(dateDir, fe.Name()),
+							SizeMB:  mb,
+							ModTime: info.ModTime().Format("2006-01-02 15:04:05"),
+							Device:  devName,
+							Pool:    friendlyVolName(filepath.Base(root)),
+						})
+						totalMB += mb
+					}
+				}
+			}
+		}
+
+		if includeCache {
+			cDir := filepath.Join(root, ".cache")
+			_ = filepath.Walk(cDir, func(p string, fi os.FileInfo, err error) error {
+				if err == nil && fi != nil && !fi.IsDir() {
+					cacheMB += float64(fi.Size()) / (1 << 20)
+					cacheFiles++
+				}
+				return nil
 			})
-			totalMB += mb
 		}
-		return nil
-	})
+	}
 
 	sort.Slice(files, func(i, j int) bool { return files[i].ModTime < files[j].ModTime })
 
+	sampleLimit := 30
+	sampleFiles := files
+	if len(sampleFiles) > sampleLimit {
+		sampleFiles = sampleFiles[:sampleLimit]
+	}
+
 	writeJSON(w, 200, map[string]any{
-		"keepDays":  keepDays,
-		"fileCount": len(files),
-		"totalMB":   totalMB,
-		"files":     files,
+		"days":              daysParam,
+		"deadline":          deadline.Format("2006-01-02 15:04:05"),
+		"fileCount":         len(files),
+		"totalMB":           totalMB,
+		"totalGB":           totalMB / 1024,
+		"protectedAICount":  protectedAICount,
+		"protectedAIGB":     protectedAIMB / 1024,
+		"cacheMB":           cacheMB,
+		"cacheFiles":        cacheFiles,
+		"files":             sampleFiles,
 	})
 }
 

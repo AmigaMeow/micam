@@ -147,6 +147,8 @@ type Config struct {
 	Subtype string `json:"subtype"`
 	// 录像根目录（需飞牛授权）
 	RecordDir string `json:"recordDir"`
+	// 历史录像目录列表（切换目录后自动保留，实现跨盘跨目录整体统一回放与纳管）
+	HistoricalRecordDirs []string `json:"historicalRecordDirs,omitempty"`
 	// 是否启用录像
 	RecordEnabled bool `json:"recordEnabled"`
 	// 录像分片时长（秒）
@@ -482,12 +484,33 @@ func (c *Config) SetNotify(enabled *bool, channel *string, webhook *string, para
 	return c.SaveSelf()
 }
 
-// SetRecordDir 设置录像目录并落盘。
+// SetRecordDir 设置录像目录并落盘（自动把旧目录移入历史纳管列表，确保回放历史永不丢失）。
 func (c *Config) SetRecordDir(dir string) error {
 	c.mu.Lock()
+	if c.RecordDir != "" && c.RecordDir != dir {
+		exists := false
+		for _, h := range c.HistoricalRecordDirs {
+			if h == c.RecordDir {
+				exists = true
+				break
+			}
+		}
+		if !exists {
+			c.HistoricalRecordDirs = append(c.HistoricalRecordDirs, c.RecordDir)
+		}
+	}
 	c.RecordDir = dir
 	c.mu.Unlock()
 	return c.SaveSelf()
+}
+
+// GetHistoricalRecordDirs 获取历史录像目录列表（线程安全）。
+func (c *Config) GetHistoricalRecordDirs() []string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	out := make([]string, len(c.HistoricalRecordDirs))
+	copy(out, c.HistoricalRecordDirs)
+	return out
 }
 
 // SetUI 更新界面配置并落盘。

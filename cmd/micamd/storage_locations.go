@@ -22,15 +22,113 @@ import (
 )
 
 type storageLocation struct {
-	Path     string  `json:"path"`
-	Name     string  `json:"name"`
-	Kind     string  `json:"kind"` // appshare / appdata / volume / custom
-	Desc     string  `json:"desc"`
-	FreeGB   float64 `json:"freeGB"`
-	TotalGB  float64 `json:"totalGB"`
-	Writable bool    `json:"writable"`
-	Current  bool    `json:"current"`
-	Badge    string  `json:"badge"` // 推荐 / 默认
+	Path     string   `json:"path"`
+	Name     string   `json:"name"`
+	Kind     string   `json:"kind"` // appshare / appdata / volume / custom
+	Desc     string   `json:"desc"`
+	FreeGB   float64  `json:"freeGB"`
+	TotalGB  float64  `json:"totalGB"`
+	Writable bool     `json:"writable"`
+	Current  bool     `json:"current"`
+	Badge    string   `json:"badge"` // 推荐 / 默认
+	RecFiles int      `json:"recFiles"`
+	RecGB    float64  `json:"recGB"`
+	HasRec   bool     `json:"hasRec"`
+	Dates    string   `json:"dates,omitempty"`
+	Cams     []string `json:"cams,omitempty"`
+}
+
+type recDirUsage struct {
+	Files  int
+	SizeMB float64
+	SizeGB float64
+	Dates  string
+	Cams   []string
+}
+
+func isDateDir(name string) bool {
+	if len(name) != 10 {
+		return false
+	}
+	for i := 0; i < 10; i++ {
+		if i == 4 || i == 7 {
+			if name[i] != '-' {
+				return false
+			}
+		} else {
+			if name[i] < '0' || name[i] > '9' {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+func scanRecDirUsage(root string) recDirUsage {
+	var u recDirUsage
+	if root == "" {
+		return u
+	}
+	ents, err := os.ReadDir(root)
+	if err != nil {
+		return u
+	}
+	dateSet := make(map[string]bool)
+	var bytes int64
+	for _, e := range ents {
+		if !e.IsDir() || strings.HasPrefix(e.Name(), ".") || strings.HasPrefix(e.Name(), "@") {
+			continue
+		}
+		camDir := filepath.Join(root, e.Name())
+		dateEnts, err := os.ReadDir(camDir)
+		if err != nil {
+			continue
+		}
+		hasCamRec := false
+		for _, de := range dateEnts {
+			if !de.IsDir() || strings.HasPrefix(de.Name(), ".") {
+				continue
+			}
+			date := de.Name()
+			// 仅纳管合法的 YYYY-MM-DD 录像日期目录，防止误扫描其他普通视频/动漫目录
+			if !isDateDir(date) {
+				continue
+			}
+			dayFiles, err := os.ReadDir(filepath.Join(camDir, date))
+			if err != nil {
+				continue
+			}
+			for _, fe := range dayFiles {
+				if fe.IsDir() || !strings.HasSuffix(fe.Name(), ".mkv") {
+					continue
+				}
+				u.Files++
+				hasCamRec = true
+				dateSet[date] = true
+				if fi, err := fe.Info(); err == nil {
+					bytes += fi.Size()
+				}
+			}
+		}
+		if hasCamRec {
+			u.Cams = append(u.Cams, e.Name())
+		}
+	}
+	u.SizeMB = float64(bytes) / (1 << 20)
+	u.SizeGB = float64(bytes) / (1 << 30)
+	if len(dateSet) > 0 {
+		var dates []string
+		for d := range dateSet {
+			dates = append(dates, d)
+		}
+		sort.Strings(dates)
+		if len(dates) == 1 {
+			u.Dates = dates[0]
+		} else {
+			u.Dates = dates[0] + " ~ " + dates[len(dates)-1]
+		}
+	}
+	return u
 }
 
 func friendlyVolName(vol string) string {
@@ -70,11 +168,17 @@ func (s *Server) handleStorageLocations(w http.ResponseWriter, r *http.Request) 
 			totalGB = float64(st.Blocks) * float64(st.Bsize) / (1 << 30)
 		}
 
+		u := scanRecDirUsage(path)
 		out = append(out, storageLocation{
 			Path: path, Name: name, Kind: kind, Desc: desc, Badge: badge,
 			FreeGB: freeGB, TotalGB: totalGB,
 			Writable: isWritable(path),
 			Current:  path == cur,
+			RecFiles: u.Files,
+			RecGB:    u.SizeGB,
+			HasRec:   u.Files > 0,
+			Dates:    u.Dates,
+			Cams:     u.Cams,
 		})
 	}
 
@@ -189,11 +293,44 @@ func (s *Server) handleStorageLocations(w http.ResponseWriter, r *http.Request) 
 		return out[i].Path < out[j].Path
 	})
 
+	type unifiedPoolInfo struct {
+		Path    string   `json:"path"`
+		Name    string   `json:"name"`
+		Files   int      `json:"files"`
+		SizeGB  float64  `json:"sizeGB"`
+		Dates   string   `json:"dates,omitempty"`
+		Current bool     `json:"current"`
+		Cams    []string `json:"cams,omitempty"`
+	}
+	var pools []unifiedPoolInfo
+	var totalRecFiles int
+	var totalRecBytes float64
+
+	for _, l := range out {
+		if l.HasRec || l.Current {
+			pools = append(pools, unifiedPoolInfo{
+				Path:    l.Path,
+				Name:    l.Name,
+				Files:   l.RecFiles,
+				SizeGB:  l.RecGB,
+				Dates:   l.Dates,
+				Current: l.Current,
+				Cams:    l.Cams,
+			})
+			totalRecFiles += l.RecFiles
+			totalRecBytes += l.RecGB
+		}
+	}
+
 	writeJSON(w, 200, map[string]any{
 		"locations": out,
 		"current":   cur,
-		"note": "飞牛系统提示：插件支持保存到任意存储池。如需录到非 @appshare 共享目录，" +
-			"请先在飞牛「文件管理」中为该目录分配 micam 应用的读写权限。",
+		"unified": map[string]any{
+			"totalFiles": totalRecFiles,
+			"totalGB":    totalRecBytes,
+			"pools":      pools,
+		},
+		"note": "飞牛系统提示：所有录像存储位置已由系统整体统一纳管，无论您如何切换新录像写入目录，历史录像全部统一聚合、在回放时间轴中完整呈现。",
 	})
 }
 

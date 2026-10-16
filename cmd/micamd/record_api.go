@@ -4,10 +4,15 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 
-	"fmt"
+	"github.com/micam/micam/internal/event"
 	"github.com/micam/micam/internal/xiaomi"
 )
 
@@ -88,20 +93,134 @@ func (s *Server) handleRecordFiles(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"files": files})
 }
 
-// handleRecordCleanup：清理过期录像
+// handleRecordCleanup：清理过期录像（支持时间范围、设备、AI保护与跨录像池统一清理）。
 func (s *Server) handleRecordCleanup(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeErr(w, 405, "只支持 POST")
 		return
 	}
-	n, freed, err := s.rec.Cleanup()
-	if err != nil {
-		writeErr(w, 500, err.Error())
-		return
+
+	var req struct {
+		Days       string `json:"days"`      // 3, 7, 14, 30, "all", "0"
+		KeepDays   int    `json:"keepDays"`
+		Device     string `json:"device"`
+		ProtectAI  bool   `json:"protectAI"`
+		AllPools   bool   `json:"allPools"`
+		CleanCache bool   `json:"cleanCache"`
 	}
+	_ = json.NewDecoder(r.Body).Decode(&req)
+
+	now := time.Now()
+	var deadline time.Time
+	cleanAll := false
+
+	if req.Days == "all" {
+		cleanAll = true
+		deadline = now.Add(24 * time.Hour)
+	} else if req.Days == "0" {
+		deadline = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
+	} else if n, err := strconv.Atoi(req.Days); err == nil && n > 0 {
+		deadline = now.AddDate(0, 0, -n)
+	} else if req.KeepDays > 0 {
+		deadline = now.AddDate(0, 0, -req.KeepDays)
+	} else {
+		deadline = now.AddDate(0, 0, -7)
+	}
+
+	var roots []string
+	if req.AllPools {
+		roots = s.recRoots()
+	} else {
+		roots = []string{s.recRoot()}
+	}
+
+	aiFiles := make(map[string]bool)
+	if req.ProtectAI && s.eventStore != nil {
+		evs := s.eventStore.Query(event.Query{Days: 60})
+		for _, e := range evs {
+			if e.RecFile != "" {
+				aiFiles[e.RecFile] = true
+			}
+		}
+	}
+
+	var deletedCount int
+	var freedBytes int64
+	var protectedAICount int
+
+	for _, root := range roots {
+		ents, err := os.ReadDir(root)
+		if err != nil {
+			continue
+		}
+		for _, de := range ents {
+			if !de.IsDir() || strings.HasPrefix(de.Name(), ".") || strings.HasPrefix(de.Name(), "@") {
+				continue
+			}
+			devName := de.Name()
+			if req.Device != "" && devName != req.Device {
+				continue
+			}
+			devDir := filepath.Join(root, devName)
+			dateEnts, err := os.ReadDir(devDir)
+			if err != nil {
+				continue
+			}
+			for _, dateE := range dateEnts {
+				if !dateE.IsDir() || strings.HasPrefix(dateE.Name(), ".") {
+					continue
+				}
+				dateDir := filepath.Join(devDir, dateE.Name())
+				fileEnts, err := os.ReadDir(dateDir)
+				if err != nil {
+					continue
+				}
+				for _, fe := range fileEnts {
+					if fe.IsDir() || !strings.HasSuffix(fe.Name(), ".mkv") {
+						continue
+					}
+					info, err := fe.Info()
+					if err != nil {
+						continue
+					}
+					if cleanAll || info.ModTime().Before(deadline) {
+						if req.ProtectAI && aiFiles[fe.Name()] {
+							protectedAICount++
+							continue
+						}
+						pth := filepath.Join(dateDir, fe.Name())
+						if err := os.Remove(pth); err == nil {
+							deletedCount++
+							freedBytes += info.Size()
+							_ = os.Remove(filepath.Join(root, ".thumbs", devName, fe.Name()+".jpg"))
+						}
+					}
+				}
+				_ = os.Remove(dateDir)
+			}
+		}
+
+		if req.CleanCache {
+			cDir := filepath.Join(root, ".cache")
+			_ = filepath.Walk(cDir, func(p string, fi os.FileInfo, err error) error {
+				if err == nil && fi != nil && !fi.IsDir() {
+					freedBytes += fi.Size()
+					_ = os.Remove(p)
+				}
+				return nil
+			})
+		}
+	}
+
+	logf("[storage] 手动清理执行完毕: 删除了 %d 个文件，释放 %.2f MB 空间 (保护 AI 事件 %d 个)",
+		deletedCount, float64(freedBytes)/(1<<20), protectedAICount)
+
 	writeJSON(w, 200, map[string]any{
-		"deleted": n,
-		"freedMB": freed / (1 << 20),
+		"ok":               true,
+		"deleted":          deletedCount,
+		"freedMB":          float64(freedBytes) / (1 << 20),
+		"freedGB":          float64(freedBytes) / (1 << 30),
+		"protectedAICount": protectedAICount,
 	})
 }
 

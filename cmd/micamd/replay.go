@@ -66,7 +66,7 @@ func (s *Server) ffprobePath() string {
 	return "ffprobe"
 }
 
-// recRoot 录像根目录。
+// recRoot 当前活跃写入的录像根目录。
 func (s *Server) recRoot() string {
 	if s == nil || s.rec == nil {
 		if s != nil && s.dataDir != "" {
@@ -82,6 +82,78 @@ func (s *Server) recRoot() string {
 		return cfg.Dir
 	}
 	return filepath.Join(s.dataDir, "recordings")
+}
+
+// recRoots 返回所有纳管录像根目录（当前活跃写入目录 + 历史配置目录 + 系统默认与检测到的各卷录像池）。
+// 确保无论用户如何切换录像存储位置，历史录像全部统一聚合、永不丢失。
+func (s *Server) recRoots() []string {
+	var roots []string
+	seen := make(map[string]bool)
+	add := func(p string) {
+		p = filepath.Clean(strings.TrimSpace(p))
+		if p == "" || p == "." || p == "/" || seen[p] {
+			return
+		}
+		if fi, err := os.Stat(p); err == nil && fi.IsDir() {
+			seen[p] = true
+			roots = append(roots, p)
+		}
+	}
+
+	// 1. 当前活跃写入目录（最高优先级）
+	if s != nil && s.rec != nil {
+		if d := s.rec.GetConfig().Dir; d != "" {
+			add(d)
+		}
+	}
+	if s != nil && s.cfg != nil && s.cfg.RecordDir != "" {
+		add(s.cfg.RecordDir)
+	}
+
+	// 2. 配置中记录的历史录像目录
+	if s != nil && s.cfg != nil {
+		for _, h := range s.cfg.GetHistoricalRecordDirs() {
+			add(h)
+		}
+	}
+
+	// 3. 系统默认 appdata 录像目录
+	if s != nil && s.dataDir != "" {
+		add(filepath.Join(s.dataDir, "recordings"))
+	}
+	if matches, err := filepath.Glob("/vol*/@appdata/micam/recordings"); err == nil {
+		for _, m := range matches {
+			add(m)
+		}
+	}
+
+	// 4. 自动纳管已存在的飞牛摄像头录像目录（/vol02/...、/vol1/... 等），要求必须含有真实有效录像
+	if matches, err := filepath.Glob("/vol*/*/recordings"); err == nil {
+		for _, m := range matches {
+			if scanRecDirUsage(m).Files > 0 {
+				add(m)
+			}
+		}
+	}
+	if matches, err := filepath.Glob("/vol*/*/*小米*"); err == nil {
+		for _, m := range matches {
+			if scanRecDirUsage(m).Files > 0 {
+				add(m)
+			}
+		}
+	}
+	if matches, err := filepath.Glob("/vol*/*/*摄像头*"); err == nil {
+		for _, m := range matches {
+			if scanRecDirUsage(m).Files > 0 {
+				add(m)
+			}
+		}
+	}
+
+	if len(roots) == 0 {
+		roots = []string{s.recRoot()}
+	}
+	return roots
 }
 
 // safeName 目录/文件名安全化（防路径穿越）。
@@ -183,11 +255,13 @@ func (s *Server) probeDuration(path string) float64 {
 
 // ---- 日期列表 ----
 
-// handleRecDates 返回可用日期。
+// handleRecDates 返回可用日期（跨所有纳管录像池聚合并去重）。
 func (s *Server) handleRecDates(w http.ResponseWriter, r *http.Request) {
 	name := safeName(r.URL.Query().Get("name"))
-	root := s.recRoot()
-	loadRecMeta(root)
+	roots := s.recRoots()
+	for _, root := range roots {
+		loadRecMeta(root)
+	}
 
 	type dayInfo struct {
 		Date   string  `json:"date"`
@@ -196,40 +270,49 @@ func (s *Server) handleRecDates(w http.ResponseWriter, r *http.Request) {
 	}
 	var out []dayInfo
 
-	var dirs []string
-	if name != "" {
-		dirs = []string{filepath.Join(root, name)}
-	} else {
-		entries, _ := os.ReadDir(root)
-		for _, e := range entries {
-			if e.IsDir() && !strings.HasPrefix(e.Name(), ".") {
-				dirs = append(dirs, filepath.Join(root, e.Name()))
+	agg := map[string]*dayInfo{}
+	seenFiles := map[string]bool{}
+
+	for _, root := range roots {
+		var dirs []string
+		if name != "" {
+			dirs = []string{filepath.Join(root, name)}
+		} else {
+			entries, _ := os.ReadDir(root)
+			for _, e := range entries {
+				if e.IsDir() && !strings.HasPrefix(e.Name(), ".") && !strings.HasPrefix(e.Name(), "@") {
+					dirs = append(dirs, filepath.Join(root, e.Name()))
+				}
 			}
 		}
-	}
 
-	agg := map[string]*dayInfo{}
-	for _, d := range dirs {
-		entries, err := os.ReadDir(d)
-		if err != nil {
-			continue
-		}
-		for _, e := range entries {
-			if !e.IsDir() {
+		for _, d := range dirs {
+			entries, err := os.ReadDir(d)
+			if err != nil {
 				continue
 			}
-			date := e.Name()
-			if agg[date] == nil {
-				agg[date] = &dayInfo{Date: date}
-			}
-			files, _ := os.ReadDir(filepath.Join(d, date))
-			for _, f := range files {
-				if f.IsDir() {
+			for _, e := range entries {
+				if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
 					continue
 				}
-				agg[date].Count++
-				if info, err := f.Info(); err == nil {
-					agg[date].SizeMB += float64(info.Size()) / (1 << 20)
+				date := e.Name()
+				if agg[date] == nil {
+					agg[date] = &dayInfo{Date: date}
+				}
+				files, _ := os.ReadDir(filepath.Join(d, date))
+				for _, f := range files {
+					if f.IsDir() || !strings.HasSuffix(f.Name(), ".mkv") {
+						continue
+					}
+					fKey := date + "/" + f.Name()
+					if seenFiles[fKey] {
+						continue
+					}
+					seenFiles[fKey] = true
+					agg[date].Count++
+					if info, err := f.Info(); err == nil {
+						agg[date].SizeMB += float64(info.Size()) / (1 << 20)
+					}
 				}
 			}
 		}
@@ -276,18 +359,37 @@ func listRecDevices(root string) []string {
 func (s *Server) handleRecList(w http.ResponseWriter, r *http.Request) {
 	name := safeName(r.URL.Query().Get("name"))
 	date := safeName(r.URL.Query().Get("date"))
-	root := s.recRoot()
-	loadRecMeta(root)
+	roots := s.recRoots()
+	for _, root := range roots {
+		loadRecMeta(root)
+	}
 
 	// name 为空 = 列出**所有设备**的录像。
-	//
-	// 前端首次进回放页时还不知道哪些设备有录像，
-	// 这里聚合返回，省一次往返。
 	if name == "" {
-		names := listRecDevices(root)
+		devMap := make(map[string]bool)
+		for _, root := range roots {
+			for _, n := range listRecDevices(root) {
+				devMap[n] = true
+			}
+		}
+		var names []string
+		for n := range devMap {
+			names = append(names, n)
+		}
+		sort.Strings(names)
+
 		var all []recFileInfo
+		seen := make(map[string]bool)
 		for _, n := range names {
-			all = append(all, s.collectRecFiles(root, n, date)...)
+			for _, root := range roots {
+				for _, f := range s.collectRecFiles(root, n, date) {
+					if seen[f.Name] {
+						continue
+					}
+					seen[f.Name] = true
+					all = append(all, f)
+				}
+			}
 		}
 		sort.Slice(all, func(i, j int) bool { return all[i].StartTime > all[j].StartTime })
 		var totalMB float64
@@ -301,8 +403,18 @@ func (s *Server) handleRecList(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	out := s.collectRecFiles(root, name, date)
-	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	var out []recFileInfo
+	seen := make(map[string]bool)
+	for _, root := range roots {
+		for _, f := range s.collectRecFiles(root, name, date) {
+			if seen[f.Name] {
+				continue
+			}
+			seen[f.Name] = true
+			out = append(out, f)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].StartTime < out[j].StartTime })
 	var totalMB float64
 	for _, f := range out {
 		totalMB += f.SizeMB
@@ -689,53 +801,56 @@ func (s *Server) handleCacheClear(w http.ResponseWriter, r *http.Request) {
 
 // findRecFile 定位录像文件（支持不传 date）。
 func (s *Server) findRecFile(name, date, file string) (string, error) {
-	root := s.recRoot()
 	if file == "" {
 		return "", fmt.Errorf("缺少 file")
 	}
 	if !strings.HasSuffix(file, ".mkv") {
 		return "", fmt.Errorf("只支持 mkv")
 	}
-	if name != "" {
-		if date != "" {
-		pth := filepath.Join(root, name, date, file)
-		if _, err := os.Stat(pth); err == nil {
-			return pth, nil
-		}
-	}
-	// 遍历该设备所有日期
-	base := filepath.Join(root, name)
-	entries, _ := os.ReadDir(base)
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		pth := filepath.Join(base, e.Name(), file)
-		if _, err := os.Stat(pth); err == nil {
-			return pth, nil
-		}
-	}
-	} else {
-		devEntries, _ := os.ReadDir(root)
-		for _, de := range devEntries {
-			if !de.IsDir() || strings.HasPrefix(de.Name(), ".") {
-				continue
-			}
-			devName := de.Name()
+
+	roots := s.recRoots()
+	for _, root := range roots {
+		if name != "" {
 			if date != "" {
-				pth := filepath.Join(root, devName, date, file)
+				pth := filepath.Join(root, name, date, file)
 				if _, err := os.Stat(pth); err == nil {
 					return pth, nil
 				}
 			}
-			entries, _ := os.ReadDir(filepath.Join(root, devName))
+			// 遍历该设备所有日期
+			base := filepath.Join(root, name)
+			entries, _ := os.ReadDir(base)
 			for _, e := range entries {
 				if !e.IsDir() {
 					continue
 				}
-				pth := filepath.Join(root, devName, e.Name(), file)
+				pth := filepath.Join(base, e.Name(), file)
 				if _, err := os.Stat(pth); err == nil {
 					return pth, nil
+				}
+			}
+		} else {
+			devEntries, _ := os.ReadDir(root)
+			for _, de := range devEntries {
+				if !de.IsDir() || strings.HasPrefix(de.Name(), ".") {
+					continue
+				}
+				devName := de.Name()
+				if date != "" {
+					pth := filepath.Join(root, devName, date, file)
+					if _, err := os.Stat(pth); err == nil {
+						return pth, nil
+					}
+				}
+				entries, _ := os.ReadDir(filepath.Join(root, devName))
+				for _, e := range entries {
+					if !e.IsDir() {
+						continue
+					}
+					pth := filepath.Join(root, devName, e.Name(), file)
+					if _, err := os.Stat(pth); err == nil {
+						return pth, nil
+					}
 				}
 			}
 		}
