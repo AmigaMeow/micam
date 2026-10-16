@@ -5290,6 +5290,11 @@ function aiTabSettings(){
                   return '<option value="' + x[0] + '"' + ((cf.model||'yolov8n') === x[0] ? ' selected' : '') + '>' + x[1] + '</option>';
                 }).join('')
     +         '</select></div>'
+    +         '<div class="cfg-row__hint" style="margin-top:6px;line-height:1.6;">'
+    +           '本地存放路径：<code>/vol1/@appdata/micam/models/&lt;模型名&gt;.onnx</code><br>'
+    +           '手动下载：可从国内镜像 <a href="https://hf-mirror.com" target="_blank" style="color:var(--accent);text-decoration:underline;">hf-mirror</a> 或 <a href="https://github.com/ultralytics/assets/releases" target="_blank" style="color:var(--accent);text-decoration:underline;">GitHub Releases</a> 下载 <code>.onnx</code> 放入该目录。<br>'
+    +           '免模型推荐：在上方模式切换为「边云协同」或「纯大模型」，对接局域网 Ollama (如 qwen2.5-vl) 或云端大模型，无需下载本地模型。'
+    +         '</div>'
     +       '</div>'
 
     +       '<div class="cfg-row">'
@@ -12960,7 +12965,7 @@ function paintSetMain(){
       + section('维护与支持', 'Maintenance & Diagnostics', [
           row('安装向导', '重新检查环境（扫码登录、设备发现、端口、编码器）。',
               '<button class="btn" id="setGoWizard">' + icon('check',14) + '重新运行</button>'),
-          row('诊断与反馈', '导出诊断包并提交到 GitHub Issues（已自动脱敏）。',
+          row('诊断与反馈', '导出诊断包并提交到 GitHub Issues（已自动脱敏密码与密钥）。若含敏感局域网拓扑或隐私内容，可发送至 evendstate@gmail.com 协同排查。',
               '<button class="btn" id="btnDiagBundle">' + icon('download',14) + '导出诊断包</button>'),
           row('查看日志', '查看最近的后端日志。',
               '<button class="btn" id="btnShowLog">' + icon('film',14) + '查看日志</button>'),
