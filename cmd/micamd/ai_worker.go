@@ -136,12 +136,8 @@ func (w *aiWorker) isRunning() bool {
 
 // tick 一次扫描
 func (w *aiWorker) tick() {
-	// 限流静默期内跳过：这个阶段拿不到设备帧，跑了也是白跑，
-	// 而且会反复触发凭据申请。
-	if w.srv != nil && w.srv.throttleSilenced() {
-		return
-	}
-
+	// 云端 AI 分析的是已落库在 eventStore 中的本地事件，走的是公网模型 API，
+	// 绝不受小米传统凭据限流影响。
 	cfg := aiConfigFromUser(w.srv.cfg.AI)
 
 	// 云端没开 / 模式是纯本地 -> 不动

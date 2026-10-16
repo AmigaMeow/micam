@@ -194,9 +194,9 @@ func (s *Server) detectOnce() {
 	//   1. 摄像头被持续占用，用户想看实时预览时可能抢不到连接
 	//   2. 一旦凭据失效，每 8 秒都可能触发一次云端申请 -> 撞限流
 	//
-	// 静默期意味着「凭据不可用」，这时动检也抓不到帧，
-	// 白白占用连接 + 反复撞接口。所以直接跳过。
-	if s.throttleSilenced() {
+	// 静默期仅限制依赖 miss_get_vendor 的传统未绑定通道。
+	// 官方通道（OAuth2+PPCS）使用独立局域网直连，不受传统限流影响。
+	if _, ok := miotBound(); !ok && s.throttleSilenced() {
 		return
 	}
 

@@ -350,6 +350,11 @@ func (s *Server) captureThumb(did string, width int) ([]byte, error) {
 		return nil, fmt.Errorf("设备离线")
 	}
 
+	// 官方通道优先（PPCS 局域网直连，不走传统凭据申请，不触发限流）
+	if _, ok := miotBound(); ok {
+		return s.grabFrameViaMiot(did)
+	}
+
 	args := []string{
 		"-hide_banner", "-loglevel", "error",
 		"-analyzeduration", "100000", "-probesize", "100000",
@@ -493,7 +498,7 @@ func (s *Server) refreshStaleThumbs(width int) {
 
 	for _, j := range jobs {
 		// 每台之间再检查一次静默（中途可能刚撞限流）
-		if s.throttleSilenced() {
+		if _, ok := miotBound(); !ok && s.throttleSilenced() {
 			return
 		}
 		s.refreshThumbAsync(j.did, width)

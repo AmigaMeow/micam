@@ -73,6 +73,10 @@ func (s *Server) startCredentialKeeper() {
 		//
 		// 静默期结束后恢复正常的定时检查（万一已经解除）。
 		for {
+			if _, ok := miotBound(); ok {
+				<-t.C
+				continue
+			}
 			if s.throttleSilenced() {
 				<-t.C
 				continue
@@ -85,6 +89,10 @@ func (s *Server) startCredentialKeeper() {
 
 // renewStaleCredentials 检查所有设备，给即将过期的凭据续期。
 func (s *Server) renewStaleCredentials() {
+	if _, ok := miotBound(); ok {
+		// 官方通道由 miot_refresh 维护长期令牌，无需向 miss_get_vendor 请求传统凭据
+		return
+	}
 	for _, d := range s.allCameras() {
 		if !d.IsCamera() {
 			continue
