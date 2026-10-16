@@ -198,6 +198,61 @@ func (s *Server) cachePath(enc, name, date, file string) string {
 	return filepath.Join(s.transcodeCacheDir(), name, date, file+"."+enc+".mp4")
 }
 
+// findCachePath 跨多录像池/卷查找或分配转码缓存文件路径。
+// 优先在源文件所属存储池的 .cache 下寻找（无论何种硬件编码指纹，只要已存在且有效即可秒开）。
+// 其次在当前活跃录像池及其它存储池中查找。若均未命中，返回首选写入路径。
+func (s *Server) findCachePath(enc, name, date, file, src string) string {
+	roots := s.recRoots()
+
+	var srcRoot string
+	if src != "" {
+		for _, r := range roots {
+			if strings.HasPrefix(src, r) {
+				srcRoot = r
+				break
+			}
+		}
+	}
+	if srcRoot == "" {
+		srcRoot = s.recRoot()
+	}
+
+	// 1. 优先检查源文件所在根目录下的 .cache（精确编码器匹配）
+	exact := filepath.Join(srcRoot, ".cache", name, date, file+"."+enc+".mp4")
+	if cacheValid(exact, src) {
+		return exact
+	}
+
+	// 2. 检查源文件所在根目录下任何可用编码器产出的有效缓存
+	if matches, err := filepath.Glob(filepath.Join(srcRoot, ".cache", name, date, file+".*.mp4")); err == nil {
+		for _, m := range matches {
+			if !strings.HasSuffix(m, ".part") && cacheValid(m, src) {
+				return m
+			}
+		}
+	}
+
+	// 3. 检查其它录像池的 .cache 目录
+	for _, r := range roots {
+		if r == srcRoot {
+			continue
+		}
+		exactR := filepath.Join(r, ".cache", name, date, file+"."+enc+".mp4")
+		if cacheValid(exactR, src) {
+			return exactR
+		}
+		if matches, err := filepath.Glob(filepath.Join(r, ".cache", name, date, file+".*.mp4")); err == nil {
+			for _, m := range matches {
+				if !strings.HasSuffix(m, ".part") && cacheValid(m, src) {
+					return m
+				}
+			}
+		}
+	}
+
+	return exact
+}
+
 // hasMoovAtom 快速检查 MP4 文件是否具有完整的 moov 元数据原子。
 func hasMoovAtom(path string) bool {
 	f, err := os.Open(path)
@@ -236,7 +291,7 @@ func cacheValid(dst, src string) bool {
 	if err != nil {
 		return false
 	}
-	if !di.ModTime().After(si.ModTime()) {
+	if di.ModTime().Before(si.ModTime().Add(-2 * time.Second)) {
 		return false
 	}
 	if !hasMoovAtom(dst) {
@@ -258,9 +313,9 @@ func (s *Server) cacheMaxBytes() int64 {
 	return int64(gb) << 30
 }
 
-// evictCache 超限时删最旧的缓存。
+// evictCache 超限时删最旧的缓存（跨所有存储池聚合 LRU 清理）。
 func (s *Server) evictCache() {
-	dir := s.transcodeCacheDir()
+	roots := s.recRoots()
 
 	type ent struct {
 		path string
@@ -270,14 +325,17 @@ func (s *Server) evictCache() {
 	var all []ent
 	var total int64
 
-	_ = filepath.Walk(dir, func(pth string, info os.FileInfo, err error) error {
-		if err != nil || info == nil || info.IsDir() {
+	for _, root := range roots {
+		dir := filepath.Join(root, ".cache")
+		_ = filepath.Walk(dir, func(pth string, info os.FileInfo, err error) error {
+			if err != nil || info == nil || info.IsDir() {
+				return nil
+			}
+			all = append(all, ent{pth, info.Size(), info.ModTime()})
+			total += info.Size()
 			return nil
-		}
-		all = append(all, ent{pth, info.Size(), info.ModTime()})
-		total += info.Size()
-		return nil
-	})
+		})
+	}
 
 	if total <= s.cacheMaxBytes() {
 		return
@@ -302,24 +360,27 @@ func (s *Server) evictCache() {
 	}
 }
 
-// cacheStats 缓存统计。
+// cacheStats 缓存统计（跨所有存储池聚合统计）。
 func (s *Server) cacheStats() map[string]any {
-	dir := s.transcodeCacheDir()
+	roots := s.recRoots()
 	var total int64
 	var count int
-	_ = filepath.Walk(dir, func(pth string, info os.FileInfo, err error) error {
-		if err != nil || info == nil || info.IsDir() {
+	for _, root := range roots {
+		dir := filepath.Join(root, ".cache")
+		_ = filepath.Walk(dir, func(pth string, info os.FileInfo, err error) error {
+			if err != nil || info == nil || info.IsDir() {
+				return nil
+			}
+			total += info.Size()
+			count++
 			return nil
-		}
-		total += info.Size()
-		count++
-		return nil
-	})
+		})
+	}
 	encFPMu.Lock()
 	enc := encFP
 	encFPMu.Unlock()
 	return map[string]any{
-		"dir":     dir,
+		"dir":     filepath.Join(s.recRoot(), ".cache"),
 		"count":   count,
 		"totalMB": float64(total) / (1 << 20),
 		"maxMB":   float64(s.cacheMaxBytes()) / (1 << 20),

@@ -101,25 +101,37 @@ func (s *Server) handleRecordCleanup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Days       string `json:"days"`      // 3, 7, 14, 30, "all", "0"
+		Days       any    `json:"days"`      // 3, 7, 14, 30, "all", "0", 或数值
 		KeepDays   int    `json:"keepDays"`
 		Device     string `json:"device"`
 		ProtectAI  bool   `json:"protectAI"`
-		AllPools   bool   `json:"allPools"`
+		AllPools   *bool  `json:"allPools"`
 		CleanCache bool   `json:"cleanCache"`
 	}
 	_ = json.NewDecoder(r.Body).Decode(&req)
+
+	daysStr := ""
+	switch v := req.Days.(type) {
+	case string:
+		daysStr = strings.TrimSpace(v)
+	case float64:
+		daysStr = strconv.Itoa(int(v))
+	case int:
+		daysStr = strconv.Itoa(v)
+	case json.Number:
+		daysStr = v.String()
+	}
 
 	now := time.Now()
 	var deadline time.Time
 	cleanAll := false
 
-	if req.Days == "all" {
+	if daysStr == "all" {
 		cleanAll = true
 		deadline = now.Add(24 * time.Hour)
-	} else if req.Days == "0" {
+	} else if daysStr == "0" {
 		deadline = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	} else if n, err := strconv.Atoi(req.Days); err == nil && n > 0 {
+	} else if n, err := strconv.Atoi(daysStr); err == nil && n > 0 {
 		deadline = now.AddDate(0, 0, -n)
 	} else if req.KeepDays > 0 {
 		deadline = now.AddDate(0, 0, -req.KeepDays)
@@ -127,8 +139,13 @@ func (s *Server) handleRecordCleanup(w http.ResponseWriter, r *http.Request) {
 		deadline = now.AddDate(0, 0, -7)
 	}
 
+	allPools := true
+	if req.AllPools != nil {
+		allPools = *req.AllPools
+	}
+
 	var roots []string
-	if req.AllPools {
+	if allPools {
 		roots = s.recRoots()
 	} else {
 		roots = []string{s.recRoot()}
@@ -193,6 +210,13 @@ func (s *Server) handleRecordCleanup(w http.ResponseWriter, r *http.Request) {
 							deletedCount++
 							freedBytes += info.Size()
 							_ = os.Remove(filepath.Join(root, ".thumbs", devName, fe.Name()+".jpg"))
+							cacheMatches, _ := filepath.Glob(filepath.Join(root, ".cache", devName, dateE.Name(), fe.Name()+".*"))
+							for _, cp := range cacheMatches {
+								if cfi, err := os.Stat(cp); err == nil {
+									freedBytes += cfi.Size()
+									_ = os.Remove(cp)
+								}
+							}
 						}
 					}
 				}

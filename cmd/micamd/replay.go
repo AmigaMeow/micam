@@ -86,7 +86,22 @@ func (s *Server) recRoot() string {
 
 // recRoots 返回所有纳管录像根目录（当前活跃写入目录 + 历史配置目录 + 系统默认与检测到的各卷录像池）。
 // 确保无论用户如何切换录像存储位置，历史录像全部统一聚合、永不丢失。
+var (
+	recRootsMu   sync.Mutex
+	cachedRoots  []string
+	recRootsTime time.Time
+)
+
 func (s *Server) recRoots() []string {
+	recRootsMu.Lock()
+	if len(cachedRoots) > 0 && time.Since(recRootsTime) < 30*time.Second {
+		out := make([]string, len(cachedRoots))
+		copy(out, cachedRoots)
+		recRootsMu.Unlock()
+		return out
+	}
+	recRootsMu.Unlock()
+
 	var roots []string
 	seen := make(map[string]bool)
 	add := func(p string) {
@@ -153,6 +168,12 @@ func (s *Server) recRoots() []string {
 	if len(roots) == 0 {
 		roots = []string{s.recRoot()}
 	}
+
+	recRootsMu.Lock()
+	cachedRoots = roots
+	recRootsTime = time.Now()
+	recRootsMu.Unlock()
+
 	return roots
 }
 
@@ -502,16 +523,21 @@ func (s *Server) handleRecPlay(w http.ResponseWriter, r *http.Request) {
 	enc, encArgs := s.pickFileEncoder(src)
 
 	if date == "" || name == "" {
-		rel, _ := filepath.Rel(s.recRoot(), src)
-		parts := strings.Split(rel, string(filepath.Separator))
-		if len(parts) >= 3 {
-			name = parts[0]
-			date = parts[1]
+		for _, r := range s.recRoots() {
+			if strings.HasPrefix(src, r) {
+				rel, _ := filepath.Rel(r, src)
+				parts := strings.Split(rel, string(filepath.Separator))
+				if len(parts) >= 3 {
+					name = parts[0]
+					date = parts[1]
+				}
+				break
+			}
 		}
 	}
 
-	// 缓存命中 + 不需要偏移 -> 直接发文件（支持 Range，秒开可拖动）
-	dst := s.cachePath(enc, name, date, file)
+	// 跨录像池自动定位缓存
+	dst := s.findCachePath(enc, name, date, file, src)
 	if nocache {
 		_ = os.Remove(dst)
 	}
@@ -782,19 +808,21 @@ func (s *Server) handleCacheClear(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 405, "只支持 POST")
 		return
 	}
-	dir := s.transcodeCacheDir()
 	var freed int64
 	var n int
-	_ = filepath.Walk(dir, func(pth string, info os.FileInfo, err error) error {
-		if err != nil || info == nil || info.IsDir() {
+	for _, root := range s.recRoots() {
+		dir := filepath.Join(root, ".cache")
+		_ = filepath.Walk(dir, func(pth string, info os.FileInfo, err error) error {
+			if err != nil || info == nil || info.IsDir() {
+				return nil
+			}
+			if err := os.Remove(pth); err == nil {
+				freed += info.Size()
+				n++
+			}
 			return nil
-		}
-		if err := os.Remove(pth); err == nil {
-			freed += info.Size()
-			n++
-		}
-		return nil
-	})
+		})
+	}
 	logf("[cache] 手动清理 %d 个文件，释放 %.1fGB", n, float64(freed)/(1<<30))
 	writeJSON(w, 200, map[string]any{"ok": true, "count": n, "freedMB": float64(freed) / (1 << 20)})
 }
@@ -1384,7 +1412,7 @@ func (s *Server) preCacheRecentRecordings() {
 				}
 				src := filepath.Join(dateDir, f.Name())
 				enc, encArgs := s.pickFileEncoder(src)
-				dst := s.cachePath(enc, devName, d, f.Name())
+				dst := s.findCachePath(enc, devName, d, f.Name(), src)
 				if !cacheValid(dst, src) {
 					cacheJobMu.Lock()
 					busy := len(activeCacheJobs) >= 1
@@ -1423,7 +1451,7 @@ func (s *Server) handleRecCacheStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	enc, encArgs := s.pickFileEncoder(src)
-	dst := s.cachePath(enc, name, date, file)
+	dst := s.findCachePath(enc, name, date, file, src)
 	ready := cacheValid(dst, src)
 
 	cacheJobMu.Lock()
@@ -1433,9 +1461,14 @@ func (s *Server) handleRecCacheStatus(w http.ResponseWriter, r *http.Request) {
 
 	// 关键优化：只要用户点击或进入该片段，立刻在后台生成永久快开 MP4 缓存
 	if !ready && !building {
-		if _, err := os.Stat(src); err == nil {
-			go s.buildCache(src, dst, encArgs, enc, file, true)
-			building = true
+		livePlayMu.Lock()
+		isStreaming := activeLiveStreams > 0
+		livePlayMu.Unlock()
+		if !isStreaming {
+			if _, err := os.Stat(src); err == nil {
+				go s.buildCache(src, dst, encArgs, enc, file, true)
+				building = true
+			}
 		}
 	}
 
