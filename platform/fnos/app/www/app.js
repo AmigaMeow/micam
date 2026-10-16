@@ -8431,14 +8431,14 @@ var recCachePollTimer = null;
 var recLoadSeq = 0;
 
 function isStaticMP4Cache(v, expectedDur){
-  if(!v || !isFinite(v.duration) || v.duration <= 5) return false;
+  if(!v || !isFinite(v.duration) || v.duration <= 2) return false;
   var dur = expectedDur || 0;
   if(dur <= 0){
     var f = curRecFileObj();
     if(f && f.duration > 0) dur = f.duration;
   }
-  // 严格判定：只有当 video.duration 确实接近文件总时长（误差在 15 秒内或达到 90% 以上）才是本地静态 MP4 缓存
-  return (dur > 0 && (Math.abs(v.duration - dur) < 15 || v.duration >= dur * 0.9));
+  if(dur <= 0) return true;
+  return (Math.abs(v.duration - dur) < 25 || v.duration >= dur * 0.75);
 }
 
 function updateRecBadge(f){
@@ -8732,7 +8732,11 @@ function cleanupRecordings(){
   api('/api/recordings/cleanup-preview').then(function(d){
     if(!d.fileCount){ toast('没有可清理的文件（保留 ' + d.keepDays + ' 天）', 'ok'); return; }
     if(!confirm('将清理 ' + d.fileCount + ' 个文件，释放 ' + fmtSizeMB(d.totalMB) + '\n保留最近 ' + d.keepDays + ' 天\n\n确定？')) return;
-    api('/api/recordings/cleanup', { method:'POST' }).then(function(r){
+    api('/api/recordings/cleanup', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ days: String(d.keepDays || 7), allPools: true })
+    }).then(function(r){
       toast('已清理 ' + (r.deleted||0) + ' 个，释放 ' + fmtSizeMB(r.freedMB||0), 'ok');
       setTimeout(function(){ page='recordings'; render(); }, 1200);
     }).catch(function(e){ toast('清理失败：' + e.message, 'err'); });
@@ -9696,7 +9700,11 @@ function bindStorage(c, cams){
   var cg = document.getElementById('stCleanGo');
   if(cg) cg.onclick = function(){
     if(!confirm('确认清理过期录像？\n\n此操作不可恢复。')) return;
-    api('/api/recordings/cleanup', { method:'POST', headers:{'Content-Type':'application/json'}, body:'{}' })
+    api('/api/recordings/cleanup', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ days: '7', allPools: true })
+    })
       .then(function(r){ toast('已清理 ' + (r.deleted||0) + ' 个文件，释放 ' + Math.round(r.freedMB||0) + ' MB', 'ok'); render(); })
       .catch(function(e){ toast('清理失败：' + e.message, 'err'); });
   };
@@ -9832,7 +9840,7 @@ function bindStorage(c, cams){
         method: 'POST',
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
-          days: parseInt(days, 10),
+          days: String(days),
           device: dev,
           protectAI: ai,
           cleanCache: cache,
@@ -13436,7 +13444,11 @@ function stopRec(did){
 }
 
 function cleanup(){
-  api("/api/recordings/cleanup", {method:"POST"}).then(function(r){
+  api("/api/recordings/cleanup", {
+    method: "POST",
+    headers: {"Content-Type": "application/json"},
+    body: JSON.stringify({ days: "7", allPools: true })
+  }).then(function(r){
     toast("已清理 "+(r.deleted||0)+" 个文件，释放 "+(r.freedMB||0)+" MB","ok");
   });
 }
