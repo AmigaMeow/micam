@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <title>MiCam - 智能监控中心</title>
-<meta name="micam-build" content="2026-10-16 08:13:45">
+<meta name="micam-build" content="2026-10-16 08:20:14">
 <!-- 内联 SVG favicon（data URI）：
      浏览器默认会请求 /favicon.ico 并得到 404（控制台报错）。
      这里用 data URI 消除该请求 —— 同时保持「全内联、不联网」的约束。 -->
@@ -6193,135 +6193,562 @@ input[type="checkbox"]:not(.switch input) { width: 16px; height: 16px; flex: 0 0
 
 
 /* ==========================================================================
-   STORAGE — 存储监控（对齐效果图）
+   STORAGE — 存储监控（现代化数据看板风格）
    ========================================================================== */
 
 /* 4 个统计卡 */
-.st-stats { display: grid; gap: var(--space-4); grid-template-columns: repeat(4, minmax(0,1fr)); margin-bottom: var(--space-5); }
-@media (max-width:1100px){ .st-stats{ grid-template-columns: repeat(2,1fr);} }
-.st-stat { background: var(--surface-1); border:1px solid var(--border-subtle); border-radius: var(--radius-xl); padding: var(--space-4) var(--space-5); }
-.st-stat__head { display:flex; align-items:center; gap:8px; font-size: var(--text-sm); color: var(--text-muted); margin-bottom: var(--space-3); }
-.st-stat__head .icon { color: var(--text-muted); }
-.st-stat__val { font-size: var(--text-2xl); font-weight: var(--weight-semibold); line-height:1.25; }
-.st-hint { font-size: var(--text-sm); color: var(--text-muted); margin-top: 6px; }
-
-/* 进度条 */
-.st-bar { height:6px; border-radius:3px; background: var(--surface-3); overflow:hidden; margin-top: var(--space-3); }
-.st-bar > span { display:block; height:100%; background: var(--accent); border-radius:3px; }
-.st-bar--sm { height:4px; margin-top:3px; }
-.st-bar__sub { font-size: var(--text-sm); color: var(--text-muted); margin-top:6px; }
-
-/* 两列布局 */
-.st-row { display:grid; gap: var(--space-5); align-items:start; margin-bottom: var(--space-5); }
-/* 左右两栏高度差会留出大片空白：让两栏等高，图表吃掉剩余高度 */
-.st-row--2 { align-items: stretch; }
-.st-row--2 > .card { display:flex; flex-direction:column; }
-.st-row--2 .st-chart { flex:1; display:flex; flex-direction:column; }
-.st-row--2 .st-chart .st-chart__svg { flex:1; height:auto; min-height:200px; }
-/* 概览面板里「趋势」和「类型统计」不再并排（并排时趋势卡会被拉得过高、内容撑不满） */
-.pnl[data-pnl="ov"] .st-row--2 { grid-template-columns: 1fr; }
-.st-row--2 { grid-template-columns: minmax(0,1.55fr) minmax(0,1fr); }
-@media (max-width:1100px){ .st-row--2{ grid-template-columns:1fr;} }
-
-/* 趋势图 */
-.st-sel { width: auto; margin-left:auto; height:30px; font-size: var(--text-sm); }
-.st-chart { padding: var(--space-4) var(--space-5) var(--space-5); }
-.st-chart__svg { width:100%; height:200px; display:block; }
-.st-chart__ylab { font-size: var(--text-xs); fill: var(--text-muted); }
-.st-chart__xlab { font-size: var(--text-xs); fill: var(--text-muted); }
-.st-chart__empty { height:200px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:6px; color: var(--text-muted); font-size: var(--text-base); }
-.st-chart__empty-sub { font-size: var(--text-sm); opacity:.8; }
-
-/* 按类型统计 */
-.st-types { padding: var(--space-3) var(--space-5) var(--space-3); }
-.st-type { padding: var(--space-3) 0; border-bottom:1px solid var(--border-subtle); }
-.st-type:last-child { border-bottom:0; }
-.st-type__row { display:flex; align-items:baseline; gap:var(--space-3); font-size: var(--text-base); }
-.st-type__row > span { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.st-type__row > b { font-weight: var(--weight-medium); }
-.st-type__row > em { font-style:normal; width:52px; text-align:right; color: var(--text-muted); font-variant-numeric: tabular-nums; }
-.st-type__sub { font-size: var(--text-xs); color: var(--text-muted); margin-top:4px; }
-.st-type .st-bar { margin-top:6px; }
-.st-note { display:flex; align-items:center; gap:6px; padding: 0 var(--space-5) var(--space-5); font-size: var(--text-xs); color: var(--text-muted); }
-/* 摄像头表格 */
-.st-table { padding: 0 var(--space-5) var(--space-4); }
-.st-table__head, .st-table__row {
-  display:grid; gap: var(--space-3);
-  grid-template-columns: minmax(0,1.4fr) minmax(0,1.2fr) 78px 74px 74px;
-  align-items:center; padding: 10px 0; font-size: var(--text-base);
+.st-stats {
+  display: grid;
+  gap: var(--space-4);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: var(--space-5);
 }
-.st-table__head { font-size: var(--text-sm); color: var(--text-muted); border-bottom:1px solid var(--border-subtle); }
-.st-table__row { border-bottom:1px solid var(--border-subtle); }
-.st-table__row:last-child { border-bottom:0; }
-/* 未归属的孤儿录像目录（已移出设备遗留）。
-   视觉上刻意与正常行区分：整行弱化 + 虚线左边框，
-   因为它是「对账行」，不是一台真实设备。 */
+@media (max-width: 1100px) {
+  .st-stats { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 640px) {
+  .st-stats { grid-template-columns: 1fr; }
+}
+
+.st-stat {
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  padding: 18px 20px;
+  box-shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.08), 0 1px 2px -1px rgba(0, 0, 0, 0.04);
+  display: flex;
+  flex-direction: column;
+  transition: transform .2s ease, box-shadow .2s ease, border-color .2s ease;
+  min-height: 140px;
+  justify-content: space-between;
+}
+.st-stat:hover {
+  transform: translateY(-2px);
+  border-color: var(--border-strong);
+  box-shadow: 0 4px 12px 0 rgba(0, 0, 0, 0.12);
+}
+.st-stat__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.st-stat__title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.st-stat__icon-wrap {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  color: var(--accent);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.st-stat__label {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+.st-stat__badge {
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.st-stat__val-wrap {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  line-height: 1.2;
+}
+.st-stat__num {
+  font-size: 26px;
+  font-weight: 700;
+  color: var(--text);
+  letter-spacing: -0.02em;
+}
+.st-stat__total {
+  font-size: 14px;
+  color: var(--text-muted);
+  font-weight: 400;
+}
+.st-stat__unit {
+  font-size: 13px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+/* 进度条增强 */
+.st-bar {
+  height: 6px;
+  border-radius: 4px;
+  background: var(--surface-3);
+  overflow: hidden;
+  margin-top: 10px;
+  display: flex;
+}
+.st-bar > span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 4px;
+  transition: width .3s ease;
+}
+.st-bar--multi > span {
+  border-radius: 0;
+}
+.st-bar--multi > span:first-child {
+  border-radius: 4px 0 0 4px;
+}
+.st-bar--multi > span:last-child {
+  border-radius: 0 4px 4px 0;
+}
+.st-bar--sm {
+  height: 4px;
+  margin-top: 4px;
+}
+.st-stat-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 10px;
+}
+.st-stat-foot b {
+  color: var(--text);
+  font-weight: 600;
+}
+
+/* 趋势图与图表卡片 */
+.st-row {
+  display: grid;
+  gap: var(--space-5);
+  align-items: start;
+  margin-bottom: var(--space-5);
+}
+.st-row--2 {
+  align-items: stretch;
+}
+.st-row--2 > .card {
+  display: flex;
+  flex-direction: column;
+}
+.st-row--2 .st-chart {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+}
+.st-row--2 .st-chart .st-chart__svg {
+  flex: 1;
+  height: auto;
+  min-height: 200px;
+}
+.pnl[data-pnl="ov"] .st-row--2 {
+  grid-template-columns: 1fr;
+}
+.st-row--2 {
+  grid-template-columns: minmax(0,1.55fr) minmax(0,1fr);
+}
+@media (max-width: 1100px) {
+  .st-row--2 { grid-template-columns: 1fr; }
+}
+
+.st-sel {
+  width: auto;
+  margin-left: auto;
+  height: 32px;
+  padding: 0 10px;
+  border-radius: 6px;
+  font-size: var(--text-sm);
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+}
+.st-chart {
+  padding: var(--space-4) var(--space-5) var(--space-5);
+}
+.st-chart__svg {
+  width: 100%;
+  height: 200px;
+  display: block;
+}
+.st-chart__ylab {
+  font-size: var(--text-xs);
+  fill: var(--text-muted);
+}
+.st-chart__xlab {
+  font-size: var(--text-xs);
+  fill: var(--text-muted);
+}
+.st-chart__empty {
+  height: 200px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: var(--text-base);
+  background: var(--surface-2);
+  border-radius: var(--radius-lg);
+  border: 1px dashed var(--border);
+  margin: var(--space-3) var(--space-5) var(--space-4);
+  padding: 24px;
+  text-align: center;
+}
+.st-chart__empty .icon {
+  color: var(--text-muted);
+  opacity: 0.6;
+}
+.st-chart__empty-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+.st-chart__empty-sub {
+  font-size: 12px;
+  color: var(--text-muted);
+  max-width: 320px;
+  line-height: 1.5;
+}
+
+/* 按类型统计卡片 */
+.st-types {
+  padding: var(--space-3) var(--space-5) var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.st-type {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  transition: background .15s ease;
+}
+.st-type:hover {
+  background: var(--surface-hover);
+}
+.st-type__row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-3);
+  font-size: 14px;
+}
+.st-type__row > span {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+.st-type__row > b {
+  font-weight: 600;
+  color: var(--text);
+}
+.st-type__row > em {
+  font-style: normal;
+  width: 52px;
+  text-align: right;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+}
+.st-type__sub {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-top: 4px;
+}
+.st-type .st-bar {
+  margin-top: 6px;
+}
+
+/* 摄像头统计表格优化 */
+.st-table-wrap {
+  overflow-x: auto;
+  padding: 0 var(--space-5) var(--space-4);
+}
+.st-table {
+  min-width: 620px;
+}
+.st-table__head {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1.2fr) 88px 84px 92px;
+  align-items: center;
+  padding: 10px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  background: var(--surface-2);
+  border-radius: 6px;
+  margin-bottom: 6px;
+}
+.st-table__row {
+  display: grid;
+  gap: var(--space-3);
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1.2fr) 88px 84px 92px;
+  align-items: center;
+  padding: 12px 14px;
+  border-radius: 6px;
+  border-bottom: 1px solid var(--border-subtle);
+  transition: background .15s ease;
+}
+.st-table__row:hover {
+  background: var(--surface-hover);
+}
+.st-table__row:last-child {
+  border-bottom: none;
+}
 .st-table__row--orphan {
-  background: color-mix(in srgb, var(--warning) 6%, transparent);
-  border-left: 3px solid color-mix(in srgb, var(--warning) 45%, transparent);
+  background: rgba(245, 158, 11, 0.06);
+  border-left: 3px solid #F59E0B;
 }
-.st-table__row--orphan .st-cam__name { color: var(--text-secondary); }
 .st-orphan-tag {
   flex: 0 0 auto;
-  padding: 1px 7px; border-radius: 999px;
-  background: color-mix(in srgb, var(--warning) 16%, transparent);
-  color: var(--warning);
-  font-size: var(--text-xs);
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(245, 158, 11, 0.16);
+  color: #F59E0B;
+  font-size: 11px;
 }
-.st-cam { display:flex; align-items:center; gap:8px; min-width:0; }
-.st-cam__name { overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.st-cell { color: var(--text-secondary); font-variant-numeric: tabular-nums; }
-.st-cell__val { font-size: var(--text-sm); }
+.st-cam {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.st-cam__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+.st-cell {
+  color: var(--text-secondary);
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+}
+.st-cell__val {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
 
-/* 存储策略 */
-.st-policy { padding: var(--space-3) var(--space-5) var(--space-5); }
-.st-field { display:grid; grid-template-columns: 84px auto auto minmax(0,1fr); gap: var(--space-2); align-items:center; padding: 7px 0; font-size: var(--text-base); }
-.st-field__label { color: var(--text-muted); font-size: var(--text-sm); }
-.st-field__num { width: 86px; }
-.st-field__unit { color: var(--text-muted); font-size: var(--text-sm); }
-.st-field__hint { color: var(--text-muted); font-size: var(--text-xs); }
-.st-field__sep { color: var(--text-muted); }
-.st-field > .input:not(.st-field__num) { width:100%; }
-.st-switchrow { display:grid; grid-template-columns: 84px auto minmax(0,1fr); gap: var(--space-2); align-items:center; padding: 7px 0; }
-.st-switchrow__label { color: var(--text-muted); font-size: var(--text-sm); }
-.st-switchrow__hint { color: var(--text-muted); font-size: var(--text-xs); }
-.st-save { margin-top: var(--space-4); width:100%; justify-content:center; }
+/* 语义化标签 */
+.st-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 500;
+}
+.st-tag--ok {
+  background: rgba(16, 185, 129, 0.12);
+  color: #10B981;
+  border: 1px solid rgba(16, 185, 129, 0.25);
+}
+.st-tag--warn {
+  background: rgba(245, 158, 11, 0.12);
+  color: #F59E0B;
+  border: 1px solid rgba(245, 158, 11, 0.25);
+}
 
-/* 缓存 */
-.st-cache { padding: var(--space-2) var(--space-5) var(--space-2); }
-.st-kv { display:flex; align-items:baseline; gap: var(--space-3); padding: 6px 0; font-size: var(--text-base); border-bottom:1px solid var(--border-subtle); }
-.st-kv:last-child { border-bottom:0; }
-.st-kv > span { flex:0 0 84px; color: var(--text-muted); font-size: var(--text-sm); }
-.st-kv > b { flex:1; min-width:0; font-weight: var(--weight-normal); word-break:break-all; }
-.st-mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: var(--text-sm); }
-.st-cache__acts { display:flex; gap: var(--space-2); padding: var(--space-3) var(--space-5) var(--space-5); }
+/* 存储策略表单 */
+.st-policy {
+  padding: var(--space-3) var(--space-5) var(--space-5);
+}
+.st-field {
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 10px 0;
+  font-size: var(--text-base);
+  border-bottom: 1px solid var(--border-subtle);
+}
+.st-field:last-child {
+  border-bottom: none;
+}
+.st-field__label {
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+}
+.st-field__num {
+  width: 96px;
+  height: 36px;
+}
+.st-field__unit {
+  color: var(--text-muted);
+  font-size: 13px;
+}
+.st-field__hint {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.st-policy .st-field {
+  grid-template-columns: 96px 100px 36px minmax(0, 1fr);
+}
+.st-switchrow {
+  display: grid;
+  grid-template-columns: 96px auto minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.st-switchrow__label {
+  color: var(--text-secondary);
+  font-size: 13px;
+  font-weight: 500;
+}
+.st-switchrow__hint {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+.st-save {
+  margin-top: var(--space-4);
+  width: 100%;
+  justify-content: center;
+  height: 38px;
+}
+
+/* 缓存管理 */
+.st-cache {
+  padding: var(--space-3) var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.st-kv {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: 10px 0;
+  font-size: 13px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+.st-kv:last-child {
+  border-bottom: 0;
+}
+.st-kv > span {
+  flex: 0 0 96px;
+  color: var(--text-secondary);
+}
+.st-kv > b {
+  color: var(--text);
+  font-weight: 500;
+}
+.st-cache__acts {
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-5) var(--space-5);
+}
 
 /* 迁移 */
-.st-migrate { padding: var(--space-2) var(--space-5) var(--space-5); }
-/* 迁移页的字段行单独定模板（实测发现两个问题）：
- *
- * ① .st-field 默认模板是 "84px auto auto minmax(0,1fr)"，
- *    只有「标签 + 输入框」两列时，输入框落在 auto 列 ——
- *    宽度只剩浏览器默认的 198px，而卡片有 618px，
- *    路径直接被截断（截图发现）。
- *    -> 这里把普通行改成 "84px 1fr"，输入框吃满剩余宽度。
- *
- * ② 时间范围行需要 4 列（标签 + 日期 + ~ + 日期），
- *    早期把它写成了 .st-migrate .st-field 套用到【所有】行，
- *    反而让路径框只拿一半宽度。
- *    -> 单独用 .st-field--range。 */
-.st-migrate .st-field { grid-template-columns: 84px minmax(0,1fr); }
-.st-migrate .st-field--range { grid-template-columns: 84px minmax(0,1fr) auto minmax(0,1fr); }
-.st-migrate__foot { display:flex; align-items:center; gap: var(--space-4); margin-top: var(--space-4); }
-.st-migrate__foot .st-hint { margin:0; flex:1; }
+.st-migrate {
+  padding: var(--space-3) var(--space-5) var(--space-5);
+}
+.st-migrate .st-field {
+  grid-template-columns: 88px minmax(0, 1fr);
+}
+.st-migrate .st-field--range {
+  grid-template-columns: 88px minmax(0, 1fr) auto minmax(0, 1fr);
+}
+.st-migrate__foot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  margin-top: var(--space-5);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-subtle);
+}
+.st-migrate__foot .st-hint {
+  margin: 0;
+  flex: 1;
+}
 
-/* 清理预览 */
-.st-clean { padding: var(--space-2) var(--space-5) var(--space-2); }
-.st-clean__sum { display:flex; align-items:center; gap:8px; padding: var(--space-3) 0; font-size: var(--text-base); color: #4ade80; }
-.st-clean__sum b { color:#4ade80; }
-.st-clean__acts { padding: var(--space-3) var(--space-5) var(--space-5); display:flex; flex-direction:column; gap: var(--space-2); }
-.st-clean__acts .btn { justify-content:center; }
-.st-warn { display:flex; align-items:center; gap:5px; font-size: var(--text-xs); color: var(--warning); }
+/* 清理预览增强 */
+.st-clean {
+  padding: var(--space-4) var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.st-clean__box {
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.st-clean__box.is-empty {
+  border-left: 4px solid #10B981;
+}
+.st-clean__box.is-warn {
+  border-left: 4px solid #F59E0B;
+}
+.st-clean__status-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+}
+.st-clean__desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
+.st-clean__metric-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--text-secondary);
+  padding-top: 8px;
+  border-top: 1px solid var(--border-subtle);
+}
+.st-clean__metric-row b {
+  color: var(--text);
+}
+.st-clean__acts {
+  padding: 0 var(--space-5) var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.st-clean__alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  background: rgba(245, 158, 11, 0.1);
+  border: 1px solid rgba(245, 158, 11, 0.25);
+  border-radius: 8px;
+  font-size: 12px;
+  color: #F59E0B;
+  line-height: 1.5;
+}
+.st-clean__alert .icon {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
 
 /* 底部状态栏 */
 .st-footbar__label { font-size: var(--text-sm); color: var(--text-muted); }
@@ -6330,8 +6757,8 @@ input[type="checkbox"]:not(.switch input) { width: 16px; height: 16px; flex: 0 0
 .st-footbar { display:flex; align-items:center; gap: var(--space-5); flex-wrap:wrap; padding: var(--space-3) var(--space-4); background: var(--surface-1); border:1px solid var(--border-subtle); border-radius: var(--radius-lg); font-size: var(--text-sm); color: var(--text-muted); }
 .st-footbar__spacer { flex:1; }
 .st-health { display:inline-flex; align-items:center; gap:6px; }
-.st-health.is-ok b { color: #4ade80; }
-.st-health.is-warn b { color: var(--warning); }
+.st-health.is-ok b { color: #10B981; }
+.st-health.is-warn b { color: #F59E0B; }
 
 
 /* ---- 存储录像目录卡片增强 ---- */
@@ -6767,13 +7194,36 @@ input[type="checkbox"]:not(.switch input) { width: 16px; height: 16px; flex: 0 0
 /* 左：竖排 Tab */
 .set3__nav { display:flex; flex-direction:column; gap:2px; position:sticky; top:var(--space-4); }
 .set3__tab {
-  display:flex; align-items:center; gap:var(--space-3);
-  padding:10px var(--space-3); border-radius: var(--radius-md);
-  color: var(--text-secondary); text-align:left; width:100%;
-  transition: background var(--duration-fast) var(--ease-out), color var(--duration-fast) var(--ease-out);
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: 11px 14px;
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  text-align: left;
+  width: 100%;
+  transition: all .2s ease;
 }
-.set3__tab:hover { background: var(--surface-2); color: var(--text); }
-.set3__tab.is-active { background: color-mix(in oklab, var(--accent) 16%, transparent); color: var(--accent); }
+.set3__tab:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.set3__tab.is-active {
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface-1));
+  color: var(--accent);
+  font-weight: 500;
+}
+.set3__tab.is-active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3.5px;
+  background: var(--accent);
+  border-radius: 0 3px 3px 0;
+}
 .set3__tab .icon { flex:0 0 auto; }
 .set3__tab-body { display:flex; flex-direction:column; gap:1px; min-width:0; }
 .set3__tab-name { font-size: var(--text-base); }
@@ -17782,6 +18232,12 @@ function stRecDirCard(status, stLocs){
     +     '</div>'
     +     '<div style="font-size:12px;color:var(--text-muted);margin-top:6px;">提示：自定义路径必须为绝对路径，且已在飞牛「应用中心 - 小米摄像头 - 设置 - 访问权限」中授予读写权限。</div>'
     +   '</div>'
+    +   '<div class="st-locs-search-bar" style="margin-top:6px;margin-bottom:12px;">'
+    +     '<div style="position:relative;">'
+    +       '<input class="input st-locs-search-inp" id="stLocSearch" placeholder="快速过滤共享文件夹名称或物理路径 (输入关键字即时筛选)..." style="width:100%;height:38px;padding-left:36px;font-size:13px;border-radius:8px;">'
+    +       '<span style="position:absolute;left:12px;top:11px;color:var(--text-muted);pointer-events:none;">' + icon('search',15) + '</span>'
+    +     '</div>'
+    +   '</div>'
     +   '<div class="st-locs-wrap">'
     +     (userShares.length ? (
             '<div class="st-loc-group">'
@@ -17941,17 +18397,45 @@ function paintStorage(c, d, cleanup){
     +   '<div class="set3__main">'
     +   '<div class="pnl' + (stTab === 'ov' ? ' is-on' : '') + '" data-pnl="ov">'
 
-    // 4 统计卡
-    + '<div class="st-stats">'
-    +   stStat('hard-drive', '总容量', fmtGB(disk.usedGB) + ' / ' + fmtGB(disk.totalGB),
-            '<div class="st-bar"><span style="width:' + (disk.usedPct||0).toFixed(1) + '%"></span></div>'
-            + '<div class="st-bar__sub">已用 ' + (disk.usedPct||0).toFixed(1) + '%</div>')
-    +   stStat('clock', '预计可录时长', estTxt, '<div class="st-hint">按当前使用率估算</div>')
-    +   stStat('film', '录像文件', (cams.reduce(function(a,x){return a+(x.files||0);},0)).toLocaleString() + ' 个',
-            '<div class="st-hint">共 ' + cams.length + ' 台设备</div>')
-    +   stStat('database', '录像数据', fmtGB((types.filter(function(t){return t.key==='recordings';})[0]||{}).sizeGB),
-            '<div class="st-hint">' + fmtGB(disk.freeGB) + ' 可用</div>')
-    + '</div>'
+    // 4 现代化数据看板统计卡
+    + (function(){
+        var totalFiles = cams.reduce(function(a,x){ return a+(x.files||0); }, 0);
+        var recType = (types.filter(function(t){ return t.key==='recordings'; })[0] || {});
+        var recGB = recType.sizeGB || 0;
+        var usedPct = (disk.usedPct || 0).toFixed(1);
+        var recRatio = disk.totalGB > 0 ? (recGB / disk.totalGB * 100).toFixed(1) : 0;
+
+        // 设备分布迷你条
+        var camSegs = cams.map(function(c, i){
+          var pct = totalFiles > 0 ? ((c.files||0) / totalFiles * 100).toFixed(1) : 0;
+          var colors = ['var(--accent)', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899'];
+          var col = colors[i % colors.length];
+          return '<span style="width:' + pct + '%;background:' + col + '" title="' + esc(c.name) + ': ' + (c.files||0) + ' 个 (' + pct + '%)"></span>';
+        }).join('') || '<span style="width:100%;background:var(--accent)"></span>';
+
+        return '<div class="st-stats">'
+          + stStat('hard-drive', '总存储容量',
+              '<span class="st-stat__num">' + fmtGB(disk.usedGB) + '</span><span class="st-stat__total">/ ' + fmtGB(disk.totalGB) + '</span>',
+              '<div class="st-bar"><span style="width:' + usedPct + '%"></span></div>',
+              '<span>已使用 <b>' + usedPct + '%</b></span><span>剩余 ' + fmtGB(disk.freeGB) + ' 可用</span>',
+              '<span class="st-stat__badge" style="background:rgba(37,99,235,0.12);color:var(--accent)">使用率 ' + usedPct + '%</span>')
+          + stStat('clock', '预计可录时长',
+              '<span class="st-stat__num">' + estTxt + '</span>',
+              '<div class="st-bar"><span style="width:100%;background:linear-gradient(90deg, #10B981, var(--accent))"></span></div>',
+              '<span>全机综合码率估算</span><span>支持连续覆盖</span>',
+              '<span class="st-stat__badge" style="background:rgba(16,185,129,0.12);color:#10B981">' + (status && status.healthy ? '就绪正常' : '需关注') + '</span>')
+          + stStat('film', '监控录像文件',
+              '<span class="st-stat__num">' + totalFiles.toLocaleString() + '</span><span class="st-stat__unit">个</span>',
+              '<div class="st-bar st-bar--multi">' + camSegs + '</div>',
+              '<span>多通道并发落盘</span><span>共 <b>' + cams.length + '</b> 台在线设备</span>',
+              '<span class="st-stat__badge" style="background:rgba(139,92,246,0.12);color:#8B5CF6">' + cams.length + ' 路通道</span>')
+          + stStat('database', '录像数据占用',
+              '<span class="st-stat__num">' + fmtGB(recGB) + '</span>',
+              '<div class="st-bar"><span style="width:' + recRatio + '%;background:#F59E0B"></span></div>',
+              '<span>历史与连续录像</span><span>余量 <b>' + fmtGB(disk.freeGB) + '</b></span>',
+              '<span class="st-stat__badge" style="background:rgba(245,158,11,0.12);color:#F59E0B">占总盘 ' + recRatio + '%</span>')
+          + '</div>';
+      })()
 
     // 概览页直接展示核心录像存储目录卡片
     + stRecDirCard(status, stLocs)
@@ -18002,26 +18486,38 @@ function paintStorage(c, d, cleanup){
     // 摄像头 + 策略
     + '<div class="st-row st-row--2">'
     +   '<div class="card">'
-    +     '<div class="card__head">' + icon('camera',15) + '<span class="card__title">按摄像头统计</span></div>'
-    +     '<div class="st-table">'
-    +       '<div class="st-table__head">'
-    +         '<span>摄像头</span><span>已用容量</span><span>文件数</span><span>保留天数</span><span>预计可录</span>'
+    +     '<div class="card__head">'
+    +       '<span class="card__title">' + icon('camera',16) + '按摄像头统计</span>'
+    +       '<span class="badge" style="font-size:12px;">共 ' + cams.length + ' 台设备</span>'
+    +     '</div>'
+    +     '<div class="st-table-wrap">'
+    +       '<div class="st-table">'
+    +         '<div class="st-table__head">'
+    +           '<span>摄像头设备</span><span>已用容量与占比</span><span>录像文件</span><span>保留策略</span><span>预计可录</span>'
+    +         '</div>'
+    +         (cams.length ? cams.map(function(x){
+              var isLow = x.estDays != null && x.estDays < 3;
+              var estBadge = (x.estDays >= 999)
+                ? '<span class="st-tag">—</span>'
+                : ('<span class="st-tag ' + (isLow ? 'st-tag--warn' : 'st-tag--ok') + '">' + Math.round(x.estDays||0) + ' 天</span>');
+              return '<div class="st-table__row">'
+                + '<span class="st-cam">'
+                +   '<span class="status-dot ' + (x.online?'is-online':'') + '"></span>'
+                +   '<span class="st-cam__name" title="' + esc(x.name) + '">' + esc(formatDevName(x.name)) + '</span>'
+                + '</span>'
+                + '<span class="st-cell">'
+                +   '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">'
+                +     '<span class="st-cell__val">' + fmtGB(x.sizeGB) + '</span>'
+                +     '<span style="font-size:11px;color:var(--text-muted);">' + (x.pct||0).toFixed(1) + '%</span>'
+                +   '</div>'
+                +   '<span class="st-bar st-bar--sm"><span style="width:' + Math.min(100,(x.pct||0)) + '%"></span></span>'
+                + '</span>'
+                + '<span class="st-cell"><b>' + (x.files||0).toLocaleString() + '</b> <span style="font-size:11px;color:var(--text-muted)">个</span></span>'
+                + '<span class="st-cell">' + (x.keepDays||0) + ' 天</span>'
+                + '<span class="st-cell">' + estBadge + '</span>'
+                + '</div>';
+            }).join('') : emptyState('quiet', { title:'还没有录像', desc:'开启录像后这里会按摄像头列出占用', compact:true }))
     +       '</div>'
-    +       (cams.length ? cams.map(function(x){
-            return '<div class="st-table__row">'
-              + '<span class="st-cam">'
-              +   '<span class="status-dot ' + (x.online?'is-online':'') + '"></span>'
-              +   '<span class="st-cam__name" title="' + esc(x.name) + '">' + esc(formatDevName(x.name)) + '</span>'
-              + '</span>'
-              + '<span class="st-cell">'
-              +   '<span class="st-cell__val">' + fmtGB(x.sizeGB) + '</span>'
-              +   '<span class="st-bar st-bar--sm"><span style="width:' + Math.min(100,(x.pct||0)) + '%"></span></span>'
-              + '</span>'
-              + '<span class="st-cell">' + (x.files||0).toLocaleString() + '</span>'
-              + '<span class="st-cell">' + (x.keepDays||0) + ' 天</span>'
-              + '<span class="st-cell">' + (x.estDays >= 999 ? '—' : Math.round(x.estDays||0) + ' 天') + '</span>'
-              + '</div>';
-          }).join('') : emptyState('quiet', { title:'还没有录像', desc:'开启录像后这里会按摄像头列出占用', compact:true }))
     // 未归属的孤儿目录（已移出/已删除设备遗留）。
     // 用途是**对账**：各台之和 + 本行 == 录像根目录实际占用。
     // 用户反馈：改成以摄像头为基准后，这部分空间会「找不到是谁的」。
@@ -18128,22 +18624,33 @@ function paintStorage(c, d, cleanup){
     +     '</div>'
     +   '</div>'
 
-    +   '<div class="card">'
-    +     '<div class="card__head">' + icon('trash',15) + '<span class="card__title">清理预览</span></div>'
+    +   '<div class="card st-clean-card">'
+    +     '<div class="card__head">'
+    +       '<span class="card__title">' + icon('trash',16) + '清理预览</span>'
+    +       (cleanup.totalMB > 0
+              ? '<span class="badge" style="background:rgba(245,158,11,0.12);color:#F59E0B;border:1px solid rgba(245,158,11,0.25)">可释放 ' + fmtGB(cleanup.totalMB/1024) + '</span>'
+              : '<span class="badge" style="background:rgba(16,185,129,0.12);color:#10B981;border:1px solid rgba(16,185,129,0.25)">' + icon('check',11) + ' 占用正常</span>')
+    +     '</div>'
     +     '<div class="st-clean">'
     +       (cleanup.totalMB > 0
-          ? '<div class="st-clean__sum">' + icon('check',15)
-            + '<span>清理后可释放 <b>' + fmtGB(cleanup.totalMB/1024) + '</b> 空间</span></div>'
-            + '<div class="st-kv"><span>过期录像（超 ' + (cleanup.keepDays||7) + ' 天）</span><b>'
-            +   fmtGB(cleanup.totalMB/1024) + ' · ' + (cleanup.fileCount||0) + ' 个</b></div>'
-          : emptyState('quiet', { title:'没有可清理的文件', desc:'当前占用正常', compact:true }))
+              ? '<div class="st-clean__box is-warn">'
+                + '<div class="st-clean__status-title">' + icon('trash',18) + '发现可清理的历史录像</div>'
+                + '<div class="st-clean__desc">根据当前保留天数规则（超过 ' + (cleanup.keepDays||7) + ' 天），确认清理后可释放 <b>' + fmtGB(cleanup.totalMB/1024) + '</b> 存储空间。</div>'
+                + '<div class="st-clean__metric-row">'
+                +   '<span>过期文件总数</span><b>' + (cleanup.fileCount||0).toLocaleString() + ' 个文件</b>'
+                + '</div>'
+                + '</div>'
+              : '<div class="st-clean__box is-empty">'
+                + '<div class="st-clean__status-title">' + icon('check',18) + '没有可清理的文件</div>'
+                + '<div class="st-clean__desc">所有录像文件均在保留策略期限内（' + (cleanup.keepDays||7) + ' 天），当前磁盘占用处于健康状态。</div>'
+                + '</div>')
     +     '</div>'
     +     '<div class="st-clean__acts">'
     +       '<button class="btn btn--primary" id="stCleanGo"' + (cleanup.totalMB>0?'':' disabled') + '>'
-    +         icon('trash',14) + '确认清理</button>'
-    +       '<span class="st-warn">' + icon('alert',12) + '此操作将删除选中的文件，无法恢复</span>'
+    +         icon('trash',14) + '确认清理' + (cleanup.totalMB>0 ? (' (' + fmtGB(cleanup.totalMB/1024) + ')') : '') + '</button>'
+    +       '<div class="st-clean__alert">' + icon('alert',14) + '<span>此操作将删除过期的录像文件，清理后无法恢复，请谨慎操作。</span></div>'
     +     '</div>'
-    +     '</div>'
+    +   '</div>'
     +   '</div>'
     + '</div>'
     +   '</div>'
@@ -18158,11 +18665,18 @@ function paintStorage(c, d, cleanup){
   bindStorage(c, cams);
 }
 
-function stStat(ic, label, val, extraHtml){
+function stStat(ic, label, valHtml, barHtml, footHtml, badgeHtml){
   return '<div class="st-stat">'
-    + '<div class="st-stat__head">' + icon(ic,16) + '<span>' + label + '</span></div>'
-    + '<div class="st-stat__val">' + val + '</div>'
-    + (extraHtml || '')
+    + '<div class="st-stat__head">'
+    +   '<div class="st-stat__title-row">'
+    +     '<div class="st-stat__icon-wrap">' + icon(ic, 16) + '</div>'
+    +     '<span class="st-stat__label">' + label + '</span>'
+    +   '</div>'
+    +   (badgeHtml || '')
+    + '</div>'
+    + '<div class="st-stat__val-wrap">' + valHtml + '</div>'
+    + (barHtml || '')
+    + (footHtml ? ('<div class="st-stat-foot">' + footHtml + '</div>') : '')
     + '</div>';
 }
 
@@ -18293,6 +18807,28 @@ function bindMigrate(){
 }
 
 function bindStorage(c, cams){
+  // 快速搜索过滤共享文件夹
+  var searchInp = c.querySelector('#stLocSearch');
+  if(searchInp){
+    searchInp.oninput = function(){
+      var q = this.value.trim().toLowerCase();
+      var items = c.querySelectorAll('.st-loc-item');
+      Array.prototype.forEach.call(items, function(el){
+        var txt = el.innerText.toLowerCase();
+        if(!q || txt.indexOf(q) !== -1){
+          el.style.display = 'flex';
+        } else {
+          el.style.display = 'none';
+        }
+      });
+      var groups = c.querySelectorAll('.st-loc-group');
+      Array.prototype.forEach.call(groups, function(g){
+        var visItems = g.querySelectorAll('.st-loc-item:not([style*="display: none"])');
+        g.style.display = visItems.length ? 'flex' : 'none';
+      });
+    };
+  }
+
   function applyRecordDir(dir){
     if(!dir) return;
     if(!confirm('把录像存储目录切换为：\n' + dir + '\n\n新录像将自动写入新目录，已有历史录像安全保留在原路径。\n如需整体搬迁历史录像，可使用「迁移已有录像」。确定？')) return;

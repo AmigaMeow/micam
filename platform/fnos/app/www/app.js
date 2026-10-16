@@ -8873,6 +8873,12 @@ function stRecDirCard(status, stLocs){
     +     '</div>'
     +     '<div style="font-size:12px;color:var(--text-muted);margin-top:6px;">提示：自定义路径必须为绝对路径，且已在飞牛「应用中心 - 小米摄像头 - 设置 - 访问权限」中授予读写权限。</div>'
     +   '</div>'
+    +   '<div class="st-locs-search-bar" style="margin-top:6px;margin-bottom:12px;">'
+    +     '<div style="position:relative;">'
+    +       '<input class="input st-locs-search-inp" id="stLocSearch" placeholder="快速过滤共享文件夹名称或物理路径 (输入关键字即时筛选)..." style="width:100%;height:38px;padding-left:36px;font-size:13px;border-radius:8px;">'
+    +       '<span style="position:absolute;left:12px;top:11px;color:var(--text-muted);pointer-events:none;">' + icon('search',15) + '</span>'
+    +     '</div>'
+    +   '</div>'
     +   '<div class="st-locs-wrap">'
     +     (userShares.length ? (
             '<div class="st-loc-group">'
@@ -9032,17 +9038,45 @@ function paintStorage(c, d, cleanup){
     +   '<div class="set3__main">'
     +   '<div class="pnl' + (stTab === 'ov' ? ' is-on' : '') + '" data-pnl="ov">'
 
-    // 4 统计卡
-    + '<div class="st-stats">'
-    +   stStat('hard-drive', '总容量', fmtGB(disk.usedGB) + ' / ' + fmtGB(disk.totalGB),
-            '<div class="st-bar"><span style="width:' + (disk.usedPct||0).toFixed(1) + '%"></span></div>'
-            + '<div class="st-bar__sub">已用 ' + (disk.usedPct||0).toFixed(1) + '%</div>')
-    +   stStat('clock', '预计可录时长', estTxt, '<div class="st-hint">按当前使用率估算</div>')
-    +   stStat('film', '录像文件', (cams.reduce(function(a,x){return a+(x.files||0);},0)).toLocaleString() + ' 个',
-            '<div class="st-hint">共 ' + cams.length + ' 台设备</div>')
-    +   stStat('database', '录像数据', fmtGB((types.filter(function(t){return t.key==='recordings';})[0]||{}).sizeGB),
-            '<div class="st-hint">' + fmtGB(disk.freeGB) + ' 可用</div>')
-    + '</div>'
+    // 4 现代化数据看板统计卡
+    + (function(){
+        var totalFiles = cams.reduce(function(a,x){ return a+(x.files||0); }, 0);
+        var recType = (types.filter(function(t){ return t.key==='recordings'; })[0] || {});
+        var recGB = recType.sizeGB || 0;
+        var usedPct = (disk.usedPct || 0).toFixed(1);
+        var recRatio = disk.totalGB > 0 ? (recGB / disk.totalGB * 100).toFixed(1) : 0;
+
+        // 设备分布迷你条
+        var camSegs = cams.map(function(c, i){
+          var pct = totalFiles > 0 ? ((c.files||0) / totalFiles * 100).toFixed(1) : 0;
+          var colors = ['var(--accent)', '#10B981', '#F59E0B', '#8B5CF6', '#EC4899'];
+          var col = colors[i % colors.length];
+          return '<span style="width:' + pct + '%;background:' + col + '" title="' + esc(c.name) + ': ' + (c.files||0) + ' 个 (' + pct + '%)"></span>';
+        }).join('') || '<span style="width:100%;background:var(--accent)"></span>';
+
+        return '<div class="st-stats">'
+          + stStat('hard-drive', '总存储容量',
+              '<span class="st-stat__num">' + fmtGB(disk.usedGB) + '</span><span class="st-stat__total">/ ' + fmtGB(disk.totalGB) + '</span>',
+              '<div class="st-bar"><span style="width:' + usedPct + '%"></span></div>',
+              '<span>已使用 <b>' + usedPct + '%</b></span><span>剩余 ' + fmtGB(disk.freeGB) + ' 可用</span>',
+              '<span class="st-stat__badge" style="background:rgba(37,99,235,0.12);color:var(--accent)">使用率 ' + usedPct + '%</span>')
+          + stStat('clock', '预计可录时长',
+              '<span class="st-stat__num">' + estTxt + '</span>',
+              '<div class="st-bar"><span style="width:100%;background:linear-gradient(90deg, #10B981, var(--accent))"></span></div>',
+              '<span>全机综合码率估算</span><span>支持连续覆盖</span>',
+              '<span class="st-stat__badge" style="background:rgba(16,185,129,0.12);color:#10B981">' + (status && status.healthy ? '就绪正常' : '需关注') + '</span>')
+          + stStat('film', '监控录像文件',
+              '<span class="st-stat__num">' + totalFiles.toLocaleString() + '</span><span class="st-stat__unit">个</span>',
+              '<div class="st-bar st-bar--multi">' + camSegs + '</div>',
+              '<span>多通道并发落盘</span><span>共 <b>' + cams.length + '</b> 台在线设备</span>',
+              '<span class="st-stat__badge" style="background:rgba(139,92,246,0.12);color:#8B5CF6">' + cams.length + ' 路通道</span>')
+          + stStat('database', '录像数据占用',
+              '<span class="st-stat__num">' + fmtGB(recGB) + '</span>',
+              '<div class="st-bar"><span style="width:' + recRatio + '%;background:#F59E0B"></span></div>',
+              '<span>历史与连续录像</span><span>余量 <b>' + fmtGB(disk.freeGB) + '</b></span>',
+              '<span class="st-stat__badge" style="background:rgba(245,158,11,0.12);color:#F59E0B">占总盘 ' + recRatio + '%</span>')
+          + '</div>';
+      })()
 
     // 概览页直接展示核心录像存储目录卡片
     + stRecDirCard(status, stLocs)
@@ -9093,26 +9127,38 @@ function paintStorage(c, d, cleanup){
     // 摄像头 + 策略
     + '<div class="st-row st-row--2">'
     +   '<div class="card">'
-    +     '<div class="card__head">' + icon('camera',15) + '<span class="card__title">按摄像头统计</span></div>'
-    +     '<div class="st-table">'
-    +       '<div class="st-table__head">'
-    +         '<span>摄像头</span><span>已用容量</span><span>文件数</span><span>保留天数</span><span>预计可录</span>'
+    +     '<div class="card__head">'
+    +       '<span class="card__title">' + icon('camera',16) + '按摄像头统计</span>'
+    +       '<span class="badge" style="font-size:12px;">共 ' + cams.length + ' 台设备</span>'
+    +     '</div>'
+    +     '<div class="st-table-wrap">'
+    +       '<div class="st-table">'
+    +         '<div class="st-table__head">'
+    +           '<span>摄像头设备</span><span>已用容量与占比</span><span>录像文件</span><span>保留策略</span><span>预计可录</span>'
+    +         '</div>'
+    +         (cams.length ? cams.map(function(x){
+              var isLow = x.estDays != null && x.estDays < 3;
+              var estBadge = (x.estDays >= 999)
+                ? '<span class="st-tag">—</span>'
+                : ('<span class="st-tag ' + (isLow ? 'st-tag--warn' : 'st-tag--ok') + '">' + Math.round(x.estDays||0) + ' 天</span>');
+              return '<div class="st-table__row">'
+                + '<span class="st-cam">'
+                +   '<span class="status-dot ' + (x.online?'is-online':'') + '"></span>'
+                +   '<span class="st-cam__name" title="' + esc(x.name) + '">' + esc(formatDevName(x.name)) + '</span>'
+                + '</span>'
+                + '<span class="st-cell">'
+                +   '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">'
+                +     '<span class="st-cell__val">' + fmtGB(x.sizeGB) + '</span>'
+                +     '<span style="font-size:11px;color:var(--text-muted);">' + (x.pct||0).toFixed(1) + '%</span>'
+                +   '</div>'
+                +   '<span class="st-bar st-bar--sm"><span style="width:' + Math.min(100,(x.pct||0)) + '%"></span></span>'
+                + '</span>'
+                + '<span class="st-cell"><b>' + (x.files||0).toLocaleString() + '</b> <span style="font-size:11px;color:var(--text-muted)">个</span></span>'
+                + '<span class="st-cell">' + (x.keepDays||0) + ' 天</span>'
+                + '<span class="st-cell">' + estBadge + '</span>'
+                + '</div>';
+            }).join('') : emptyState('quiet', { title:'还没有录像', desc:'开启录像后这里会按摄像头列出占用', compact:true }))
     +       '</div>'
-    +       (cams.length ? cams.map(function(x){
-            return '<div class="st-table__row">'
-              + '<span class="st-cam">'
-              +   '<span class="status-dot ' + (x.online?'is-online':'') + '"></span>'
-              +   '<span class="st-cam__name" title="' + esc(x.name) + '">' + esc(formatDevName(x.name)) + '</span>'
-              + '</span>'
-              + '<span class="st-cell">'
-              +   '<span class="st-cell__val">' + fmtGB(x.sizeGB) + '</span>'
-              +   '<span class="st-bar st-bar--sm"><span style="width:' + Math.min(100,(x.pct||0)) + '%"></span></span>'
-              + '</span>'
-              + '<span class="st-cell">' + (x.files||0).toLocaleString() + '</span>'
-              + '<span class="st-cell">' + (x.keepDays||0) + ' 天</span>'
-              + '<span class="st-cell">' + (x.estDays >= 999 ? '—' : Math.round(x.estDays||0) + ' 天') + '</span>'
-              + '</div>';
-          }).join('') : emptyState('quiet', { title:'还没有录像', desc:'开启录像后这里会按摄像头列出占用', compact:true }))
     // 未归属的孤儿目录（已移出/已删除设备遗留）。
     // 用途是**对账**：各台之和 + 本行 == 录像根目录实际占用。
     // 用户反馈：改成以摄像头为基准后，这部分空间会「找不到是谁的」。
@@ -9219,22 +9265,33 @@ function paintStorage(c, d, cleanup){
     +     '</div>'
     +   '</div>'
 
-    +   '<div class="card">'
-    +     '<div class="card__head">' + icon('trash',15) + '<span class="card__title">清理预览</span></div>'
+    +   '<div class="card st-clean-card">'
+    +     '<div class="card__head">'
+    +       '<span class="card__title">' + icon('trash',16) + '清理预览</span>'
+    +       (cleanup.totalMB > 0
+              ? '<span class="badge" style="background:rgba(245,158,11,0.12);color:#F59E0B;border:1px solid rgba(245,158,11,0.25)">可释放 ' + fmtGB(cleanup.totalMB/1024) + '</span>'
+              : '<span class="badge" style="background:rgba(16,185,129,0.12);color:#10B981;border:1px solid rgba(16,185,129,0.25)">' + icon('check',11) + ' 占用正常</span>')
+    +     '</div>'
     +     '<div class="st-clean">'
     +       (cleanup.totalMB > 0
-          ? '<div class="st-clean__sum">' + icon('check',15)
-            + '<span>清理后可释放 <b>' + fmtGB(cleanup.totalMB/1024) + '</b> 空间</span></div>'
-            + '<div class="st-kv"><span>过期录像（超 ' + (cleanup.keepDays||7) + ' 天）</span><b>'
-            +   fmtGB(cleanup.totalMB/1024) + ' · ' + (cleanup.fileCount||0) + ' 个</b></div>'
-          : emptyState('quiet', { title:'没有可清理的文件', desc:'当前占用正常', compact:true }))
+              ? '<div class="st-clean__box is-warn">'
+                + '<div class="st-clean__status-title">' + icon('trash',18) + '发现可清理的历史录像</div>'
+                + '<div class="st-clean__desc">根据当前保留天数规则（超过 ' + (cleanup.keepDays||7) + ' 天），确认清理后可释放 <b>' + fmtGB(cleanup.totalMB/1024) + '</b> 存储空间。</div>'
+                + '<div class="st-clean__metric-row">'
+                +   '<span>过期文件总数</span><b>' + (cleanup.fileCount||0).toLocaleString() + ' 个文件</b>'
+                + '</div>'
+                + '</div>'
+              : '<div class="st-clean__box is-empty">'
+                + '<div class="st-clean__status-title">' + icon('check',18) + '没有可清理的文件</div>'
+                + '<div class="st-clean__desc">所有录像文件均在保留策略期限内（' + (cleanup.keepDays||7) + ' 天），当前磁盘占用处于健康状态。</div>'
+                + '</div>')
     +     '</div>'
     +     '<div class="st-clean__acts">'
     +       '<button class="btn btn--primary" id="stCleanGo"' + (cleanup.totalMB>0?'':' disabled') + '>'
-    +         icon('trash',14) + '确认清理</button>'
-    +       '<span class="st-warn">' + icon('alert',12) + '此操作将删除选中的文件，无法恢复</span>'
+    +         icon('trash',14) + '确认清理' + (cleanup.totalMB>0 ? (' (' + fmtGB(cleanup.totalMB/1024) + ')') : '') + '</button>'
+    +       '<div class="st-clean__alert">' + icon('alert',14) + '<span>此操作将删除过期的录像文件，清理后无法恢复，请谨慎操作。</span></div>'
     +     '</div>'
-    +     '</div>'
+    +   '</div>'
     +   '</div>'
     + '</div>'
     +   '</div>'
@@ -9249,11 +9306,18 @@ function paintStorage(c, d, cleanup){
   bindStorage(c, cams);
 }
 
-function stStat(ic, label, val, extraHtml){
+function stStat(ic, label, valHtml, barHtml, footHtml, badgeHtml){
   return '<div class="st-stat">'
-    + '<div class="st-stat__head">' + icon(ic,16) + '<span>' + label + '</span></div>'
-    + '<div class="st-stat__val">' + val + '</div>'
-    + (extraHtml || '')
+    + '<div class="st-stat__head">'
+    +   '<div class="st-stat__title-row">'
+    +     '<div class="st-stat__icon-wrap">' + icon(ic, 16) + '</div>'
+    +     '<span class="st-stat__label">' + label + '</span>'
+    +   '</div>'
+    +   (badgeHtml || '')
+    + '</div>'
+    + '<div class="st-stat__val-wrap">' + valHtml + '</div>'
+    + (barHtml || '')
+    + (footHtml ? ('<div class="st-stat-foot">' + footHtml + '</div>') : '')
     + '</div>';
 }
 
@@ -9384,6 +9448,28 @@ function bindMigrate(){
 }
 
 function bindStorage(c, cams){
+  // 快速搜索过滤共享文件夹
+  var searchInp = c.querySelector('#stLocSearch');
+  if(searchInp){
+    searchInp.oninput = function(){
+      var q = this.value.trim().toLowerCase();
+      var items = c.querySelectorAll('.st-loc-item');
+      Array.prototype.forEach.call(items, function(el){
+        var txt = el.innerText.toLowerCase();
+        if(!q || txt.indexOf(q) !== -1){
+          el.style.display = 'flex';
+        } else {
+          el.style.display = 'none';
+        }
+      });
+      var groups = c.querySelectorAll('.st-loc-group');
+      Array.prototype.forEach.call(groups, function(g){
+        var visItems = g.querySelectorAll('.st-loc-item:not([style*="display: none"])');
+        g.style.display = visItems.length ? 'flex' : 'none';
+      });
+    };
+  }
+
   function applyRecordDir(dir){
     if(!dir) return;
     if(!confirm('把录像存储目录切换为：\n' + dir + '\n\n新录像将自动写入新目录，已有历史录像安全保留在原路径。\n如需整体搬迁历史录像，可使用「迁移已有录像」。确定？')) return;
