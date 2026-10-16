@@ -510,6 +510,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/system/runtime", s.handleSystemRuntime)
 	mux.HandleFunc("/api/system/runtime/fetch-miot-lib", s.handleMiotLibFetch)
 	mux.HandleFunc("/api/system/runtime/upload-miot-lib", s.handleMiotLibUpload)
+	mux.HandleFunc("/api/system/update", s.handleSystemUpdate)
 
 	// 平台信息
 	mux.HandleFunc("/api/platform", s.handlePlatform)

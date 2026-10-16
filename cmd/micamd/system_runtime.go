@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -272,4 +273,143 @@ func (s *Server) handleMiotLibUpload(w http.ResponseWriter, r *http.Request) {
 		"msg":  "组件上传并激活成功",
 		"path": targetFile,
 	})
+}
+
+
+type updateInfo struct {
+	Ok             bool   `json:"ok"`
+	CurrentVersion string `json:"currentVersion"`
+	LatestVersion  string `json:"latestVersion"`
+	HasUpdate      bool   `json:"hasUpdate"`
+	ReleaseName    string `json:"releaseName"`
+	ReleaseURL     string `json:"releaseUrl"`
+	DownloadURL    string `json:"downloadUrl"`
+	PublishedAt    string `json:"publishedAt"`
+	Changelog      string `json:"changelog"`
+	CheckedAt      string `json:"checkedAt"`
+	Error          string `json:"error,omitempty"`
+}
+
+var (
+	updateCacheMu    sync.Mutex
+	lastUpdateCheck  time.Time
+	cachedUpdateInfo *updateInfo
+)
+
+// handleSystemUpdate 检查 GitHub Releases 最新版本与更新包信息
+func (s *Server) handleSystemUpdate(w http.ResponseWriter, r *http.Request) {
+	force := r.URL.Query().Get("force") == "1"
+
+	updateCacheMu.Lock()
+	if !force && cachedUpdateInfo != nil && time.Since(lastUpdateCheck) < 30*time.Minute {
+		res := *cachedUpdateInfo
+		updateCacheMu.Unlock()
+		writeJSON(w, 200, res)
+		return
+	}
+	updateCacheMu.Unlock()
+
+	info, err := fetchLatestReleaseInfo()
+	if err != nil {
+		writeJSON(w, 200, map[string]any{
+			"ok":             false,
+			"currentVersion": appVersion,
+			"latestVersion":  appVersion,
+			"hasUpdate":      false,
+			"error":          "检测更新失败: " + err.Error(),
+			"checkedAt":      time.Now().Format("2006-01-02 15:04:05"),
+		})
+		return
+	}
+
+	updateCacheMu.Lock()
+	cachedUpdateInfo = info
+	lastUpdateCheck = time.Now()
+	updateCacheMu.Unlock()
+
+	writeJSON(w, 200, info)
+}
+
+type ghRelease struct {
+	TagName     string `json:"tag_name"`
+	Name        string `json:"name"`
+	Body        string `json:"body"`
+	HTMLURL     string `json:"html_url"`
+	PublishedAt string `json:"published_at"`
+	Assets      []struct {
+		Name               string `json:"name"`
+		BrowserDownloadURL string `json:"browser_download_url"`
+		Size               int64  `json:"size"`
+	} `json:"assets"`
+}
+
+func fetchLatestReleaseInfo() (*updateInfo, error) {
+	req, err := http.NewRequest("GET", "https://api.github.com/repos/AmigaMeow/micam/releases/latest", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("User-Agent", "MiCam-NAS/" + appVersion)
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+
+	client := &http.Client{Timeout: 8 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("GitHub API 返回 HTTP %d", resp.StatusCode)
+	}
+
+	var rel ghRelease
+	if err := json.NewDecoder(resp.Body).Decode(&rel); err != nil {
+		return nil, err
+	}
+
+	latestVer := strings.TrimPrefix(rel.TagName, "v")
+	curVer := appVersion
+
+	downloadURL := ""
+	for _, a := range rel.Assets {
+		if strings.HasSuffix(a.Name, ".fpk") {
+			downloadURL = a.BrowserDownloadURL
+			break
+		}
+	}
+	if downloadURL == "" && rel.HTMLURL != "" {
+		downloadURL = rel.HTMLURL
+	}
+
+	hasUpdate := isVersionNewer(latestVer, curVer)
+
+	return &updateInfo{
+		Ok:             true,
+		CurrentVersion: curVer,
+		LatestVersion:  latestVer,
+		HasUpdate:      hasUpdate,
+		ReleaseName:    rel.Name,
+		ReleaseURL:     rel.HTMLURL,
+		DownloadURL:    downloadURL,
+		PublishedAt:    rel.PublishedAt,
+		Changelog:      rel.Body,
+		CheckedAt:      time.Now().Format("2006-01-02 15:04:05"),
+	}, nil
+}
+
+func isVersionNewer(latest, cur string) bool {
+	lParts := strings.Split(strings.TrimPrefix(latest, "v"), ".")
+	cParts := strings.Split(strings.TrimPrefix(cur, "v"), ".")
+	for i := 0; i < len(lParts) && i < len(cParts); i++ {
+		var lNum, cNum int
+		fmt.Sscanf(lParts[i], "%d", &lNum)
+		fmt.Sscanf(cParts[i], "%d", &cNum)
+		if lNum > cNum {
+			return true
+		}
+		if lNum < cNum {
+			return false
+		}
+	}
+	return len(lParts) > len(cParts)
 }
