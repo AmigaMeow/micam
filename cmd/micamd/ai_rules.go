@@ -66,7 +66,7 @@ func evalRules(e *event.Event, cfg aiConfig, recentSame int) aiRuleResult {
 	}
 
 	// 4) 车辆与车道防护 (车旁徘徊 / 重复车辆)
-	if (on("repeat_car") || on("car_loiter_guard")) && e.Type == "vehicle" && recentSame >= 2 {
+	if (on("repeat_car") || on("car_loiter_guard")) && e.Type == "vehicle" && recentSame >= 2 && !strings.Contains(e.Desc, "静止") {
 		hits = append(hits, "重复出现的车辆")
 	}
 

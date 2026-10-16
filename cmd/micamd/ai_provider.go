@@ -457,9 +457,13 @@ func (c *aiProviderClient) AnswerVisualQuery(ctx context.Context, question strin
 	var parts []oaiContentPart
 	promptText := "用户查询问题：" + question
 	if contextInfo != "" {
-		promptText += "\n背景参考信息：" + contextInfo
+		promptText += "\n\n【监控系统事件时间线与检索事实】\n" + contextInfo
 	}
-	promptText += "\n请仔细查看以下所附的真实监控画面截图，给出精准、实事求是且条理清晰的中文回答。"
+	promptText += "\n\n请作为家庭智能监控管家，综合上述客观事实时间线与所附真实监控抓拍截图，实事求是、详实严谨地回答用户问题。"
+	promptText += "\n回答要求："
+	promptText += "\n1. 必须在开头给出直接、确切的结论（如发生了几次、主要活跃时段，或者未发生）；"
+	promptText += "\n2. 逐一列举具体时间点、发生经过与动作细节（区分‘走动穿行/经过’与‘原地静止休息’）；"
+	promptText += "\n3. 笃定负责，切勿推脱让用户‘自行查看全天回放’或声称‘单凭截图无法统计’。"
 	parts = append(parts, oaiContentPart{Type: "text", Text: promptText})
 
 	for _, img := range images {
@@ -469,16 +473,15 @@ func (c *aiProviderClient) AnswerVisualQuery(ctx context.Context, question strin
 		})
 	}
 
-	const visualQASystemPrompt = `你是一个专业的家庭监控智能管家视觉大模型。
-用户正在向你提问关于家庭监控画面的真实情况。
-请仔细观察用户提供的多张监控画面截图，实事求是地回答问题。
+	const visualQASystemPrompt = `你是一个专业的家庭监控智能管家。
+你正在分析家庭监控系统中的真实监控录像记录与关键帧画面。
+系统已为你提供了全天/时段内的事件检索记录时间线以及代表性的关键画面截图。
 
 回答规范：
-1. 真实客观：严格依据监控画面中实际呈现的物体、人物、动物、车辆回答，绝不凭空推测或编造。
-2. 细节明确：
-   - 如果画面中发现了用户询问的目标（如小狗、猫咪、特定车辆、人员、包裹等），请明确指出它的位置（如“大门右侧花纹地毯上”、“画面右下方”）、状态动作（如“正趴着休息”、“正在走动”）、外观特征（如“浅黄色毛发”、“车牌号”）以及对应的画面细节。
-   - 如果画面中确实没有用户询问的目标，请客观如实告知未发现，并简要说明当前画面中实际存在的主要物体或状态。
-3. 语气友好、重点突出、使用清晰规范的中文排版回答。`
+1. 必须直接输出排版优美、清晰规范的 Markdown 正式回答，开头直接给出明确结论与具体时间点，不要过多自我纠结。
+2. 实事求是、专业严谨：结合系统提供的事件记录事实与画面证据回答，不凭空捏造。
+3. 过程与细节：按时间顺序简明扼要陈述各关键时刻的活动经过（具体时间、机位、具体动作/状态，并区分“走动经过”与“原地趴卧休息”）。
+4. 负责笃定：你已掌握系统完整的事件检索结果，严禁推脱让用户“自行查看全天回放”或声称“单凭几张截图无法统计”。`
 
 	r, err := c.do(ctx, oaiReq{
 		Model: c.model,
@@ -486,7 +489,7 @@ func (c *aiProviderClient) AnswerVisualQuery(ctx context.Context, question strin
 			{Role: "system", Content: visualQASystemPrompt},
 			{Role: "user", Content: parts},
 		},
-		MaxTokens: c.maxTokens,
+		MaxTokens: func() int { if c.maxTokens < 4096 { return 4096 }; return c.maxTokens }(),
 	})
 	if err != nil {
 		return "", u, err
@@ -496,11 +499,11 @@ func (c *aiProviderClient) AnswerVisualQuery(ctx context.Context, question strin
 	u.CompletionTokens = r.Usage.CompletionTokens
 
 	choice := r.Choices[0]
-	txt := choice.Message.Content
-	if strings.TrimSpace(txt) == "" {
-		txt = choice.Message.ReasoningContent
+	txt := strings.TrimSpace(choice.Message.Content)
+	if txt == "" {
+		return "", u, fmt.Errorf("云端模型未在时限内生成有效答复 (finish_reason=%s)", choice.FinishReason)
 	}
-	return strings.TrimSpace(txt), u, nil
+	return txt, u, nil
 }
 
 var _ = bytes.NewReader

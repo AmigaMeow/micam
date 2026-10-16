@@ -15,7 +15,6 @@ package main
 
 import (
 	"context"
-	"os"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -60,6 +59,32 @@ type aiQuery struct {
 //	车牌：京A88888 等标准车牌
 //	设备：直接匹配设备名或别名里的子串
 //	时段：早上 / 上午 / 中午 / 下午 / 晚上 / 凌晨 / 半夜
+func eventSearchableText(e *event.Event) string {
+	var sb strings.Builder
+	sb.WriteString(e.Desc)
+	sb.WriteString(" ")
+	sb.WriteString(e.AICls)
+	sb.WriteString(" ")
+	sb.WriteString(e.AITitle)
+	sb.WriteString(" ")
+	sb.WriteString(e.AISummary)
+	sb.WriteString(" ")
+	sb.WriteString(strings.Join(e.AITags, " "))
+	sb.WriteString(" ")
+	sb.WriteString(strings.Join(e.AIEntities, " "))
+	sb.WriteString(" ")
+	sb.WriteString(strings.Join(e.AIActions, " "))
+	sb.WriteString(" ")
+	sb.WriteString(strings.Join(e.KeyMoments, " "))
+	sb.WriteString(" ")
+	sb.WriteString(e.Zone)
+	sb.WriteString(" ")
+	sb.WriteString(e.Device)
+	sb.WriteString(" ")
+	sb.WriteString(e.AIPlate)
+	return strings.ToLower(sb.String())
+}
+
 func parseNaturalQuery(q string, devNames []string, aliasOf func(string) string) aiQuery {
 	r := aiQuery{Days: 1, HourFrom: 0, HourTo: 23, MatchedBy: "本地规则"}
 	s := strings.ToLower(q)
@@ -159,27 +184,28 @@ func parseNaturalQuery(q string, devNames []string, aliasOf func(string) string)
 
 	// 细粒度类别
 	if strings.Contains(s, "狗") || strings.Contains(s, "犬") || strings.Contains(s, "dog") {
-		r.ClsKeywords = append(r.ClsKeywords, "dog")
+		r.ClsKeywords = append(r.ClsKeywords, "dog", "狗", "犬", "小狗", "宠物狗", "犬只")
 		add("animal")
 	}
 	if strings.Contains(s, "猫") || strings.Contains(s, "cat") {
-		r.ClsKeywords = append(r.ClsKeywords, "cat")
+		r.ClsKeywords = append(r.ClsKeywords, "cat", "猫", "猫咪", "小猫", "宠物猫")
 		add("animal")
 	}
 	if strings.Contains(s, "宠物") || strings.Contains(s, "动物") {
-		r.ClsKeywords = append(r.ClsKeywords, "dog", "cat")
+		r.ClsKeywords = append(r.ClsKeywords, "dog", "cat", "宠物", "动物", "狗", "猫")
 		add("animal")
 	}
 	if strings.Contains(s, "货车") || strings.Contains(s, "卡车") || strings.Contains(s, "大货") {
-		r.ClsKeywords = append(r.ClsKeywords, "truck")
+		r.ClsKeywords = append(r.ClsKeywords, "truck", "货车", "卡车", "大货车")
 		add("vehicle")
 	}
 	if strings.Contains(s, "轿车") || strings.Contains(s, "小车") || strings.Contains(s, "suv") {
-		r.ClsKeywords = append(r.ClsKeywords, "car")
+		r.ClsKeywords = append(r.ClsKeywords, "car", "suv", "轿车", "小车", "汽车")
 		add("vehicle")
 	}
 
-	if strings.Contains(s, "人") || strings.Contains(s, "人员") || strings.Contains(s, "访客") {
+	if strings.Contains(s, "人") || strings.Contains(s, "人员") || strings.Contains(s, "访客") || strings.Contains(s, "行人") || strings.Contains(s, "女子") || strings.Contains(s, "男子") {
+		r.ClsKeywords = append(r.ClsKeywords, "person", "人", "人员", "访客", "行人", "女子", "男子", "居民")
 		add("person")
 	}
 
@@ -260,8 +286,8 @@ func parseNaturalQuery(q string, devNames []string, aliasOf func(string) string)
 		parts = append(parts, "车牌 "+r.Plate)
 	}
 
+	var tn []string
 	if len(r.Types) > 0 {
-		var tn []string
 		for _, t := range r.Types {
 			switch t {
 			case "person":
@@ -280,10 +306,23 @@ func parseNaturalQuery(q string, devNames []string, aliasOf func(string) string)
 				tn = append(tn, "上线")
 			}
 		}
-		parts = append(parts, strings.Join(tn, "/"))
 	}
-	if len(r.ClsKeywords) > 0 {
-		parts = append(parts, strings.Join(r.ClsKeywords, "/"))
+	clsDisplayName := ""
+	if containsStr(r.ClsKeywords, "dog") {
+		clsDisplayName = "小狗"
+	} else if containsStr(r.ClsKeywords, "cat") {
+		clsDisplayName = "猫咪"
+	} else if containsStr(r.ClsKeywords, "truck") {
+		clsDisplayName = "货车"
+	} else if containsStr(r.ClsKeywords, "car") {
+		clsDisplayName = "车辆"
+	} else if containsStr(r.ClsKeywords, "person") {
+		clsDisplayName = "人员"
+	}
+	if clsDisplayName != "" {
+		parts = append(parts, clsDisplayName)
+	} else if len(r.Types) > 0 {
+		parts = append(parts, strings.Join(tn, "/"))
 	}
 	if r.Device != "" {
 		parts = append(parts, r.Device)
@@ -374,6 +413,8 @@ func (s *Server) handleAISearch(w http.ResponseWriter, r *http.Request) {
 
 	var hit []event.Event
 	for _, e := range list {
+		fullText := eventSearchableText(&e)
+
 		// 车牌过滤
 		if parsed.Plate != "" {
 			plateMatch := false
@@ -396,10 +437,8 @@ func (s *Server) handleAISearch(w http.ResponseWriter, r *http.Request) {
 		if len(parsed.ClsKeywords) > 0 {
 			clsMatch := false
 			for _, k := range parsed.ClsKeywords {
-				if strings.EqualFold(e.AICls, k) ||
-					strings.Contains(strings.ToLower(e.Desc), k) ||
-					strings.Contains(strings.ToLower(e.AISummary), k) ||
-					strings.Contains(strings.ToLower(e.AITitle), k) {
+				kLower := strings.ToLower(k)
+				if strings.EqualFold(e.AICls, kLower) || strings.Contains(fullText, kLower) {
 					clsMatch = true
 					break
 				}
@@ -411,19 +450,17 @@ func (s *Server) handleAISearch(w http.ResponseWriter, r *http.Request) {
 
 		// 文本关键词过滤
 		if parsed.TextKeyword != "" {
-			kw := parsed.TextKeyword
-			if !strings.Contains(e.Desc, kw) &&
-				!strings.Contains(e.AISummary, kw) &&
-				!strings.Contains(e.AITitle, kw) {
+			kw := strings.ToLower(parsed.TextKeyword)
+			if !strings.Contains(fullText, kw) {
 				continue
 			}
 		}
 
-		// 类型过滤
-		if len(parsed.Types) > 0 && parsed.Plate == "" {
+		// 类型过滤：仅当未命中细粒度类别时作为粗粒度限制兜底
+		if len(parsed.ClsKeywords) == 0 && len(parsed.Types) > 0 && parsed.Plate == "" {
 			ok := false
 			for _, t := range parsed.Types {
-				if e.Type == t {
+				if e.Type == t || strings.Contains(fullText, t) {
 					ok = true
 					break
 				}
@@ -434,7 +471,7 @@ func (s *Server) handleAISearch(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// 设备过滤
-		if parsed.Device != "" && e.Device != parsed.Device {
+		if parsed.Device != "" && !strings.Contains(strings.ToLower(e.Device), strings.ToLower(parsed.Device)) {
 			continue
 		}
 
@@ -455,7 +492,10 @@ func (s *Server) handleAISearch(w http.ResponseWriter, r *http.Request) {
 		}
 		// 电子围栏过滤
 		if parsed.Zone != "" {
-			zoneMatch := (e.Zone == parsed.Zone) || strings.Contains(e.Desc, parsed.Zone) || strings.Contains(e.AITitle, parsed.Zone) || strings.Contains(e.AISummary, parsed.Zone) || (parsed.Zone == "车位") || (e.Type == "package")
+			zoneMatch := (e.Zone == parsed.Zone) ||
+				strings.Contains(fullText, parsed.Zone) ||
+				(parsed.Zone == "车位" && (strings.Contains(fullText, "车") || strings.Contains(fullText, "停") || strings.Contains(fullText, "院") || strings.Contains(fullText, "巷"))) ||
+				(parsed.Zone == "门口" && (strings.Contains(fullText, "门") || strings.Contains(fullText, "台阶") || strings.Contains(fullText, "垫")))
 			if !zoneMatch {
 				continue
 			}
@@ -463,7 +503,6 @@ func (s *Server) handleAISearch(w http.ResponseWriter, r *http.Request) {
 
 		// 颜色过滤（如黑色轿车 vs 白色轿车）
 		if parsed.ColorKeyword != "" {
-			fullText := e.Desc + " " + e.AITitle + " " + e.AISummary
 			if !strings.Contains(fullText, parsed.ColorKeyword) {
 				continue
 			}
@@ -474,18 +513,15 @@ func (s *Server) handleAISearch(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 
-		// 动作意图过滤（停入/停放）
+		// 动作意图过滤（停入/停放/经过/走动）
 		if parsed.ActionKeyword != "" {
-			fullText := e.Desc + " " + e.AITitle + " " + e.AISummary
-			if !strings.Contains(fullText, parsed.ActionKeyword) && !strings.Contains(fullText, "停") {
+			if !strings.Contains(fullText, parsed.ActionKeyword) && !strings.Contains(fullText, "停") && !strings.Contains(fullText, "走") && !strings.Contains(fullText, "过") && !strings.Contains(fullText, "动") {
 				continue
 			}
 		}
 
 		hit = append(hit, e)
 	}
-
-	// 「昨天」这种要排除今天的数据
 	if parsed.Days == 2 && !strings.Contains(strings.ToLower(req.Q), "最近") {
 		y := time.Now().AddDate(0, 0, -1).Format("2006-01-02")
 		var filtered []event.Event
@@ -573,47 +609,66 @@ func (s *Server) handleAISearch(w http.ResponseWriter, r *http.Request) {
 	var cloudProvider string
 	var inspectedThumbs []string
 
-	// 如果配置了外部视觉大模型，自动结合实时关键帧或录像进行智能多模态视觉问答
+	// 如果配置了外部视觉大模型，自动结合真实事件时间线与关键画面进行深度智能问答
 	if deepReady && cfg.CloudEnabled {
 		client := providerFromConfig(cfg)
 		if client != nil {
 			var visualImages [][]byte
+			var timelineSummary strings.Builder
 
-			// 1. 若本地规则检索有候选事件，抽取前 3 个事件画面作为大模型判据
 			if len(hit) > 0 {
-				for i := 0; i < len(hit) && len(visualImages) < 3; i++ {
-					ev := &hit[i]
-					imgs := s.gatherEventImages(ev, "snapshot")
-					if len(imgs) > 0 {
-						visualImages = append(visualImages, imgs[0])
-						if ev.Thumb != "" {
-							inspectedThumbs = append(inspectedThumbs, ev.Thumb)
-						}
-					}
-				}
-			}
+				timelineSummary.WriteString(fmt.Sprintf("监控系统已检索到今日相关事件记录共 %d 条：\n", len(hit)))
 
-			// 2. 若本地规则候选数为 0（例如小狗趴地未被小模型检测到），
-			// 绝不轻易放弃！从今日各监控画面最近帧或实时抓拍帧中抽取关键证据
-			if len(visualImages) == 0 {
-				cams := s.allCameras()
-				for _, c := range cams {
-					if len(visualImages) >= 3 {
-						break
+				// 按时间正序排列给大模型看时间线
+				chronoHit := make([]event.Event, len(hit))
+				copy(chronoHit, hit)
+				sort.Slice(chronoHit, func(i, j int) bool {
+					return chronoHit[i].Time < chronoHit[j].Time
+				})
+
+				// 限制最多 10 条代表性时间线，避免 token 过长
+				step := 1
+				if len(chronoHit) > 10 {
+					step = len(chronoHit) / 10
+				}
+				lineIdx := 1
+				for i := 0; i < len(chronoHit); i += step {
+					ev := &chronoHit[i]
+					tStr := ev.Time
+					if len(tStr) >= 19 {
+						tStr = tStr[11:19]
 					}
-					// 从该设备今日最新事件取图
-					recentEvs := s.eventStore.Query(event.Query{Days: 1, Did: c.Did, Limit: 2})
-					for _, rev := range recentEvs {
-						if rev.Thumb != "" {
-							if raw, err := os.ReadFile(s.eventStore.ThumbPath(rev.Thumb)); err == nil && len(raw) > 1024 {
-								visualImages = append(visualImages, raw)
-								inspectedThumbs = append(inspectedThumbs, rev.Thumb)
-								break
+					summary := ev.AISummary
+					if summary == "" {
+						summary = ev.Desc
+					}
+					act := ""
+					if len(ev.AIActions) > 0 {
+						act = "【动作】" + strings.Join(ev.AIActions, "；")
+					}
+					timelineSummary.WriteString(fmt.Sprintf("%d. [%s] (%s): %s %s\n", lineIdx, tStr, ev.Device, summary, act))
+					lineIdx++
+
+					// 选取画面截图（挑选 1~2 张关键帧，避免图片过多耗尽推理 Token）
+					if len(visualImages) < 2 {
+						imgs := s.gatherEventImages(ev, "snapshot")
+						if len(imgs) > 0 {
+							visualImages = append(visualImages, imgs[0])
+							if ev.Thumb != "" {
+								inspectedThumbs = append(inspectedThumbs, ev.Thumb)
 							}
 						}
 					}
-					// 若无历史事件，直接抓取在线高清实时帧
-					if len(visualImages) < 3 && c.IsOnline {
+				}
+			} else {
+				timelineSummary.WriteString("监控事件库在今日各时段均未检测到关于该目标的活动记录。")
+				// 仅在真实无记录时，抓取 1~2 张实时画面供大模型查看当前场景
+				cams := s.allCameras()
+				for _, c := range cams {
+					if len(visualImages) >= 2 {
+						break
+					}
+					if c.IsOnline {
 						if hi := s.captureHiRes(c.Did); len(hi) > 2048 {
 							tName := s.eventStore.SaveThumb(hi)
 							visualImages = append(visualImages, hi)
@@ -627,7 +682,7 @@ func (s *Server) handleAISearch(w http.ResponseWriter, r *http.Request) {
 
 			if len(visualImages) > 0 {
 				ctx, cancel := context.WithTimeout(r.Context(), 60*time.Second)
-				vAnswer, usage, err := client.AnswerVisualQuery(ctx, req.Q, visualImages, parsed.Parsed)
+				vAnswer, usage, err := client.AnswerVisualQuery(ctx, req.Q, visualImages, timelineSummary.String())
 				cancel()
 				if err == nil && vAnswer != "" {
 					fee := estimateCostCNY(usage.PromptTokens, usage.CompletionTokens)

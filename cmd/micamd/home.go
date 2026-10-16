@@ -156,6 +156,17 @@ type segInfo struct {
 	Peak     float64
 }
 
+type homeStationaryCar struct {
+	box      []int
+	lastSeen time.Time
+	emitted  time.Time
+}
+
+var (
+	homeStationaryMu   sync.Mutex
+	homeStationaryCars = make(map[string]*homeStationaryCar) // key: did
+)
+
 var motion = &motionState{
 	prev:     map[string][]uint8{},
 	prevAt:   map[string]time.Time{},
@@ -291,43 +302,97 @@ func (s *Server) detectOnce() {
 		var aiBox []int
 		var aiCls string
 
+		var foundPerson *aiObject
+		var foundAnimal *aiObject
+		var foundPackage *aiObject
+		var foundVehicle *aiObject
+
 		if s.ai != nil && s.ai.IsReady() {
 			if res, err := s.ai.Detect(data); err == nil && res != nil {
-				for _, o := range res.Objects {
+				for i := range res.Objects {
+					o := &res.Objects[i]
 					if o.Type == "person" {
-						evType, evDesc, evConf = "person", "检测到有人", o.Conf*100
-						aiBox, aiCls = o.Box, o.Cls
-						break
-					}
-					if o.Type == "vehicle" && evType != "person" {
-						evType, evDesc, evConf = "vehicle", "检测到车辆", o.Conf*100
-						aiBox, aiCls = o.Box, o.Cls
-					}
-					if o.Type == "package" && evType == event.TypeMotion {
-						evType, evDesc, evConf = "package", "检测到包裹", o.Conf*100
-						aiBox, aiCls = o.Box, o.Cls
-					}
-					if (o.Type == "animal" || o.Cls == "dog" || o.Cls == "cat") && evType == event.TypeMotion {
-						evType = "animal"
-						if o.Cls == "dog" {
-							evDesc = "检测到小狗"
-						} else if o.Cls == "cat" {
-							evDesc = "检测到猫咪"
-						} else {
-							evDesc = "检测到动物活动"
+						if foundPerson == nil || o.Conf > foundPerson.Conf {
+							foundPerson = o
 						}
-						evConf = o.Conf * 100
-						aiBox, aiCls = o.Box, o.Cls
+					} else if o.Type == "animal" || o.Cls == "dog" || o.Cls == "cat" {
+						if foundAnimal == nil || o.Conf > foundAnimal.Conf {
+							foundAnimal = o
+						}
+					} else if o.Type == "package" {
+						if foundPackage == nil || o.Conf > foundPackage.Conf {
+							foundPackage = o
+						}
+					} else if o.Type == "vehicle" || o.Cls == "car" || o.Cls == "truck" || o.Cls == "bus" {
+						if foundVehicle == nil || o.Conf > foundVehicle.Conf {
+							foundVehicle = o
+						}
 					}
-				}
-				if aiCls != "" {
-					logf("[ai] %s 识别为 %s (%.0f%%, %dms)", d.Name, aiCls, evConf, res.MS)
 				}
 			} else if err != nil {
 				if !strings.Contains(err.Error(), "限流") {
 					logf("[ai] %s 推理失败: %v", d.Name, err)
 				}
 			}
+		}
+
+		if foundPerson != nil {
+			evType, evDesc, evConf = "person", "检测到有人", foundPerson.Conf*100
+			aiBox, aiCls = foundPerson.Box, foundPerson.Cls
+		} else if foundAnimal != nil {
+			evType = "animal"
+			if foundAnimal.Cls == "dog" {
+				evDesc = "检测到小狗"
+			} else if foundAnimal.Cls == "cat" {
+				evDesc = "检测到猫咪"
+			} else {
+				evDesc = "检测到宠物活动"
+			}
+			evConf = foundAnimal.Conf * 100
+			aiBox, aiCls = foundAnimal.Box, foundAnimal.Cls
+		} else if foundPackage != nil {
+			evType, evDesc, evConf = "package", "检测到包裹", foundPackage.Conf*100
+			aiBox, aiCls = foundPackage.Box, foundPackage.Cls
+		} else if foundVehicle != nil {
+			homeStationaryMu.Lock()
+			st := homeStationaryCars[d.Did]
+			now := time.Now()
+			isStationary := false
+			if st != nil && len(st.box) >= 4 && len(foundVehicle.Box) >= 4 {
+				iou := boxIoU(foundVehicle.Box, st.box)
+				cx1, cy1 := (foundVehicle.Box[0]+foundVehicle.Box[2])/2, (foundVehicle.Box[1]+foundVehicle.Box[3])/2
+				cx2, cy2 := (st.box[0]+st.box[2])/2, (st.box[1]+st.box[3])/2
+				dist2 := (cx1-cx2)*(cx1-cx2) + (cy1-cy2)*(cy1-cy2)
+				if iou > 0.35 || dist2 < 2500 {
+					isStationary = true
+					st.lastSeen = now
+				}
+			}
+
+			if !isStationary {
+				homeStationaryCars[d.Did] = &homeStationaryCar{
+					box:      foundVehicle.Box,
+					lastSeen: now,
+					emitted:  now,
+				}
+				homeStationaryMu.Unlock()
+				evType, evDesc, evConf = "vehicle", "检测到车辆", foundVehicle.Conf*100
+				aiBox, aiCls = foundVehicle.Box, foundVehicle.Cls
+			} else {
+				if now.Sub(st.emitted) < 30*time.Minute {
+					homeStationaryMu.Unlock()
+					logf("[motion] %s 忽略静止停放车辆重复触发 (坐标未变)", d.Name)
+					continue
+				}
+				st.emitted = now
+				homeStationaryMu.Unlock()
+				evType, evDesc, evConf = "vehicle", "车辆静止停放", foundVehicle.Conf*100
+				aiBox, aiCls = foundVehicle.Box, foundVehicle.Cls
+			}
+		}
+
+		if aiCls != "" {
+			logf("[ai] %s 识别为 %s (%.0f%%)", d.Name, aiCls, evConf)
 		}
 
 		s.eventStore.Add(event.Event{

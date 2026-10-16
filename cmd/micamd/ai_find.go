@@ -131,6 +131,7 @@ type findPlan struct {
 	EstCost  float64  `json:"estCostCny"`
 	EstFrame int      `json:"estFrames"`
 	Types    []string `json:"types"`
+	ClsKeywords []string `json:"clsKeywords,omitempty"`
 }
 
 type findStore struct {
@@ -197,6 +198,7 @@ func (s *Server) planFind(question string, maxFrames int) findPlan {
 		plan.Days = 1
 	}
 	plan.Types = parsed.Types
+	plan.ClsKeywords = parsed.ClsKeywords
 	plan.Device = parsed.Device
 	plan.TimeHint = parsed.Parsed
 
@@ -276,11 +278,34 @@ func (s *Server) collectCandidates(plan findPlan) []event.Event {
 		if plan.Did != "" && e.Did != plan.Did {
 			continue
 		}
-		// 类型过滤
+		// 没图的没法看
+		if e.Thumb == "" {
+			continue
+		}
+
+		fullText := eventSearchableText(&e)
+
+		// 细粒度类别/实体关键词优先匹配
+		if len(plan.ClsKeywords) > 0 {
+			clsMatch := false
+			for _, k := range plan.ClsKeywords {
+				kLower := strings.ToLower(k)
+				if strings.EqualFold(e.AICls, kLower) || strings.Contains(fullText, kLower) {
+					clsMatch = true
+					break
+				}
+			}
+			if clsMatch {
+				out = append(out, e)
+				continue
+			}
+		}
+
+		// 类型过滤（兜底）
 		if len(plan.Types) > 0 {
 			hit := false
 			for _, t := range plan.Types {
-				if e.Type == t {
+				if e.Type == t || strings.Contains(fullText, t) {
 					hit = true
 					break
 				}
@@ -289,10 +314,7 @@ func (s *Server) collectCandidates(plan findPlan) []event.Event {
 				continue
 			}
 		}
-		// 没图的没法看
-		if e.Thumb == "" {
-			continue
-		}
+
 		out = append(out, e)
 	}
 
