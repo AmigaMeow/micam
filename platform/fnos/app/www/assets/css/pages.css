@@ -3280,10 +3280,11 @@
 
 .ai-prov-cards {
   display: grid; gap: var(--space-3);
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   padding: var(--space-4) var(--space-5) 0;
 }
-@media (max-width: 900px) { .ai-prov-cards { grid-template-columns: 1fr; } }
+@media (max-width: 1200px) { .ai-prov-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .ai-prov-cards { grid-template-columns: 1fr; } }
 
 .ai-prov-card {
   position: relative;
@@ -3320,6 +3321,33 @@
 .ai-prov-card__brand--deepseek { background: rgba(30,136,229,.16); color: #1e88e5; }
 .ai-prov-card__brand--openai { background: rgba(16,163,127,.16); color: #10a37f; }
 .ai-prov-card__brand--gemini { background: rgba(99,102,241,.16); color: #6366f1; }
+.ai-prov-card__brand--qwen { background: rgba(245,158,11,.16); color: #f59e0b; }
+.ai-prov-card__brand--ollama { background: rgba(16,185,129,.16); color: #10b981; }
+.ai-prov-card__brand--custom { background: rgba(168,85,247,.16); color: #a855f7; }
+
+/* AI 模式与自适应挂起横幅 */
+.ai-mode-suspend-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: var(--surface-2);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+  padding: 12px 16px;
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+.ai-mode-suspend-notice b {
+  color: var(--text);
+}
+.ai-card--dimmed {
+  opacity: 0.72;
+  transition: opacity 0.2s ease;
+}
+.ai-card--dimmed:hover {
+  opacity: 0.9;
+}
 
 .ai-prov-card__meta {
   display: flex; flex-direction: column; gap: 2px;

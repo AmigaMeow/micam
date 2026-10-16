@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <title>MiCam - 智能监控中心</title>
-<meta name="micam-build" content="2026-10-16 18:39:28">
+<meta name="micam-build" content="2026-10-16 18:55:05">
 <!-- 内联 SVG favicon（data URI）：
      浏览器默认会请求 /favicon.ico 并得到 404（控制台报错）。
      这里用 data URI 消除该请求 —— 同时保持「全内联、不联网」的约束。 -->
@@ -5036,10 +5036,11 @@ input[type="checkbox"]:not(.switch input) { width: 16px; height: 16px; flex: 0 0
 
 .ai-prov-cards {
   display: grid; gap: var(--space-3);
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   padding: var(--space-4) var(--space-5) 0;
 }
-@media (max-width: 900px) { .ai-prov-cards { grid-template-columns: 1fr; } }
+@media (max-width: 1200px) { .ai-prov-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-width: 640px) { .ai-prov-cards { grid-template-columns: 1fr; } }
 
 .ai-prov-card {
   position: relative;
@@ -5076,6 +5077,33 @@ input[type="checkbox"]:not(.switch input) { width: 16px; height: 16px; flex: 0 0
 .ai-prov-card__brand--deepseek { background: rgba(30,136,229,.16); color: #1e88e5; }
 .ai-prov-card__brand--openai { background: rgba(16,163,127,.16); color: #10a37f; }
 .ai-prov-card__brand--gemini { background: rgba(99,102,241,.16); color: #6366f1; }
+.ai-prov-card__brand--qwen { background: rgba(245,158,11,.16); color: #f59e0b; }
+.ai-prov-card__brand--ollama { background: rgba(16,185,129,.16); color: #10b981; }
+.ai-prov-card__brand--custom { background: rgba(168,85,247,.16); color: #a855f7; }
+
+/* AI 模式与自适应挂起横幅 */
+.ai-mode-suspend-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: var(--surface-2);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-lg);
+  padding: 12px 16px;
+  font-size: 12px;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+.ai-mode-suspend-notice b {
+  color: var(--text);
+}
+.ai-card--dimmed {
+  opacity: 0.72;
+  transition: opacity 0.2s ease;
+}
+.ai-card--dimmed:hover {
+  opacity: 0.9;
+}
 
 .ai-prov-card__meta {
   display: flex; flex-direction: column; gap: 2px;
@@ -15188,7 +15216,7 @@ function aiTabSettings(){
   //      · 输入框仍保留（可访问性 + 键盘操作 + label 原生语义），但**视觉隐藏**
   //      · 选中态靠**卡片描边 + 右上角蓝色勾**表达，而不是把整卡刷成死蓝色
   //      · 整张卡都是点击热区（label 包裹 input 天然如此）
-  function modeCard(id, name, ic, desc, badge, cost, features){
+  function modeCard(id, name, ic, desc, badge, tagline, features){
     var on = (mode === id);
     return '<label class="ai-mode' + (on ? ' is-active' : '') + '">'
       + '<input class="ai-mode__input" type="radio" name="aiMode" value="' + id + '"' + (on ? ' checked' : '') + '>'
@@ -15201,7 +15229,7 @@ function aiTabSettings(){
       +   '<span class="ai-mode__radio-check" aria-hidden="true">' + (on ? icon('check', 12) : '') + '</span>'
       + '</div>'
       + '<div class="ai-mode__cost-wrap">'
-      +   '<span class="ai-mode__cost">' + cost + '</span>'
+      +   '<span class="ai-mode__cost">' + tagline + '</span>'
       + '</div>'
       + '<div class="ai-mode__desc">' + desc + '</div>'
       + (features && features.length ? (
@@ -15265,10 +15293,9 @@ function aiTabSettings(){
     // 副标题原本是英文单词（Mode / Providers / Policy / Usage），
     // 与全站其它地方已统一的「中文一句话说明」风格不符（用户反馈 #2）。
     // 改成中文说明，顺带比英文单词更有信息量（与页面副标题同一套做法）。
-    +     [['mode','AI 模式','选择分析策略','cpu'],
-           ['prov','本地与云端','本地引擎与云端服务','cloud'],
+    +     [['mode','AI 架构与引擎','架构策略与算力配置','cpu'],
            ['policy','策略与隐私','上云规则与隐私控制','shield'],
-           ['usage','用量与成本','调用量与费用','chart']].map(function(x){
+           ['usage','用量与成本','调用量与费用统计','chart']].map(function(x){
             return '<button class="set3__tab' + (aiSetTab === x[0] ? ' is-active' : '') + '" data-aiset="' + x[0] + '">'
               + icon(x[3],17)
               + '<span class="set3__tab-body">'
@@ -15280,33 +15307,30 @@ function aiTabSettings(){
     +   '</aside>'
     +   '<div class="set3__main">'
 
-    // ===== AI 模式 =====
+    // ===== AI 架构与引擎 =====
     + '<div class="pnl' + (aiSetTab === 'mode' ? ' is-on' : '') + '" data-pnl="mode">'
-    // 去掉冗余 card 包裹：左侧二级导航已经写着「AI 模式」，
-    // 卡片标题再写一次「AI 模式」是纯重复，还多出一层边框。
     + '<div class="ai-stage">'
-    +   '<div class="ai-stage__lead">选择适合使用场景的模式 —— 本地推理、混合协同与云端深度分析在功能、成本与隐私上各有侧重。</div>'
+    +   '<div class="ai-stage__lead">选择适合使用场景的 AI 运行架构 —— 根据 NAS 硬件算力、隐私要求与深度分析需求动态分配本地与大模型负载。</div>'
     +   '<div class="ai-modes">'
-    +     modeCard('local',    '只用本地', 'cpu',      '所有分析都在本地设备进行，视频数据不上传云端，最大程度保护隐私，适合对隐私敏感的用户。', '默认', '免费 · 零云端费用', ['100% 局域网本地计算', '保护隐私 · 数据不出 NAS', '人/车/包裹实时识别'])
-    +     modeCard('balanced', '均衡模式', 'cloud',    '本地处理常规日常事件，重要或高危事件发送到云端大模型进行深度分析，兼顾识别效果与调用成本。', '推荐', '约 ¥2–10 / 月', ['常规事件本地轻量推理', '重点高危事件云端复核', '成本可控 · 综合性价比高'])
-    +     modeCard('full',     '完整智能', 'sparkles', '充分发挥云端多模态大模型的强大推理能力，提供更高的复杂事件理解力、极低误报与丰富语义。', '高精度', '约 ¥10–30 / 月', ['云端最新大模型多维分析', '复杂行为深度语义理解', '识别准确率更高 · 误报极低'])
+    +     modeCard('balanced', '边云协同 (混合模式)', 'cloud',    '本地小模型 0 延迟过滤 95%+ 无效冗余背景；发现关键事件或主动排查时按需联动大模型，兼顾实时性与低开销。', '推荐方案', '本地快速初筛 + 大模型深度语义', ['本地 0 延时实时人/车/包裹初筛', '关键事件与智能问答自动联动大模型', '过滤 95%+ 无效冗余帧，极低开销'])
+    +     modeCard('full',     '纯大模型模式',         'sparkles', '彻底免除本地 AI 模型推理负荷，老旧或低功耗 NAS 首选。本地仅做轻量切片，复杂行为理解与事件提炼全权托管给大模型。', '免本地算力', '零 NAS 算力占用，全权委托大模型', ['NAS CPU / 内存占用趋近于 0', '弱算力设备即享顶级视觉语义理解', '支持接入内网私有工作站或云端 API'])
+    +     modeCard('local',    '纯本地离线模式',       'cpu',      '所有推理与数据 100% 保存在局域网内，完全不连接任何外部大模型服务。适合断网或强隐私涉密监控。', '局域网闭环', '100% 数据不出网，极高隐私安全', ['零外网依赖，数据 100% 不出 NAS', '基础物体框选与分类实时打标', '局限提示：不支持自然语言智能对话与复杂归因'])
     +   '</div>'
     +   '<div class="ai-mode-status">'
     +     '<span class="status-dot is-online"></span>'
-    +     '<span>当前运行策略：<b>' + (mode === 'local' ? '只用本地模式' : (mode === 'balanced' ? '均衡模式' : '完整智能模式')) + '</b></span>'
-    +     '<span class="ai-mode-status__note">' + (mode === 'local' ? '本地 YOLO 模型就绪，数据完全不离设备。' : (mode === 'balanced' ? '本地初筛 + 云端深度复核。' : '全部启用云端大模型进行深度视觉理解。')) + '</span>'
+    +     '<span>当前运行策略：<b>' + (mode === 'local' ? '纯本地离线模式' : (mode === 'balanced' ? '边云协同模式' : '纯大模型模式')) + '</b></span>'
+    +     '<span class="ai-mode-status__note">' + (mode === 'local' ? '100% 局域网闭环运行，视频数据绝不离开 NAS；仅支持基础人/车/包裹识别，无智能问答。' : (mode === 'balanced' ? '本地轻量初筛毫秒级过滤无效帧 + 关键事件与智能问答联动多模态大模型深度复核。' : '本地推理引擎已挂起，零 CPU 占用；关键事件与问答全权交由多模态大模型深度理解。')) + '</span>'
     +   '</div>'
     + '</div>'
 
-    + '</div>'
-    + '<div class="pnl' + (aiSetTab === 'prov' ? ' is-on' : '') + '" data-pnl="prov">'
+    // ===== 联动引擎配置区 =====
+    + '<div class="ai-set-grid" style="margin-top:16px;">'
 
-    // ===== 本地 AI + 外部 Provider =====
-    + '<div class="ai-set-grid">'
-
-    +   '<div class="card">'
-    +     '<div class="card__head">' + icon('cpu',16) + '<span class="card__title">本地 AI</span>'
-    +       '<span class="card__hint">在本地设备上运行 AI 分析，实时检测和识别。</span></div>'
+    +   '<div class="card' + (mode === 'full' ? ' ai-card--dimmed' : '') + '">'
+    +     '<div class="card__head">' + icon('cpu',16) + '<span class="card__title">本地轻量检测引擎 (YOLO)</span>'
+    +       (mode === 'full' ? '<span class="badge" style="background:var(--surface-3);color:var(--text-muted);font-size:12px;">已自动挂起 (免算力占用)</span>' : '<span class="card__hint">在本地设备上运行 AI 初筛，实时检测和识别。</span>')
+    +     '</div>'
+    +     (mode === 'full' ? ('<div class="ai-mode-suspend-notice" style="margin:14px 16px 0;">' + icon('info',14) + '<span><b>当前处于「纯大模型模式」</b>：本地 YOLO 推理引擎已自动挂起，不消耗 NAS CPU 与内存算力。若需要本地协助前置初筛，点击上方「边云协同」即可恢复。</span></div>') : '')
     +     '<div class="ai-cfg">'
 
     +       '<div class="cfg-row">'
@@ -15411,20 +15435,16 @@ function aiTabSettings(){
     +     '<button class="btn btn--primary ai-card-bottom" id="aiSaveLocal">保存本地 AI 设置</button>'
     +   '</div>'
 
-    +   '<div class="card">'
-    +     '<div class="card__head">' + icon('cloud',16) + '<span class="card__title">外部 Provider</span>'
-    +       '<span class="card__hint">配置云端 AI 服务，用于重要事件的深度分析。</span>'
-    // 全局连接状态（用户功能建议 #2）：
-    // 原来只有表单内部一个很小的「未连接」，而左侧「本地 AI」底部有
-    // 「● 运行中 · 模型 yolov8n」一眼可见。两侧"状态可见性"不对称。
-    // 现在把这个状态**提升到面板头部**，并与本地面板同样带状态点 + 模型名。
-    +       (isProvOk
+    +   '<div class="card' + (mode === 'local' ? ' ai-card--dimmed' : '') + '">'
+    +     '<div class="card__head">' + icon('cloud',16) + '<span class="card__title">多模态视觉大模型服务 (VLM)</span>'
+    +       (mode === 'local' ? '<span class="badge" style="background:var(--surface-3);color:var(--text-muted);font-size:12px;">已切断外联 (纯本地离线)</span>' : (isProvOk
                  ? '<span class="ai-prov-badge is-ok"><span class="status-dot is-online"></span>'
                    + '已连接 · ' + esc(cf.providerModel || cf.providerName || 'deepseek') + '</span>'
-                 : (hasKey
+                 : (hasKey || cf.providerName === 'ollama'
                      ? '<span class="ai-prov-badge" style="color:var(--text-secondary);"><span class="status-dot" style="background:#eab308;"></span>已配置（待验证）</span>'
-                     : '<span class="ai-prov-badge"><span class="status-dot"></span>未连接</span>'))
+                     : '<span class="ai-prov-badge"><span class="status-dot"></span>未连接</span>')))
     +     '</div>'
+    +     (mode === 'local' ? ('<div class="ai-mode-suspend-notice" style="margin:14px 16px 0;">' + icon('shield',14) + '<span><b>当前处于「纯本地离线模式」</b>：已切断所有外部大模型连接，数据 100% 保留在局域网内。智能问答与深度视觉理解暂不可用。若需启用，点击上方「边云协同」或「纯大模型模式」。</span></div>') : '')
 
     // Provider 选择卡
     //
@@ -15437,11 +15457,12 @@ function aiTabSettings(){
     //    改为**两行**：第一行放 radio + logo + 状态标签，第二行名称独占整宽。
     //    这样名称有 ~142px，DeepSeek(71px) / Google Gemini(95px) 都放得下。
     //    注意：三个卡的图标都是同一个 cloud，**不能靠图标区分**，名称必须完整显示。
-    +     '<div class="ai-prov-cards">'
+    +     '<div class="ai-prov-cards"' + (mode === 'local' ? ' style="opacity:0.6;pointer-events:none;"' : '') + '>'
     +       [
-              ['deepseek', 'DeepSeek',      'deepseek', true,  '推荐 · DeepSeek-V3 / Flash'],
-              ['openai',   'OpenAI',        'openai',   false, 'GPT-4o / Vision'],
-              ['gemini',   'Google Gemini', 'gemini',   false, 'Gemini 1.5 / 2.0 Flash']
+              ['deepseek', 'DeepSeek 官方',   'deepseek', true,  '官方接口 · deepseek-chat'],
+              ['qwen',     '通义千问 Qwen-VL', 'sparkles', true,  '阿里云百炼 · qwen-vl-max'],
+              ['ollama',   '本地局域网 Ollama','server',   true,  '私有自建 · 免密钥 · 0 云端费用'],
+              ['custom',   '自定义兼容服务',   'cloud',    true,  'OpenAI / vLLM / LocalAI 接口']
             ].map(function(x){
               var on = (cf.providerName||'deepseek') === x[0];
               var soon = !x[3];
@@ -15498,17 +15519,20 @@ function aiTabSettings(){
     +       advHead('provAI')
     +       '<div class="adv__body" id="advBody-provAI" hidden>'
     +       '<div class="cfg-row">'
-    +         '<label class="cfg-row__label">' + icon('cpu',14) + '模型</label>'
-    +         '<div class="cfg-row__control"><select class="input" id="aiProvModel">'
-    +           [['deepseek-flash','deepseek-flash（视觉，推荐）'],['deepseek-v4-pro','deepseek-v4-pro（不支持视觉）']].map(function(x){
-                  return '<option value="' + x[0] + '"' + ((cf.providerModel||'deepseek-flash') === x[0] ? ' selected' : '') + '>' + x[1] + '</option>';
-                }).join('')
-    +         '</select>'
-    // 模型说明：普通用户看不懂 "deepseek-flash（视觉，推荐）" 的能力/价格差异
-    +         '<span class="cfg-help" id="aiModelHelp" tabindex="0" role="button" aria-label="模型说明">'
-    +           icon('info',15) + '</span>'
+    +         '<label class="cfg-row__label">' + icon('cpu',14) + '模型名称</label>'
+    +         '<div class="cfg-row__control">'
+    +           '<input class="input" id="aiProvModel" list="aiProvModelList" placeholder="例如 deepseek-chat、qwen-vl-max 或 qwen2.5-vl" value="' + esc(cf.providerModel || 'deepseek-chat') + '">'
+    +           '<datalist id="aiProvModelList">'
+    +             '<option value="deepseek-chat">DeepSeek-V3 / Flash (推荐)</option>'
+    +             '<option value="qwen-vl-max">通义千问 Qwen-VL-Max (顶尖长视觉)</option>'
+    +             '<option value="qwen-vl-plus">通义千问 Qwen-VL-Plus (极速推荐)</option>'
+    +             '<option value="qwen2.5-vl">Qwen2.5-VL (Ollama 本地私有推荐)</option>'
+    +             '<option value="llava">LLaVA (Ollama 多模态)</option>'
+    +             '<option value="gpt-4o">GPT-4o (Vision)</option>'
+    +           '</datalist>'
+    +           '<span class="cfg-help" id="aiModelHelp" tabindex="0" role="button" aria-label="模型说明">' + icon('info',15) + '</span>'
     +         '</div>'
-    +         '<div class="cfg-row__hint" id="aiModelHint">deepseek-flash：支持图片理解，速度快、成本低，适合摄像头事件分析。</div>'
+    +         '<div class="cfg-row__hint" id="aiModelHint">支持任意兼容 OpenAI 规范的视觉大模型标识，自建 Ollama 可直接输入对应模型 tag。</div>'
     +       '</div>'
     +       '<div class="cfg-row">'
     +         '<label class="cfg-row__label">' + icon('timer',14) + '请求超时</label>'
@@ -16112,12 +16136,10 @@ function bindAI(){
   // 配置外部 Provider 时，用户最缺的就是这一步；
   // 同时补上右卡相对左卡的内容差（原来矮约 180px 留白）。
   var KEY_URLS = {
-    deepseek: { name:'DeepSeek', url:'https://platform.deepseek.com/api_keys' },
-    openai:   { name:'OpenAI',   url:'https://platform.openai.com/api-keys' },
-    gemini:   { name:'Google Gemini', url:'https://aistudio.google.com/app/apikey' },
-    qwen:     { name:'通义千问', url:'https://bailian.console.aliyun.com/' },
-    glm:      { name:'智谱 GLM', url:'https://open.bigmodel.cn/usercenter/apikeys' },
-    ollama:   null   // 本地 Ollama 不需要密钥
+    deepseek: { name:'DeepSeek 官方', url:'https://platform.deepseek.com/api_keys' },
+    qwen:     { name:'阿里云百炼 (通义千问)', url:'https://bailian.console.aliyun.com/' },
+    ollama:   null,   // 本地局域网 Ollama 不需要密钥
+    custom:   null    // 自定义兼容服务
   };
   function paintKeyHelp(){
     var box = document.getElementById('aiKeyHelp');
@@ -16142,8 +16164,32 @@ function bindAI(){
   // Provider 选择卡
   Array.prototype.forEach.call(c.querySelectorAll('input[name="aiProvSel"]'), function(r){
     r.onchange = function(){
+      var selVal = this.value;
       var sel = document.getElementById('aiProv');
-      if(sel) sel.value = this.value;
+      if(sel) sel.value = selVal;
+
+      var urlInput = document.getElementById('aiProvURL');
+      var modelInput = document.getElementById('aiProvModel');
+      var keyInput = document.getElementById('aiProvKey');
+
+      if(selVal === 'deepseek'){
+        if(urlInput) urlInput.value = 'https://api.deepseek.com/v1';
+        if(modelInput) modelInput.value = 'deepseek-chat';
+        if(keyInput) keyInput.placeholder = hasKey ? '已配置密钥（留空则不修改）' : '粘贴 DeepSeek API Key';
+      } else if(selVal === 'qwen'){
+        if(urlInput) urlInput.value = 'https://dashscope.aliyuncs.com/compatible-mode/v1';
+        if(modelInput) modelInput.value = 'qwen-vl-max';
+        if(keyInput) keyInput.placeholder = hasKey ? '已配置密钥（留空则不修改）' : '粘贴阿里云百炼 API Key';
+      } else if(selVal === 'ollama'){
+        if(urlInput) urlInput.value = 'http://127.0.0.1:11434/v1';
+        if(modelInput) modelInput.value = 'qwen2.5-vl';
+        if(keyInput) keyInput.placeholder = '局域网 Ollama 无需密钥（可选留空）';
+      } else if(selVal === 'custom'){
+        if(urlInput && !urlInput.value) urlInput.placeholder = 'http://192.168.x.x:8000/v1';
+        if(modelInput && !modelInput.value) modelInput.placeholder = '例如 llava:13b 或 minicpm-v';
+        if(keyInput) keyInput.placeholder = '若服务需要鉴权请粘贴 API Key，无密码留空';
+      }
+
       Array.prototype.forEach.call(c.querySelectorAll('.ai-prov-card'), function(x){
         x.classList.toggle('is-active', x.querySelector('input').checked);
       });
