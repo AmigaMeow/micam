@@ -1968,7 +1968,7 @@ function renderHome(c){
     // 页头状态：正常/异常用语义色区分，离线时不再是一行灰字
     var headTone = (!total || online === 0) ? ' is-danger' : (hasOffline ? ' is-warn' : ' is-ok');
 
-    c.innerHTML = '<div class="page__inner">'
+    var html = '<div class="page__inner">'
 
       // ---- 页头 ----
       + '<div class="home-head">'
@@ -2014,54 +2014,74 @@ function renderHome(c){
                 { tone: pct > 95 ? 'danger' : pct > 80 ? 'warn' : 'ok',
                   note: totalGB ? usedGB.toFixed(0) + ' / ' + totalGB.toFixed(0) + ' GB' : '',
                   ring: { pct: pct } })
-      + '</div>'
-
-      // ---- 摄像头（网格自动填满，离线也占位）----
-      + '<section class="card" style="margin-bottom:var(--space-5)">'
-      +   '<div class="sec-head">'
-      +     '<span class="sec-head__title">摄像头 <span class="sec-head__en">实时监控全部设备</span></span>'
-      +     (hasOffline
-              ? '<span class="sec-head__warn">' + icon('alert',13) + offlineN + ' 台离线</span>'
-              : '')
-      +     '<a class="sec-head__more" href="javascript:;" data-go="devices">查看全部 ' + icon('chevron-right',14) + '</a>'
-      +   '</div>'
-      +   '<div class="cam-row">' + (cams.length
-              ? cams.map(camTile).join('')
-              : empty('camera','还没有摄像头','到「账号」页扫码登录后获取设备','')) + '</div>'
-      + '</section>'
-
-      // ---- 底部两栏 ----
-      + '<div class="home-cols">'
-      +   '<section class="card">'
-      +     '<div class="sec-head">'
-      +       '<span class="sec-head__title">最近事件 <span class="sec-head__en">检测到画面变化时自动记录</span></span>'
-      +       '<a class="sec-head__more" href="javascript:;" data-go="events">查看全部 ' + icon('chevron-right',14) + '</a>'
-      +     '</div>'
-      +     '<div class="event-list">' + ((h.events||[]).length
-              ? h.events.map(eventItem).join('')
-              : eventEmpty()) + '</div>'
-      +   '</section>'
-      +   '<section class="card">'
-      +     '<div class="sec-head">'
-      +       '<span class="sec-head__title">' + icon('hard-drive',15) + ' 存储 <span class="sec-head__en">录像占用与可录时长</span></span>'
-      +       '<a class="sec-head__more" href="javascript:;" data-go="storage">详情 ' + icon('chevron-right',14) + '</a>'
-      +     '</div>'
-      +     '<div class="storage-body" id="homeStorage">' + loading('读取中…') + '</div>'
-      +   '</section>'
-      + '</div>'
-
       + '</div>';
 
-    // 存储面板用【同一份】数据渲染（不再请求 /api/storage）
-    renderHomeStorage({
-      pct: pct, usedGB: usedGB, freeGB: freeGB, totalGB: totalGB,
-      estHours: Number(h.storageEstHours) || 0,
-      cams: h.recCams || [],
-      rec: { fileCount: h.recFiles || 0, totalMB: h.recMB || 0 }
-    });
+    var ui = h.ui || window.__MICAM_UI__ || {};
+    window.__MICAM_UI__ = ui;
+    var showCams = ui.homeShowCameras !== false;
+    var showEvents = ui.homeShowEvents !== false;
+    var showStorage = ui.homeShowStorage !== false;
+    var showEn = ui.showEnglishAlias !== false;
+
+    // ---- 摄像头（受界面偏好控制）----
+    if(showCams){
+      html += '<section class="card" style="margin-bottom:var(--space-5)">'
+        +   '<div class="sec-head">'
+        +     '<span class="sec-head__title">摄像头' + (showEn ? ' <span class="sec-head__en">实时监控全部设备</span>' : '') + '</span>'
+        +     (hasOffline
+                ? '<span class="sec-head__warn">' + icon('alert',13) + offlineN + ' 台离线</span>'
+                : '')
+        +     '<a class="sec-head__more" href="javascript:;" data-go="devices">查看全部 ' + icon('chevron-right',14) + '</a>'
+        +   '</div>'
+        +   '<div class="cam-row">' + (cams.length
+                ? cams.map(camTile).join('')
+                : empty('camera','还没有摄像头','到「账号」页扫码登录后获取设备','')) + '</div>'
+        + '</section>';
+    }
+
+    // ---- 底部两栏（受界面偏好控制）----
+    if(showEvents || showStorage){
+      html += '<div class="home-cols"' + (!showEvents || !showStorage ? ' style="grid-template-columns:1fr"' : '') + '>';
+      if(showEvents){
+        html += '<section class="card">'
+          +     '<div class="sec-head">'
+          +       '<span class="sec-head__title">最近事件' + (showEn ? ' <span class="sec-head__en">检测到画面变化时自动记录</span>' : '') + '</span>'
+          +       '<a class="sec-head__more" href="javascript:;" data-go="events">查看全部 ' + icon('chevron-right',14) + '</a>'
+          +     '</div>'
+          +     '<div class="event-list">' + ((h.events||[]).length
+                  ? h.events.map(eventItem).join('')
+                  : eventEmpty()) + '</div>'
+          +   '</section>';
+      }
+      if(showStorage){
+        html += '<section class="card">'
+          +     '<div class="sec-head">'
+          +       '<span class="sec-head__title">' + icon('hard-drive',15) + ' 存储' + (showEn ? ' <span class="sec-head__en">录像占用与可录时长</span>' : '') + '</span>'
+          +       '<a class="sec-head__more" href="javascript:;" data-go="storage">详情 ' + icon('chevron-right',14) + '</a>'
+          +     '</div>'
+          +     '<div class="storage-body" id="homeStorage">' + loading('读取中…') + '</div>'
+          +   '</section>';
+      }
+      html += '</div>';
+    }
+
+    html += '</div>';
+    c.innerHTML = html;
+
+    // 存储面板
+    if(showStorage){
+      renderHomeStorage({
+        pct: pct, usedGB: usedGB, freeGB: freeGB, totalGB: totalGB,
+        estHours: Number(h.storageEstHours) || 0,
+        cams: h.recCams || [],
+        rec: { fileCount: h.recFiles || 0, totalMB: h.recMB || 0 }
+      });
+    }
 
     // 摄像头缩略图
-    loadHomeThumbs(c);
+    if(showCams){
+      loadHomeThumbs(c);
+    }
 
     // 首页摄像头 -> 实时预览
     Array.prototype.forEach.call(c.querySelectorAll('.cam-tile[data-did]'), function(el){
@@ -2209,6 +2229,7 @@ function camTile(d){
   var on = d.online;
   var name = d.alias || d.name;
   var en = d.aliasEn || '';
+  var showEn = !window.__MICAM_UI__ || window.__MICAM_UI__.showEnglishAlias !== false;
   var badge = '<span class="cam-tile__badge' + (on ? '' : ' is-offline') + '">'
     + '<span class="status-dot ' + (on ? 'is-online' : 'is-offline') + '"></span>'
     + (on ? '在线' : '离线') + '</span>';
@@ -2228,7 +2249,7 @@ function camTile(d){
       + '</div>'
       + '<div class="cam-tile__foot">'
       +   '<span class="cam-tile__name">' + esc(name) + '</span>'
-      +   (en ? '<span class="cam-tile__en">' + esc(en) + '</span>' : '')
+      +   (en && showEn ? '<span class="cam-tile__en">' + esc(en) + '</span>' : '')
       + '</div>'
       + '</div>';
   }
@@ -2239,7 +2260,7 @@ function camTile(d){
     + badge
     + '<div class="cam-tile__foot">'
     +   '<span class="cam-tile__name">' + esc(name) + '</span>'
-    +   (en ? '<span class="cam-tile__en">' + esc(en) + '</span>' : '')
+    +   (en && showEn ? '<span class="cam-tile__en">' + esc(en) + '</span>' : '')
     +   '<span class="cam-tile__time" data-home-time="' + esc(d.did) + '">'
     +     (d.thumbAt ? fmtClock(d.thumbAt) : '刚刚') + '</span>'
     + '</div>'
@@ -8750,9 +8771,16 @@ function stRecDirCard(status, stLocs){
               return '<option value="' + esc(l.path) + '"' + (l.path === curPath ? ' selected' : '') + '>'
                 + esc(l.name || l.path) + optBadge + ' — ' + esc(l.path) + optFree + '</option>';
             }).join(''))
+    +       '<option value="__custom__">➕ 手动输入自定义路径...</option>'
     +     '</select>'
     +     '<button class="btn btn--primary st-recdir-save" id="stRecDirSave">' + icon('save',14) + '应用所选目录</button>'
     +     '<button class="btn st-go-migrate" id="stGoMigrate">' + icon('move',14) + '迁移已有录像</button>'
+    +   '</div>'
+    +   '<div class="st-recdir-custom-wrap" id="stRecDirCustomWrap" style="display:none;margin-top:10px">'
+    +     '<div style="display:flex;gap:8px;align-items:center">'
+    +       '<span style="font-size:12px;color:var(--text-muted);white-space:nowrap">自定义路径:</span>'
+    +       '<input class="input st-recdir-custom-input" id="stRecDirCustom" placeholder="请输入绝对路径，例如 /vol2/recordings 或 /vol2/@appshare/micam/data/recordings" style="flex:1">'
+    +     '</div>'
     +   '</div>'
     +   '<div class="st-dir-meta-grid">'
     +     '<div class="st-dir-meta-item"><span class="st-dir-meta-item__label">存储空间余量</span><b class="st-dir-meta-item__val" title="' + esc(spaceTitle) + '">' + esc(spaceSummary) + '</b></div>'
@@ -9210,19 +9238,40 @@ function bindMigrate(){
 }
 
 function bindStorage(c, cams){
+  // 录像存储目录下拉框联动显示自定义输入框
+  Array.prototype.forEach.call(c.querySelectorAll('.st-recdir-select'), function(sel){
+    sel.onchange = function(){
+      var card = this.closest('.st-dir-card') || document;
+      var wrap = card.querySelector('.st-recdir-custom-wrap') || document.getElementById('stRecDirCustomWrap');
+      if(wrap){
+        wrap.style.display = (this.value === '__custom__') ? 'block' : 'none';
+      }
+    };
+  });
+
   // 录像存储目录应用与迁移跳转
   Array.prototype.forEach.call(c.querySelectorAll('.st-recdir-save'), function(saveBtn){
     saveBtn.onclick = function(){
       var card = this.closest('.st-dir-card') || document;
       var sel = card.querySelector('.st-recdir-select') || document.getElementById('stRecDir');
       var dir = sel ? sel.value : '';
-      if(!dir) return;
+      if(dir === '__custom__'){
+        var custInp = card.querySelector('.st-recdir-custom-input') || document.getElementById('stRecDirCustom');
+        dir = custInp ? custInp.value.trim() : '';
+      }
+      if(!dir){
+        toast('请输入或选择有效的存储目录', 'warn');
+        return;
+      }
       if(!confirm('把录像存储目录切换为：\n' + dir + '\n\n新录像将自动写入新目录，已有历史录像安全保留在原路径。\n如需整体搬迁历史录像，可使用「迁移已有录像」。确定？')) return;
       api('/api/storage/record-dir', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ dir: dir }) })
         .then(function(r){
-          if(r && r.msg){ toast(r.msg, 'err'); return; }
-          toast('录像存储目录已成功更新', 'ok');
-          setTimeout(function(){ render(); }, 800);
+          if(r && r.ok){
+            toast('录像存储目录已成功更新: ' + r.dir, 'ok');
+            setTimeout(function(){ render(); }, 800);
+          } else {
+            toast('设置失败: ' + ((r && r.error) || (r && r.msg) || '未知错误'), 'err');
+          }
         }).catch(function(e){ toast('设置失败：' + e.message, 'err'); });
     };
   });
@@ -11787,6 +11836,80 @@ function bindMiotPanel(){
     if(box) box.style.display = 'none';
   };
 
+  var autoBtn = document.getElementById('miotAutoAuth');
+  if(autoBtn){
+    autoBtn.onclick = function(){
+      autoBtn.disabled = true;
+      toast('正在同步已登录小米账号进行官方授权…', 'ok');
+      api('/api/miot/auto-auth', { method:'POST' }).then(function(r){
+        autoBtn.disabled = false;
+        if(r && r.ok){
+          toast(r.msg || '一键同步授权成功！官方通道已激活', 'ok');
+          refreshState();
+        } else {
+          toast('一键授权未成功: ' + ((r && r.error) || '请尝试扫码或网页授权'), 'warn');
+        }
+      }).catch(function(e){
+        autoBtn.disabled = false;
+        toast('一键授权失败: ' + e.message, 'err');
+      });
+    };
+  }
+
+  var webBtn = document.getElementById('miotWebAuth');
+  var webBox = document.getElementById('miotWebBox');
+  var webOpen = document.getElementById('miotWebOpenBtn');
+  var webSubmit = document.getElementById('miotWebSubmit');
+  var webCancel = document.getElementById('miotWebCancel');
+  var webInput = document.getElementById('miotWebPayload');
+  if(webBtn){
+    webBtn.onclick = function(){
+      api('/api/miot/bind').then(function(r){
+        if(!r || !r.authUrl){ toast('获取授权 URL 失败', 'err'); return; }
+        if(webOpen) webOpen.href = r.authUrl;
+        if(box) box.style.display = 'none';
+        if(webBox) webBox.style.display = 'block';
+      }).catch(function(e){ toast('获取授权链接失败: ' + e.message, 'err'); });
+    };
+  }
+  if(webCancel) webCancel.onclick = function(){ if(webBox) webBox.style.display = 'none'; };
+  if(webSubmit) webSubmit.onclick = function(){
+    var val = webInput ? webInput.value.trim() : '';
+    if(!val){ toast('请粘贴授权信息或回调 URL', 'warn'); return; }
+    var payload = val;
+    var code = '', state = '';
+    if(val.indexOf('code=') >= 0){
+      try {
+        var u = new URL(val);
+        code = u.searchParams.get('code') || '';
+        state = u.searchParams.get('state') || '';
+      } catch(e){
+        var m = val.match(/code=([^&]+)/);
+        if(m) code = m[1];
+        var ms = val.match(/state=([^&]+)/);
+        if(ms) state = ms[1];
+      }
+    }
+    webSubmit.disabled = true;
+    api('/api/miot/authorize', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ payload: payload, code: code, state: state })
+    }).then(function(r){
+      webSubmit.disabled = false;
+      if(r && r.ok){
+        toast(r.msg || '授权成功！官方通道已激活', 'ok');
+        if(webBox) webBox.style.display = 'none';
+        refreshState();
+      } else {
+        toast('提交失败: ' + ((r && r.error) || '未知错误'), 'err');
+      }
+    }).catch(function(e){
+      webSubmit.disabled = false;
+      toast('提交失败: ' + e.message, 'err');
+    });
+  };
+
   var un = document.getElementById('miotUnbind');
   if(un) un.onclick = function(){
     if(!confirm('解除官方通道授权？\n\n解除后实时画面会退回旧通道（可能被限流）。')) return;
@@ -11843,7 +11966,7 @@ function paintSetMain(){
   // 该端点对第三方客户端有长期限流（实测 18 天不恢复）。
   // 小米官方仓库 xiaomi-miloco 走的是 OAuth2 + PPCS，不碰那个端点。
   //
-  // 这里提供一次扫码完成授权；成功后实时流走官方通道。
+  // 这里提供多通道便捷授权；成功后实时流走官方通道。
   if(setTab === 'miot'){
     box.innerHTML = ''
       + '<div class="miot-card">'
@@ -11869,9 +11992,11 @@ function paintSetMain(){
       +       '<div class="miot-card__val"><span class="badge badge--accent">已就绪 (每30分钟)</span></div>'
       +     '</div>'
       +   '</div>'
-      +   '<div class="miot-card__acts">'
-      +     '<button class="btn btn--primary" id="miotBind">' + icon('refresh',14) + '扫码授权</button>'
-      +     '<button class="btn" id="miotRefreshBtn">' + icon('zap',14) + '立即续期</button>'
+      +   '<div class="miot-card__acts" style="flex-wrap:wrap;gap:8px">'
+      +     '<button class="btn btn--primary" id="miotAutoAuth">' + icon('zap',14) + '一键同步授权（推荐）</button>'
+      +     '<button class="btn" id="miotBind">' + icon('refresh',14) + '扫码授权</button>'
+      +     '<button class="btn" id="miotWebAuth">' + icon('link',14) + '网页授权</button>'
+      +     '<button class="btn" id="miotRefreshBtn">' + icon('refresh-cw',14) + '立即续期</button>'
       +     '<button class="btn btn--danger" id="miotUnbind">解除授权</button>'
       +   '</div>'
       + '</div>'
@@ -11886,6 +12011,22 @@ function paintSetMain(){
       +       '</div>'
       +       '<button class="btn" id="miotQrCancel" style="margin-top:12px">取消</button>'
       +     '</div>'
+      +   '</div>'
+      + '</div>'
+      + '<div id="miotWebBox" style="display:none;margin-top:var(--space-4);padding:var(--space-5);background:var(--surface-1);border-radius:var(--radius-xl);border:1px solid var(--border-subtle);">'
+      +   '<div style="font-weight:600;margin-bottom:8px">浏览器网页授权</div>'
+      +   '<div style="font-size:13px;color:var(--text-muted);line-height:1.7;margin-bottom:12px">'
+      +     '1. 点击下方按钮在浏览器中打开小米官方授权页面，登录并确认同意授权。<br>'
+      +     '2. 授权完成后，页面会重定向（或显示一串 Base64 授权凭据 / 包含 code 的链接）。<br>'
+      +     '3. 复制该页面的整段内容或地址栏完整 URL，粘贴到下方输入框并点击「确认提交」。'
+      +   '</div>'
+      +   '<div style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap">'
+      +     '<a id="miotWebOpenBtn" href="javascript:;" target="_blank" class="btn btn--primary">1. 打开小米官方授权页面</a>'
+      +     '<button class="btn" id="miotWebCancel">取消</button>'
+      +   '</div>'
+      +   '<div style="display:flex;gap:8px">'
+      +     '<input id="miotWebPayload" class="input" placeholder="请粘贴授权码、Base64 字符串或完整回调 URL" style="flex:1">'
+      +     '<button id="miotWebSubmit" class="btn btn--primary">2. 确认提交</button>'
       +   '</div>'
       + '</div>';
     bindMiotPanel();
@@ -12602,7 +12743,10 @@ function saveUI(patch){
   api('/api/ui/config', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(patch) })
     .then(function(r){
       if(r.warn) toast(r.warn, 'warn'); else toast('已保存', 'ok');
-      if(r.config) setCfg = r.config;
+      if(r.config){
+        setCfg = r.config;
+        window.__MICAM_UI__ = r.config;
+      }
       // 刷新右卡（有些值影响摘要）
       api('/api/ui/config').then(function(d){ setSum = d.summary || {}; paintSettings(document.getElementById('content')); });
     })
