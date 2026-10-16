@@ -28,6 +28,7 @@ import (
 	"time"
 
 	"github.com/micam/micam/internal/miot"
+	"github.com/micam/micam/internal/stream"
 )
 
 // miotBound 返回当前是否已绑定官方通道。
@@ -124,6 +125,10 @@ func (s *Server) handleMiotLive(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	channels := "1"
+	if stream.HasSecondLens(dev.Model) {
+		channels = "2"
+	}
 	args := []string{
 		sidecar,
 		"--lib", libPath,
@@ -132,7 +137,7 @@ func (s *Server) handleMiotLive(w http.ResponseWriter, r *http.Request) {
 		"--model", dev.Model,
 		"--ip", dev.IP,
 		"--channel", ch, // 镜头号（1 起）
-		"--channels", "2", // 双摄机型注册两个回调
+		"--channels", channels, // 动态匹配单摄(1)与双摄(2)
 		"--ffmpeg", s.ffm,
 		"--w", w0,
 		"--fps", fps,

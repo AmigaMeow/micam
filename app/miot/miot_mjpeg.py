@@ -81,8 +81,8 @@ def main():
                 args.ffmpeg, "-hide_banner", "-loglevel", "warning",
                 "-fflags", "nobuffer+flush_packets+fastseek",
                 "-flags", "low_delay",
-                "-probesize", "32768",
-                "-analyzeduration", "0",
+                "-probesize", "65536",
+                "-analyzeduration", "100000",
                 "-threads", "2",
                 "-f", fmt, "-i", "pipe:0",
                 "-fps_mode", "passthrough",
@@ -98,8 +98,8 @@ def main():
             return ff
 
     def writer(codec, channel, ts, data):
-        # 只转发请求的镜头
-        if channel != want:
+        # 只转发请求的镜头（单摄直接转发所有视频帧，双摄严格匹配）
+        if int(args.channels) > 1 and channel != want:
             return
         if stop["v"]:
             return

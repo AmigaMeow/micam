@@ -415,8 +415,8 @@ func downloadModel(name, dst string) error {
 	sources := map[string][]string{
 		// YOLOv8 series
 		"yolov8n": {
-			"https://hf-mirror.com/kshitijjjjjjjjjjjjjjjj/yolov8n-coco-onnx/resolve/main/yolov8n.onnx",
-			"https://huggingface.co/kshitijjjjjjjjjjjjjjjj/yolov8n-coco-onnx/resolve/main/yolov8n.onnx",
+			"https://ghfast.top/https://github.com/AmigaMeow/micam/releases/download/v0.41.9/yolov8n.onnx",
+			"https://github.com/AmigaMeow/micam/releases/download/v0.41.9/yolov8n.onnx",
 		},
 		"yolov8s": {
 			"https://hf-mirror.com/orirdx/yolov8s-coco-onnx/resolve/main/coco_yolov8s.onnx",
@@ -428,8 +428,8 @@ func downloadModel(name, dst string) error {
 		},
 		// YOLOv11 series (Ultralytics YOLO11)
 		"yolov11n": {
-			"https://hf-mirror.com/Ultralytics/assets/resolve/main/yolo11n.onnx",
-			"https://github.com/ultralytics/assets/releases/download/v8.3.0/yolo11n.onnx",
+			"https://ghfast.top/https://github.com/AmigaMeow/micam/releases/download/v0.41.9/yolo11n.onnx",
+			"https://github.com/AmigaMeow/micam/releases/download/v0.41.9/yolo11n.onnx",
 		},
 		"yolov11s": {
 			"https://hf-mirror.com/Ultralytics/assets/resolve/main/yolo11s.onnx",

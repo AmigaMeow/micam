@@ -14,11 +14,13 @@ package hardware
 //   - 无硬件 -> libx264 软件编码
 
 import (
+	"context"
 	"os"
 	"os/exec"
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 )
 
 // Encoder 编码器信息。
@@ -109,13 +111,29 @@ func detect(ffmpegPath string) *Capability {
 	encoders := listEncoders(ffmpegPath)
 	c.Encoders = encoders
 
-	// 选择最优编码器
-	c.Preferred = pickEncoder(encoders, c.HasDRI)
+	// 判断 GPU / CPU 厂商
+	gpuLow := strings.ToLower(c.GPUInfo)
+	cpuLow := strings.ToLower(c.CPUModel)
+	isAMD := strings.Contains(gpuLow, "amd") || strings.Contains(gpuLow, "advanced micro devices") ||
+		strings.Contains(gpuLow, "radeon") || strings.Contains(cpuLow, "amd") || strings.Contains(cpuLow, "ryzen")
+	isNvidia := strings.Contains(gpuLow, "nvidia") || strings.Contains(gpuLow, "geforce")
+	isIntel := strings.Contains(gpuLow, "intel") || strings.Contains(cpuLow, "intel")
 
 	// 解码方式
 	if c.HasDRI {
-		c.DecodeHW = "qsv"
+		if isAMD {
+			c.DecodeHW = "vaapi"
+		} else if isNvidia {
+			c.DecodeHW = "cuda"
+		} else if isIntel {
+			c.DecodeHW = "qsv"
+		} else {
+			c.DecodeHW = "vaapi"
+		}
 	}
+
+	// 选择最优编码器（平台自适应并验证）
+	c.Preferred = pickEncoder(ffmpegPath, encoders, c.HasDRI, isAMD, isNvidia, isIntel)
 
 	return c
 }
@@ -152,13 +170,53 @@ func listEncoders(ffmpegPath string) []Encoder {
 	return encs
 }
 
-// pickEncoder 选择最优编码器。
-//
-// 策略：硬件优先，但需要 DRI 设备存在。
-func pickEncoder(encs []Encoder, hasDRI bool) string {
+// verifyEncoder 测试编码器在当前环境中能否实际工作。
+func verifyEncoder(ffmpegPath, name string) bool {
+	if name == "libx264" || name == "" {
+		return true
+	}
+	var args []string
+	switch {
+	case strings.HasSuffix(name, "_qsv"):
+		args = []string{"-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=black:s=64x64:d=0.1", "-c:v", "h264_qsv", "-f", "null", "-"}
+	case strings.HasSuffix(name, "_nvenc"):
+		args = []string{"-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=black:s=64x64:d=0.1", "-c:v", "h264_nvenc", "-f", "null", "-"}
+	case strings.HasSuffix(name, "_vaapi"):
+		args = []string{"-hide_banner", "-loglevel", "error", "-vaapi_device", "/dev/dri/renderD128", "-f", "lavfi", "-i", "color=c=black:s=64x64:d=0.1", "-vf", "format=nv12,hwupload", "-c:v", "h264_vaapi", "-f", "null", "-"}
+	case strings.HasSuffix(name, "_amf"):
+		args = []string{"-hide_banner", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=black:s=64x64:d=0.1", "-c:v", "h264_amf", "-f", "null", "-"}
+	default:
+		return true
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, ffmpegPath, args...)
+	return cmd.Run() == nil
+}
+
+// pickEncoder 选择最优编码器（平台自适应，避免 AMD 误用 QSV）。
+func pickEncoder(ffmpegPath string, encs []Encoder, hasDRI, isAMD, isNvidia, isIntel bool) string {
+	available := make(map[string]bool)
 	for _, e := range encs {
-		if e.Hardware && hasDRI {
-			return e.Name
+		available[e.Name] = true
+	}
+
+	var candidates []string
+	if isAMD {
+		candidates = []string{"h264_vaapi", "h264_amf"}
+	} else if isNvidia {
+		candidates = []string{"h264_nvenc", "h264_vaapi"}
+	} else if isIntel {
+		candidates = []string{"h264_qsv", "h264_vaapi"}
+	} else {
+		candidates = []string{"h264_vaapi", "h264_qsv", "h264_nvenc", "h264_amf"}
+	}
+
+	if hasDRI {
+		for _, name := range candidates {
+			if available[name] && verifyEncoder(ffmpegPath, name) {
+				return name
+			}
 		}
 	}
 	return "libx264"

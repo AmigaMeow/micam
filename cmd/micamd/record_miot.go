@@ -31,6 +31,7 @@ import (
 	"time"
 
 	"github.com/micam/micam/internal/miot"
+	"github.com/micam/micam/internal/stream"
 	"github.com/micam/micam/internal/xiaomi"
 )
 
@@ -134,6 +135,10 @@ func (j *miotRecJob) run(ctx context.Context, s *Server, libPath, sidecar, model
 		}
 
 		startAt := time.Now()
+		recChannels := "1"
+		if stream.HasSecondLens(model) {
+			recChannels = "2"
+		}
 		cmd := exec.CommandContext(ctx, miot.PythonBin(),
 			sidecar,
 			"--lib", libPath,
@@ -142,7 +147,7 @@ func (j *miotRecJob) run(ctx context.Context, s *Server, libPath, sidecar, model
 			"--model", model,
 			"--ip", ip,
 			"--channel", "1",
-			"--channels", "2",
+			"--channels", recChannels,
 			"--quality", j.quality,
 			"--segment", fmt.Sprint(j.segment),
 			"--out", j.dir,
