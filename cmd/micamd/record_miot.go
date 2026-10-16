@@ -154,6 +154,10 @@ func (j *miotRecJob) run(ctx context.Context, s *Server, libPath, sidecar, model
 			"--ffmpeg", s.ffmpegPath(),
 		)
 		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		cmd.Cancel = func() error {
+			return cmd.Process.Signal(syscall.SIGTERM)
+		}
+		cmd.WaitDelay = 4 * time.Second
 		stderr, _ := cmd.StderrPipe()
 		if err := cmd.Start(); err != nil {
 			logf("[rec] sidecar 启动失败 did=%s: %v（%.0f 秒后重试）", j.did, err, backoff.Seconds())
@@ -178,6 +182,7 @@ func (j *miotRecJob) run(ctx context.Context, s *Server, libPath, sidecar, model
 		}()
 
 		_ = cmd.Wait()
+		go s.autoRemuxRawStreams(j.dir)
 
 		select {
 		case <-ctx.Done():
@@ -240,6 +245,7 @@ func (s *Server) stopRecordingMiot(did string) bool {
 	miotRecJobsMu.Unlock()
 	if ok {
 		job.stop()
+		go s.autoRemuxRawStreams(job.dir)
 		logf("[rec] 官方通道录像已停止 did=%s（共重启 %d 次）", did, job.restarts)
 	}
 	return ok

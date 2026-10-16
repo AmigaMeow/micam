@@ -76,7 +76,10 @@ def main():
             else:
                 fmt = "hevc"
 
-            vf = "scale=%d:-1" % args.width if args.width > 0 else "null"
+            if args.width > 0:
+                vf = "scale='min(%d,iw)':-2" % args.width
+            else:
+                vf = "scale='min(2560,iw)':-2"
             cmd = [
                 args.ffmpeg, "-hide_banner", "-loglevel", "warning",
                 "-fflags", "nobuffer+flush_packets+fastseek",

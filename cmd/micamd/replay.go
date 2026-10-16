@@ -277,11 +277,51 @@ func (s *Server) probeDuration(path string) float64 {
 // ---- 日期列表 ----
 
 // handleRecDates 返回可用日期（跨所有纳管录像池聚合并去重）。
+// autoRemuxRawStreams 自动查找并封装录像目录中残留的 .265/.264 原始码流为 .mkv
+func (s *Server) autoRemuxRawStreams(root string) {
+	if root == "" {
+		return
+	}
+	_ = filepath.Walk(root, func(pth string, info os.FileInfo, err error) error {
+		if err != nil || info == nil || info.IsDir() {
+			return nil
+		}
+		ext := strings.ToLower(filepath.Ext(pth))
+		if ext != ".265" && ext != ".264" {
+			return nil
+		}
+		// 忽略最近 8 秒内修改的文件（可能正在写入）
+		if time.Since(info.ModTime()) < 8*time.Second {
+			return nil
+		}
+		if info.Size() < 1024 {
+			_ = os.Remove(pth)
+			return nil
+		}
+		dst := strings.TrimSuffix(pth, ext) + ".mkv"
+		inFmt := "hevc"
+		if ext == ".264" {
+			inFmt = "h264"
+		}
+		cmd := exec.Command(s.ffmpegPath(), "-hide_banner", "-loglevel", "error", "-y",
+			"-f", inFmt, "-i", pth, "-c", "copy", dst)
+		if err := cmd.Run(); err == nil {
+			if fi, e := os.Stat(dst); e == nil && fi.Size() > 1024 {
+				_ = os.Remove(pth)
+				logf("[replay] 自动封装孤立录像分片完成: %s -> %s (%.2fMB)",
+					filepath.Base(pth), filepath.Base(dst), float64(fi.Size())/(1<<20))
+			}
+		}
+		return nil
+	})
+}
+
 func (s *Server) handleRecDates(w http.ResponseWriter, r *http.Request) {
 	name := safeName(r.URL.Query().Get("name"))
 	roots := s.recRoots()
 	for _, root := range roots {
 		loadRecMeta(root)
+		s.autoRemuxRawStreams(root)
 	}
 
 	type dayInfo struct {
@@ -383,6 +423,7 @@ func (s *Server) handleRecList(w http.ResponseWriter, r *http.Request) {
 	roots := s.recRoots()
 	for _, root := range roots {
 		loadRecMeta(root)
+		s.autoRemuxRawStreams(root)
 	}
 
 	// name 为空 = 列出**所有设备**的录像。
@@ -452,6 +493,7 @@ func (s *Server) collectRecFiles(root, name, date string) []recFileInfo {
 	if date != "" {
 		dir = filepath.Join(dir, date)
 	}
+	s.autoRemuxRawStreams(dir)
 
 	var out []recFileInfo
 	_ = filepath.Walk(dir, func(pth string, info os.FileInfo, err error) error {
@@ -1043,6 +1085,7 @@ func (s *Server) handleRecConfig(w http.ResponseWriter, r *http.Request) {
 
 	case http.MethodPost:
 		var req struct {
+			Dir               *string `json:"dir"`
 			Enabled           *bool   `json:"enabled"`
 			Mode              *string `json:"mode"`
 			SegmentSec        *int    `json:"segmentSec"`
@@ -1080,6 +1123,18 @@ func (s *Server) handleRecConfig(w http.ResponseWriter, r *http.Request) {
 		if req.CacheGB != nil && (*req.CacheGB < 1 || *req.CacheGB > 500) {
 			writeErr(w, 400, "缓存上限需在 1-500 GB 之间")
 			return
+		}
+
+		if req.Dir != nil && *req.Dir != "" {
+			clean := filepath.Clean(*req.Dir)
+			if filepath.IsAbs(clean) && clean != "/" && filepath.Dir(clean) != "/" {
+				if err := os.MkdirAll(clean, 0o755); err == nil && isWritable(clean) {
+					s.cfg.SetRecordDir(clean)
+					cur := s.rec.GetConfig()
+					cur.Dir = clean
+					s.rec.SetConfig(cur)
+				}
+			}
 		}
 
 		oldMode := s.cfg.RecordMode

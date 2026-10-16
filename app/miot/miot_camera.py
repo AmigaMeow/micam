@@ -383,15 +383,17 @@ def main():
     signal.signal(signal.SIGTERM, handler)
     signal.signal(signal.SIGINT, handler)
 
-    t0 = time.time()
-    while not stop["v"]:
-        time.sleep(0.5)
-        if args.segment <= 0 and time.time() - t0 >= 30:
-            break
-    cam.stop()
-    cam.free()
-    if args.segment > 0:
-        seg_roll(time.time())
+    try:
+        t0 = time.time()
+        while not stop["v"]:
+            time.sleep(0.5)
+            if args.segment <= 0 and time.time() - t0 >= 30:
+                break
+    finally:
+        cam.stop()
+        cam.free()
+        if args.segment > 0:
+            seg_roll(time.time())
     sys.stderr.write("[done] 累计 %d 帧\n" % n)
     return 0
 

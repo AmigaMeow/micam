@@ -117,7 +117,7 @@ func (s *Server) handleMiotLive(w http.ResponseWriter, r *http.Request) {
 	qv := r.URL.Query().Get("qv")
 	if qv == "" {
 		if w0 == "0" {
-			qv = "8" // 2K 原画
+			qv = "10" // 2K/3K 原画（兼顾画质与网络吞吐）
 		} else if w0 == "1280" {
 			qv = "6" // 720p 高清（平衡画质与极低延迟）
 		} else {
