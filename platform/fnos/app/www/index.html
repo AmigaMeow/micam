@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <title>MiCam - 智能监控中心</title>
-<meta name="micam-build" content="2026-10-16 15:17:20">
+<meta name="micam-build" content="2026-10-16 16:06:42">
 <!-- 内联 SVG favicon（data URI）：
      浏览器默认会请求 /favicon.ico 并得到 404（控制台报错）。
      这里用 data URI 消除该请求 —— 同时保持「全内联、不联网」的约束。 -->
@@ -9093,6 +9093,215 @@ input[type="checkbox"]:not(.switch input) { width: 16px; height: 16px; flex: 0 0
 .st-fnos-perm-notice { margin-top: 14px; background: var(--surface-2); border: 1px solid var(--border); border-left: 4px solid var(--accent); border-radius: 8px; padding: 12px 16px; }
 
 
+/* ===== 存储管理与统一纳管视觉升级 ===== */
+.st-vault-box {
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--accent);
+  border-radius: var(--radius-lg);
+  padding: var(--space-4) var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+.st-vault-box__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.st-vault-box__title {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-base);
+  font-weight: var(--weight-medium);
+  color: var(--text);
+}
+.st-vault-box__summary {
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+.st-vault-pools {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin-top: 2px;
+}
+.st-vault-pool-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  gap: var(--space-3);
+  flex-wrap: wrap;
+}
+.st-vault-pool-item.is-current {
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+  background: color-mix(in srgb, var(--accent) 5%, var(--surface-2));
+}
+.st-vault-pool-main {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+  flex: 1;
+  min-width: 240px;
+}
+.st-vault-pool-tag {
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 7px;
+  border-radius: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.st-vault-pool-tag.is-active {
+  background: rgba(37, 99, 235, 0.12);
+  color: var(--accent);
+  border: 1px solid rgba(37, 99, 235, 0.25);
+}
+.st-vault-pool-tag.is-archive {
+  background: rgba(100, 116, 139, 0.12);
+  color: var(--text-muted);
+  border: 1px solid rgba(100, 116, 139, 0.25);
+}
+.st-vault-pool-name {
+  font-size: var(--text-sm);
+  font-weight: 500;
+  color: var(--text);
+}
+.st-vault-pool-path {
+  font-family: var(--font-mono, monospace);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+.st-vault-pool-stat {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+.st-vault-pool-dates {
+  font-size: 11px;
+  color: var(--text-muted);
+  background: var(--surface-1);
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.st-dir-switcher {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3) 0;
+}
+.st-dir-switcher__label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.btn--pulse {
+  animation: stpulse 1.8s infinite;
+}
+@keyframes stpulse {
+  0% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0.4); }
+  70% { box-shadow: 0 0 0 6px rgba(37, 99, 235, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(37, 99, 235, 0); }
+}
+
+.st-clean-dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+.st-clean-checks {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3);
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+}
+.st-clean-checks .st-check {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  cursor: pointer;
+}
+.st-clean-checks .st-check input[type="checkbox"] {
+  margin-top: 3px;
+}
+.st-check__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: var(--text-sm);
+  color: var(--text);
+}
+.st-check__desc {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  line-height: 1.4;
+}
+.st-clean-est {
+  padding: var(--space-4);
+  background: var(--surface-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+.st-clean-est__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+.st-clean-est__metric {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+.st-clean-est__val {
+  font-size: 26px;
+  font-weight: 700;
+  color: #ef4444;
+  letter-spacing: -0.5px;
+}
+.st-clean-est__files {
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+.st-clean-est__detail {
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+.st-clean-submit {
+  width: 100%;
+  height: 42px;
+  font-size: var(--text-sm);
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+}
+
+
 </style>
 </head>
 <body>
@@ -18139,6 +18348,7 @@ function renderStorage(c){
     if(!res[0]) throw new Error('读取存储信息失败');
     stUIPref = ((res[3] && res[3].config) || {});
     stLocs = (res[4] && res[4].locations) || [];
+    stUnified = (res[4] && res[4].unified) || {};
     paintStorage(c, res[0], res[2] || {});
   }).catch(function(err){
     c.innerHTML = '<div class="page__inner">' + errorCard(err, function(){ renderStorage(c); }) + '</div>';
@@ -18153,7 +18363,7 @@ function fmtGB(g){
   return (g*1024).toFixed(0) + ' MB';
 }
 
-function stRecDirCard(status, stLocs){
+function stRecDirCard(status, stLocs, unified){
   var curPath = (status && status.recPath) || '';
   var curLoc = (stLocs || []).filter(function(l){ return l.path === curPath; })[0] || {};
   var freeText = curLoc.freeGB ? (fmtGB(curLoc.freeGB) + ' 可用') : '';
@@ -18167,59 +18377,68 @@ function stRecDirCard(status, stLocs){
     ? Math.max(0, Math.min(100, ((curLoc.totalGB - curLoc.freeGB) / curLoc.totalGB * 100))).toFixed(1)
     : null;
 
+  var u = unified || stUnified || {};
+  var totalFiles = u.totalFiles || 0;
+  var totalGB = u.totalGB || 0;
+  var pools = u.pools || [];
+
   var userShares = (stLocs || []).filter(function(l){ return l.kind === 'share' || l.kind === 'volume'; });
   var appShares = (stLocs || []).filter(function(l){ return l.kind === 'appshare' || l.kind === 'appdata' || (!l.kind && l.path !== curPath); });
 
-  function renderLocItem(l){
-    var isCur = l.path === curPath;
-    var spaceStr = (l.freeGB != null && l.totalGB != null)
-      ? ('剩余 ' + fmtGB(l.freeGB) + ' / 总计 ' + fmtGB(l.totalGB))
-      : (l.freeGB ? ('剩余 ' + fmtGB(l.freeGB)) : '');
-
-    var badgeHtml = '';
-    if(isCur){
-      badgeHtml = '<span class="badge badge--accent">' + icon('check', 11) + ' 当前生效中</span>';
-    } else if(l.writable){
-      badgeHtml = '<span class="st-tag st-tag--ok" style="background:rgba(34,197,94,0.12);color:#22c55e;border:1px solid rgba(34,197,94,0.25);border-radius:4px;padding:2px 8px;font-size:11px;font-weight:500;display:inline-flex;align-items:center;gap:4px;">' + icon('shield', 11) + ' 已授权 · 可直接使用</span>';
-    } else {
-      badgeHtml = '<span class="st-tag st-tag--warn" style="background:rgba(234,179,8,0.12);color:#eab308;border:1px solid rgba(234,179,8,0.25);border-radius:4px;padding:2px 8px;font-size:11px;font-weight:500;display:inline-flex;align-items:center;gap:4px;">' + icon('lock', 11) + ' 需在飞牛授权</span>';
-    }
-
-    var btnHtml = '';
-    if(isCur){
-      btnHtml = '<button class="btn btn--sm" disabled style="opacity:0.75">' + icon('check', 12) + ' 正在使用</button>';
-    } else if(l.writable){
-      btnHtml = '<button class="btn btn--primary btn--sm st-apply-dir" data-path="' + esc(l.path) + '">' + icon('check', 12) + ' 设为录像目录</button>';
-    } else {
-      btnHtml = '<button class="btn btn--sm st-apply-dir" data-path="' + esc(l.path) + '" title="若已在飞牛完成权限分配，可直接切换">' + icon('arrow-right', 12) + ' 设为录像目录</button>';
-    }
-
-    return '<div class="st-loc-item' + (isCur ? ' is-current' : '') + (!l.writable ? ' is-unwritable' : '') + '">'
-      + '<div class="st-loc-item__left">'
-      +   '<div class="st-loc-item__icon">' + icon(isCur ? 'folder-open' : 'folder', 18) + '</div>'
-      +   '<div class="st-loc-item__body">'
-      +     '<div class="st-loc-item__title-row">'
-      +       '<span class="st-loc-item__title">' + esc(l.name || l.path) + '</span>'
-      +       badgeHtml
-      +     '</div>'
-      +     '<div class="st-loc-item__path" title="' + esc(l.path) + '">' + esc(l.path) + '</div>'
-      +     (spaceStr ? ('<div class="st-loc-item__meta">' + esc(spaceStr) + (l.desc ? (' · ' + esc(l.desc)) : '') + '</div>') : '')
-      +   '</div>'
-      + '</div>'
-      + '<div class="st-loc-item__right">'
-      +   btnHtml
-      + '</div>'
+  // 统一存储池汇总卡
+  var poolsHtml = '';
+  if(pools.length > 0){
+    poolsHtml = '<div class="st-vault-pools">'
+      + pools.map(function(p){
+          var isAct = p.current;
+          var pName = p.name || p.path;
+          var tag = isAct
+            ? '<span class="st-vault-pool-tag is-active">' + icon('check', 10) + ' 当前写入</span>'
+            : '<span class="st-vault-pool-tag is-archive">' + icon('archive', 10) + ' 历史纳管</span>';
+          var statStr = (p.files > 0 ? (p.files.toLocaleString() + ' 个文件 · ' + fmtGB(p.sizeGB)) : '当前无文件');
+          var datesStr = p.dates ? ('<span class="st-vault-pool-dates">' + esc(p.dates) + '</span>') : '';
+          return '<div class="st-vault-pool-item' + (isAct ? ' is-current' : '') + '">'
+            + '<div class="st-vault-pool-main">'
+            +   tag
+            +   '<span class="st-vault-pool-name" title="' + esc(pName) + '">' + esc(pName) + '</span>'
+            +   '<span class="st-vault-pool-path" title="' + esc(p.path) + '">' + esc(p.path) + '</span>'
+            + '</div>'
+            + '<div class="st-vault-pool-stat">'
+            +   '<b>' + esc(statStr) + '</b>'
+            +   datesStr
+            + '</div>'
+            + '</div>';
+        }).join('')
       + '</div>';
   }
+
+  // 下拉选项
+  var optUserShares = userShares.map(function(l){
+    var isSel = l.path === curPath;
+    var label = (l.writable ? '[已授权] ' : '[需授权] ') + (l.name || l.path);
+    if(l.freeGB != null) label += ' (剩余 ' + fmtGB(l.freeGB);
+    if(l.hasRec) label += ' · 存有录像 ' + fmtGB(l.recGB);
+    if(l.freeGB != null) label += ')';
+    return '<option value="' + esc(l.path) + '"' + (isSel ? ' selected' : '') + '>' + esc(label) + '</option>';
+  }).join('');
+
+  var optAppShares = appShares.map(function(l){
+    var isSel = l.path === curPath;
+    var label = '[已授权] ' + (l.name || l.path);
+    if(l.freeGB != null) label += ' (剩余 ' + fmtGB(l.freeGB);
+    if(l.hasRec) label += ' · 存有录像 ' + fmtGB(l.recGB);
+    if(l.freeGB != null) label += ')';
+    return '<option value="' + esc(l.path) + '"' + (isSel ? ' selected' : '') + '>' + esc(label) + '</option>';
+  }).join('');
 
   return '<div class="st-dir-card">'
     + '<div class="st-dir-card__head">'
     +   '<div class="st-dir-card__title-group">'
-    +     '<span class="st-dir-card__title">' + icon('folder-open',18) + '录像存储位置与目录管理</span>'
-    +     '<span class="st-dir-card__subtitle">自动识别飞牛存储池、用户个人共享文件夹与外置存储挂载点</span>'
+    +     '<span class="st-dir-card__title">' + icon('hard-drive',18) + '本地录像统一存储与目录选择</span>'
+    +     '<span class="st-dir-card__subtitle">所有录像存储位置整体统一纳管，切换新录像写入目录后历史录像永不丢失，回放时间轴无缝聚合</span>'
     +   '</div>'
     +   '<div class="st-dir-card__actions">'
-    +     '<button class="btn btn--sm st-locs-refresh" id="stLocsRefresh" title="重新扫描飞牛系统共享目录与存储卷">' + icon('refresh',13) + '刷新存储列表</button>'
+    +     '<button class="btn btn--sm st-locs-refresh" id="stLocsRefresh" title="重新扫描飞牛系统共享目录与存储卷">' + icon('refresh',13) + '刷新存储</button>'
     +     '<span class="st-health ' + (status && status.healthy ? 'is-ok' : 'is-warn') + '">'
     +       '<span class="status-dot ' + (status && status.healthy ? 'is-online' : '') + '"></span>'
     +       '存储健康 <b>' + (status && status.healthy ? '就绪正常' : '偏低需关注') + '</b>'
@@ -18227,67 +18446,75 @@ function stRecDirCard(status, stLocs){
     +   '</div>'
     + '</div>'
     + '<div class="st-dir-card__body">'
+
+    // 1. 本地录像统一聚合存储总览卡
+    +   '<div class="st-vault-box">'
+    +     '<div class="st-vault-box__head">'
+    +       '<div class="st-vault-box__title">'
+    +         icon('layers', 15)
+    +         '<span>本地录像整体统一纳管</span>'
+    +         '<span class="badge badge--accent">' + (pools.length || 1) + ' 个存储池聚合</span>'
+    +       '</div>'
+    +       '<div class="st-vault-box__summary">'
+    +         '共纳管 <b>' + totalFiles.toLocaleString() + '</b> 个录像文件 · 总容量 <b>' + fmtGB(totalGB) + '</b>'
+    +       '</div>'
+    +     '</div>'
+    +     poolsHtml
+    +   '</div>'
+
+    // 2. 下拉选择新录像保存目录
+    +   '<div class="st-dir-switcher">'
+    +     '<div class="st-dir-switcher__label">'
+    +       '<span style="font-weight:600;font-size:13px;color:var(--text);display:flex;align-items:center;gap:6px;">'
+    +         icon('folder', 14) + '选择新录像写入目录'
+    +       '</span>'
+    +       '<span style="font-size:12px;color:var(--text-muted)">支持选择飞牛任意共享文件夹或存储卷</span>'
+    +     '</div>'
+    +     '<div class="st-dir-select-row">'
+    +       '<select class="input st-recdir-select" id="stRecDirSelect">'
+    +         (userShares.length ? ('<optgroup label="飞牛用户共享文件夹 (文件管理可见)">' + optUserShares + '</optgroup>') : '')
+    +         (appShares.length ? ('<optgroup label="插件专属与系统目录">' + optAppShares + '</optgroup>') : '')
+    +       '</select>'
+    +       '<button class="btn btn--primary st-apply-selected-dir" id="stRecDirApply" disabled>' + icon('check', 13) + '设为写入目录</button>'
+    +       '<button class="btn btn--sm st-toggle-custom" id="stToggleCustom">' + icon('edit', 13) + '自定义路径</button>'
+    +     '</div>'
+    +   '</div>'
+
+    // 3. 当前生效目录状态
     +   '<div class="st-active-box">'
     +     '<div class="st-active-box__head">'
     +       '<div class="st-active-box__name-row">'
-    +         '<span class="badge badge--accent">' + icon('check', 11) + ' 当前生效中</span>'
-    +         '<span class="st-active-box__name">' + esc(curLoc.name || '当前录像存储目录') + '</span>'
+    +         '<span class="badge badge--accent">' + icon('check', 11) + ' 当前生效写入中</span>'
+    +         '<span class="st-active-box__name">' + esc(curLoc.name || curPath) + '</span>'
     +         (curLoc.writable ? '<span style="color:#22c55e;font-size:12px;font-weight:500;display:inline-flex;align-items:center;gap:4px;">' + icon('shield',12) + '读写权限正常</span>' : '<span style="color:var(--warning);font-size:12px;font-weight:500;display:inline-flex;align-items:center;gap:4px;">' + icon('alert',12) + '需在飞牛授权</span>')
     +       '</div>'
     +       '<div class="st-active-box__btns">'
-    +         '<button class="btn btn--sm st-go-migrate">' + icon('move',13) + '迁移已有录像</button>'
-    +         '<button class="btn btn--sm st-toggle-custom" id="stToggleCustom">' + icon('plus',13) + '自定义绝对路径</button>'
+    +         '<button class="btn btn--sm st-go-migrate">' + icon('move',13) + '录像搬家迁移</button>'
     +       '</div>'
     +     '</div>'
     +     '<div class="st-active-box__path">' + icon('folder',14) + '<span>物理路径: ' + esc(curPath || '—') + '</span></div>'
     +     '<div class="st-active-box__meta">'
     +       '<div class="st-active-box__capacity">'
     +         '<div style="display:flex;justify-content:space-between;font-size:12px;color:var(--text-secondary);margin-bottom:4px;">'
-    +           '<span>存储空间使用情况</span>'
+    +           '<span>当前写入盘空间使用情况</span>'
     +           '<b>' + esc(spaceSummary) + (usedPct != null ? (' (已用 ' + usedPct + '%)') : '') + '</b>'
     +         '</div>'
     +         (usedPct != null ? ('<div class="st-bar"><span style="width:' + usedPct + '%"></span></div>') : '')
     +       '</div>'
     +     '</div>'
     +   '</div>'
+
+    // 4. 自定义绝对路径面板（默认折叠）
     +   '<div class="st-custom-panel" id="stCustomPanel" style="display:none;background:var(--surface-1);border:1px dashed var(--border);border-radius:var(--radius-lg);padding:14px 18px;">'
-    +     '<div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px;display:flex;align-items:center;gap:6px;">' + icon('set',14) + '输入自定义存储路径</div>'
+    +     '<div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:8px;display:flex;align-items:center;gap:6px;">' + icon('settings',14) + '输入自定义存储路径</div>'
     +     '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">'
     +       '<input class="input st-custom-inp" id="stCustomInp" placeholder="请输入飞牛绝对路径，例如 /vol1/1000/测试小米存储 或 /vol2/cams" style="flex:1;min-width:280px;">'
     +       '<button class="btn btn--primary st-custom-apply" id="stCustomApply">' + icon('save',13) + '应用此路径</button>'
     +     '</div>'
     +     '<div style="font-size:12px;color:var(--text-muted);margin-top:6px;">提示：自定义路径必须为绝对路径，且已在飞牛「应用中心 - 小米摄像头 - 设置 - 访问权限」中授予读写权限。</div>'
     +   '</div>'
-    +   '<div class="st-locs-search-bar" style="margin-top:6px;margin-bottom:12px;">'
-    +     '<div style="position:relative;">'
-    +       '<input class="input st-locs-search-inp" id="stLocSearch" placeholder="快速过滤共享文件夹名称或物理路径 (输入关键字即时筛选)..." style="width:100%;height:38px;padding-left:36px;font-size:13px;border-radius:8px;">'
-    +       '<span style="position:absolute;left:12px;top:11px;color:var(--text-muted);pointer-events:none;">' + icon('search',15) + '</span>'
-    +     '</div>'
-    +   '</div>'
-    +   '<div class="st-locs-wrap">'
-    +     (userShares.length ? (
-            '<div class="st-loc-group">'
-            + '<div class="st-loc-group__head">'
-            +   '<span>飞牛用户共享文件夹 (' + userShares.length + ')</span>'
-            +   '<span style="font-size:12px;color:var(--text-muted)">在飞牛文件管理中可见</span>'
-            + '</div>'
-            + '<div class="st-loc-list">'
-            +   userShares.map(renderLocItem).join('')
-            + '</div>'
-            + '</div>'
-          ) : '')
-    +     (appShares.length ? (
-            '<div class="st-loc-group">'
-            + '<div class="st-loc-group__head">'
-            +   '<span>插件应用与系统目录 (' + appShares.length + ')</span>'
-            +   '<span style="font-size:12px;color:var(--text-muted)">应用专属空间</span>'
-            + '</div>'
-            + '<div class="st-loc-list">'
-            +   appShares.map(renderLocItem).join('')
-            + '</div>'
-            + '</div>'
-          ) : '')
-    +   '</div>'
+
+    // 5. 飞牛权限设置指引
     +   '<div class="st-perm-guide">'
     +     '<div class="st-perm-guide__head">'
     +       '<span style="display:flex;align-items:center;gap:6px;">' + icon('shield', 15) + '飞牛 NAS 权限设置指引（更换非自带目录必看）</span>'
@@ -18316,17 +18543,20 @@ function stRecDirCard(status, stLocs){
     +       '</div>'
     +     '</div>'
     +     '<div class="st-perm-guide__tip">'
-    +       '说明：飞牛系统采用进程沙盒隔离机制保护系统安全。为目标文件夹授权保存后，回到此处点击右上角「刷新存储列表」即可直接识别读写状态并切换。'
+    +       '说明：飞牛系统采用进程沙盒隔离机制保护系统安全。为目标文件夹授权保存后，回到此处点击右上角「刷新存储」即可直接识别读写状态并切换。'
     +     '</div>'
     +   '</div>'
+
+    // 6. 元数据统计网格
     +   '<div class="st-dir-meta-grid">'
-    +     '<div class="st-dir-meta-item"><span class="st-dir-meta-item__label">存储空间余量</span><b class="st-dir-meta-item__val" title="' + esc(spaceTitle) + '">' + esc(spaceSummary) + '</b></div>'
-    +     '<div class="st-dir-meta-item"><span class="st-dir-meta-item__label">系统数据根路径</span><b class="st-dir-meta-item__val" title="' + esc(status && status.dataPath || '—') + '">' + esc(status && status.dataPath || '—') + '</b></div>'
-    +     '<div class="st-dir-meta-item"><span class="st-dir-meta-item__label">上次扫描索引</span><b class="st-dir-meta-item__val">' + esc(status && status.lastScan || '—') + '</b></div>'
+    +     '<div class="st-dir-meta-item"><span class="st-dir-meta-item__label">当前写入空间余量</span><b class="st-dir-meta-item__val" title="' + esc(spaceTitle) + '">' + esc(spaceSummary) + '</b></div>'
+    +     '<div class="st-dir-meta-item"><span class="st-dir-meta-item__label">纳管录像总容量</span><b class="st-dir-meta-item__val">' + fmtGB(totalGB) + '</b></div>'
+    +     '<div class="st-dir-meta-item"><span class="st-dir-meta-item__label">纳管录像总文件</span><b class="st-dir-meta-item__val">' + totalFiles.toLocaleString() + ' 个</b></div>'
     +     '<div class="st-dir-meta-item"><span class="st-dir-meta-item__label">存储健康状态</span><b class="st-dir-meta-item__val" style="color:var(--online)">' + (status && status.healthy ? '正常就绪' : '需关注') + '</b></div>'
     +   '</div>'
+
     +   '<div class="st-dir-tips">'
-    +     '<b>存储位置说明：</b>切换录像目录后，新录制的视频将保存到新路径；已有历史录像仍安全保存在原目录中。如需将历史录像整体搬移至新路径，请点击「迁移已有录像」。'
+    +     '<b>统一存储说明：</b>所有录像目录均已纳入本地整体统一索引。更换保存目录后，新视频写入新位置，历史视频继续在回放页统一展示，绝不会中断或丢失。'
     +   '</div>'
     + '</div>'
     + '</div>';
@@ -18464,7 +18694,7 @@ function paintStorage(c, d, cleanup){
       })()
 
     // 概览页直接展示核心录像存储目录卡片
-    + stRecDirCard(status, stLocs)
+    + stRecDirCard(status, stLocs, stUnified)
 
     // 趋势 + 类型
     + '<div class="st-row st-row--2">'
@@ -18507,7 +18737,7 @@ function paintStorage(c, d, cleanup){
     + '<div class="pnl' + (stTab === 'rec' ? ' is-on' : '') + '" data-pnl="rec">'
 
     // 录像策略页核心存储目录卡片
-    + stRecDirCard(status, stLocs)
+    + stRecDirCard(status, stLocs, stUnified)
 
     // 摄像头 + 策略
     + '<div class="st-row st-row--2">'
@@ -18618,74 +18848,142 @@ function paintStorage(c, d, cleanup){
     + '</div>'
     + '<div class="pnl' + (stTab === 'clean' ? ' is-on' : '') + '" data-pnl="clean">'
 
-    // 迁移 + 清理预览
     + '<div class="st-row st-row--2">'
-    +   '<div class="card">'
-    +     '<div class="card__head">' + icon('move',15) + '<span class="card__title">迁移录像</span></div>'
-    +     '<div class="st-migrate">'
-    +       '<div class="st-field"><span class="st-field__label">源路径</span>'
-    +         '<input class="input" value="' + esc(status.recPath||'') + '" readonly></div>'
-    +       '<div class="st-field"><span class="st-field__label">目标路径</span>'
-    +         '<input class="input" id="stMigDst" placeholder="/mnt/backup"></div>'
-    +       '<div class="st-field st-field--range"><span class="st-field__label">时间范围</span>'
-    +         '<input class="input" type="date" id="stMigFrom"><span class="st-field__sep">~</span>'
-    +         '<input class="input" type="date" id="stMigTo"></div>'
-    +       '<div class="st-field"><span class="st-field__label">选择摄像头</span>'
-    +         '<select class="input" id="stMigCam"><option value="">全部设备</option>'
-    +         cams.map(function(x){ return '<option value="'+esc(x.name)+'">'+esc(x.name)+'</option>'; }).join('')
-    +         '</select></div>'
-    +       '<div class="st-field"><span class="st-field__label">迁移后</span>'
-    +         '<label class="st-check"><input type="checkbox" id="stMigDel" checked>'
-    +         '<span>删除源文件（不勾选 = 只复制一份）</span></label></div>'
-    +       '<div class="st-migrate__est" id="stMigEst">'
-    +         '<span class="st-hint">填写目标路径后可预估大小</span></div>'
-    +       '<div class="st-migrate__prog" id="stMigProg" style="display:none">'
-    +         '<div class="st-bar"><span id="stMigBar" style="width:0%"></span></div>'
-    +         '<div class="st-hint" id="stMigMsg"></div>'
-    +       '</div>'
-    +       '<div class="st-migrate__foot">'
-    +         '<span class="st-hint" id="stMigHint">迁移会把文件移到目标路径</span>'
-    +         '<button class="btn btn--primary" id="stMigGo">' + icon('play',14) + '开始迁移</button>'
-    +       '</div>'
-    +     '</div>'
-    +   '</div>'
 
+    // 左侧：智能深度清理面板
     +   '<div class="card st-clean-card">'
     +     '<div class="card__head">'
-    +       '<span class="card__title">' + icon('trash',16) + '清理预览</span>'
-    +       (cleanup.totalMB > 0
-              ? '<span class="badge" style="background:rgba(245,158,11,0.12);color:#F59E0B;border:1px solid rgba(245,158,11,0.25)">可释放 ' + fmtGB(cleanup.totalMB/1024) + '</span>'
-              : '<span class="badge" style="background:rgba(16,185,129,0.12);color:#10B981;border:1px solid rgba(16,185,129,0.25)">' + icon('check',11) + ' 占用正常</span>')
+    +       '<span class="card__title">' + icon('trash',16) + '智能深度清理与空间释放</span>'
+    +       '<span class="badge" id="stCleanHeadBadge" style="background:rgba(37,99,235,0.12);color:var(--accent)">' + icon('shield', 11) + ' 支持 AI 事件保护</span>'
     +     '</div>'
-    +     '<div class="st-clean">'
-    +       (cleanup.totalMB > 0
-              ? '<div class="st-clean__box is-warn">'
-                + '<div class="st-clean__status-title">' + icon('trash',18) + '发现可清理的历史录像</div>'
-                + '<div class="st-clean__desc">根据当前保留天数规则（超过 ' + (cleanup.keepDays||7) + ' 天），确认清理后可释放 <b>' + fmtGB(cleanup.totalMB/1024) + '</b> 存储空间。</div>'
-                + '<div class="st-clean__metric-row">'
-                +   '<span>过期文件总数</span><b>' + (cleanup.fileCount||0).toLocaleString() + ' 个文件</b>'
-                + '</div>'
-                + '</div>'
-              : '<div class="st-clean__box is-empty">'
-                + '<div class="st-clean__status-title">' + icon('check',18) + '没有可清理的文件</div>'
-                + '<div class="st-clean__desc">所有录像文件均在保留策略期限内（' + (cleanup.keepDays||7) + ' 天），当前磁盘占用处于健康状态。</div>'
-                + '</div>')
-    +     '</div>'
-    +     '<div class="st-clean__acts">'
-    +       '<button class="btn btn--primary" id="stCleanGo"' + (cleanup.totalMB>0?'':' disabled') + '>'
-    +         icon('trash',14) + '确认清理' + (cleanup.totalMB>0 ? (' (' + fmtGB(cleanup.totalMB/1024) + ')') : '') + '</button>'
-    +       '<div class="st-clean__alert">' + icon('alert',14) + '<span>此操作将删除过期的录像文件，清理后无法恢复，请谨慎操作。</span></div>'
-    +     '</div>'
-    +   '</div>'
-    +   '</div>'
-    + '</div>'
-    +   '</div>'
-    +   '</div>'
-    + '</div>'
+    +     '<div class="st-clean-dashboard">'
+    +       '<div class="st-field">'
+    +         '<span class="st-field__label">清理时间范围</span>'
+    +         '<select class="input" id="stCleanDaysSelect">'
+    +           '<option value="30">清理 30 天以前的录像</option>'
+    +           '<option value="14">清理 14 天以前的录像</option>'
+    +           '<option value="7" selected>清理 7 天以前的录像 (推荐)</option>'
+    +           '<option value="3">清理 3 天以前的录像</option>'
+    +           '<option value="1">清理 1 天以前的录像</option>'
+    +           '<option value="0">清理全部历史录像 (清空所有历史)</option>'
+    +         '</select>'
+    +         '<span class="st-field__hint">超出指定天数的录像将纳入清理候选</span>'
+    +       '</div>'
 
-    // 录像目录已升级为存储核心卡片，不再在页面底部挂挤压的窄条
-    + ''
+    +       '<div class="st-field">'
+    +         '<span class="st-field__label">选择摄像头设备</span>'
+    +         '<select class="input" id="stCleanDevSelect">'
+    +           '<option value="">全部摄像头设备</option>'
+    +           cams.map(function(x){ return '<option value="' + esc(x.name) + '">' + esc(formatDevName(x.name)) + '</option>'; }).join('')
+    +         '</select>'
+    +         '<span class="st-field__hint">可单独清理某台设备的录像，或清理全部设备</span>'
+    +       '</div>'
 
+    +       '<div class="st-clean-checks">'
+    +         '<label class="st-check">'
+    +           '<input type="checkbox" id="stCleanProtectAICheck" checked>'
+    +           '<div class="st-check__text">'
+    +             '<b>保护重要 AI 告警事件录像（推荐）</b>'
+    +             '<span class="st-check__desc">优先清除无告警的常规监控视频，完整保留有人形、车辆、移动等 AI 识别标记的关键片段</span>'
+    +           '</div>'
+    +         '</label>'
+    +         '<label class="st-check">'
+    +           '<input type="checkbox" id="stCleanCacheCheck">'
+    +           '<div class="st-check__text">'
+    +             '<b>连带清空临时转码缓存</b>'
+    +             '<span class="st-check__desc">一并清空用于播放的临时切片（当前缓存约 ' + fmtGB(cache.sizeGB||0) + '）</span>'
+    +           '</div>'
+    +         '</label>'
+    +         '<label class="st-check">'
+    +           '<input type="checkbox" id="stCleanAllPoolsCheck" checked>'
+    +           '<div class="st-check__text">'
+    +             '<b>跨所有本地历史存储池统一清理</b>'
+    +             '<span class="st-check__desc">对系统纳管的所有历史录像池统一执行清理，防止旧存储位置残留占盘</span>'
+    +           '</div>'
+    +         '</label>'
+    +       '</div>'
+
+    +       '<div class="st-clean-est" id="stCleanEst">'
+    +         '<div class="st-clean-est__head">'
+    +           '<span>预估释放空间</span>'
+    +           '<span class="badge" id="stCleanEstStatus" style="font-size:11px;">计算就绪</span>'
+    +         '</div>'
+    +         '<div class="st-clean-est__metric">'
+    +           '<span class="st-clean-est__val" id="stCleanEstGB">' + fmtGB(cleanup.totalMB ? cleanup.totalMB/1024 : 0) + '</span>'
+    +           '<span class="st-clean-est__files" id="stCleanEstFiles">(' + (cleanup.fileCount||0).toLocaleString() + ' 个文件)</span>'
+    +         '</div>'
+    +         '<div class="st-clean-est__detail" id="stCleanEstDetail">'
+    +           (cleanup.totalMB > 0 ? ('按当前所选规则可释放 ' + fmtGB(cleanup.totalMB/1024) + ' 存储空间') : '当前所选范围内暂无可清理的录像文件')
+    +         '</div>'
+    +       '</div>'
+
+    +       '<button class="btn btn--danger st-clean-submit" id="stCleanSubmit"' + (cleanup.totalMB > 0 ? '' : ' disabled') + '>'
+    +         icon('trash', 14) + ' <span id="stCleanSubmitTxt">确认执行清理' + (cleanup.totalMB > 0 ? (' (' + fmtGB(cleanup.totalMB/1024) + ')') : '') + '</span>'
+    +       '</button>'
+    +       '<div class="st-clean__alert">' + icon('alert',14) + '<span>此操作将删除选定范围的过期录像文件，清理后无法恢复。已勾选保护的 AI 告警事件将安全保留。</span></div>'
+    +     '</div>'
+    +   '</div>'
+
+    // 右侧：自动守护策略 + 录像搬家迁移
+    +   '<div class="st-col-right">'
+    +     '<div class="card">'
+    +       '<div class="card__head">' + icon('settings',15) + '<span class="card__title">自动清理与安全保障策略</span></div>'
+    +       '<div class="st-policy">'
+    +         stField('保留天数', 'stKeepClean', pol.keepDays || 7, '天', '超过后系统后台将自动调度清理')
+    +         stField('最低保留空间', 'stThreshClean', (pol.minFreeGB != null ? pol.minFreeGB : 10), 'GB', '剩余空间低于此值时触发紧急清理保障系统运行')
+    +         '<div class="st-switchrow">'
+    +           '<span class="st-switchrow__label">启用定时自动清理</span>'
+    +           '<label class="switch"><input type="checkbox" id="stAutoClean"' + (pol.autoClean!==false?' checked':'') + '><span class="switch__track"></span></label>'
+    +           '<span class="st-switchrow__hint">每天凌晨自动删除过期录像文件</span>'
+    +         '</div>'
+    +         '<div class="st-field">'
+    +           '<span class="st-field__label">低空间应急策略</span>'
+    +           '<select class="input" id="stLowClean">'
+    +             [['deleteOldest','删除最早的录像'],['stopRecording','停止录像'],['none','不处理']].map(function(x){
+                    return '<option value="'+x[0]+'"' + (pol.lowSpaceMode===x[0]?' selected':'') + '>'+x[1]+'</option>';
+                  }).join('')
+    +           '</select>'
+    +           '<span class="st-field__hint">当磁盘剩余空间不足预设值时的应对方式</span>'
+    +         '</div>'
+    +         '<button class="btn btn--primary st-save" id="stSaveClean">保存守护策略</button>'
+    +       '</div>'
+    +     '</div>'
+
+    +     '<div class="card" style="margin-top:var(--space-4);">'
+    +       '<div class="card__head">' + icon('move',15) + '<span class="card__title">录像跨存储池搬家迁移</span></div>'
+    +       '<div class="st-migrate">'
+    +         '<div class="st-field"><span class="st-field__label">源路径</span>'
+    +           '<input class="input" value="' + esc(status.recPath||'') + '" readonly></div>'
+    +         '<div class="st-field"><span class="st-field__label">目标路径</span>'
+    +           '<input class="input" id="stMigDst" placeholder="/vol02/1000/backups"></div>'
+    +         '<div class="st-field st-field--range"><span class="st-field__label">时间范围</span>'
+    +           '<input class="input" type="date" id="stMigFrom"><span class="st-field__sep">~</span>'
+    +           '<input class="input" type="date" id="stMigTo"></div>'
+    +         '<div class="st-field"><span class="st-field__label">选择摄像头</span>'
+    +           '<select class="input" id="stMigCam"><option value="">全部设备</option>'
+    +           cams.map(function(x){ return '<option value="'+esc(x.name)+'">'+esc(formatDevName(x.name))+'</option>'; }).join('')
+    +           '</select></div>'
+    +         '<div class="st-field"><span class="st-field__label">迁移后处理</span>'
+    +           '<label class="st-check"><input type="checkbox" id="stMigDel" checked>'
+    +           '<span>删除源文件（不勾选 = 仅复制副本）</span></label></div>'
+    +         '<div class="st-migrate__est" id="stMigEst">'
+    +           '<span class="st-hint">填写目标路径后可预估大小</span></div>'
+    +         '<div class="st-migrate__prog" id="stMigProg" style="display:none">'
+    +           '<div class="st-bar"><span id="stMigBar" style="width:0%"></span></div>'
+    +           '<div class="st-hint" id="stMigMsg"></div>'
+    +         '</div>'
+    +         '<div class="st-migrate__foot">'
+    +           '<span class="st-hint" id="stMigHint">支持断点续传与完整校验</span>'
+    +           '<button class="btn btn--primary" id="stMigGo">' + icon('play',14) + '开始迁移</button>'
+    +         '</div>'
+    +       '</div>'
+    +     '</div>'
+    +   '</div>'
+
+    + '</div>'
+    + '</div>'
+    + '</div>'
+    + '</div>'
     + '</div>';
 
   bindStorage(c, cams);
@@ -18717,7 +19015,8 @@ function stField(label, id, val, unit, hint){
 
 var stTab = stTab || 'ov';        // 存储页左侧导航：ov=概览 / rec=录像与策略 / clean=迁移与清理
 var stUIPref = {};       // /api/ui/config（含是否常显底部状态栏）
-var stLocs = [];         // /api/storage/locations（可选的录像目录）
+var stLocs = [];
+var stUnified = {};         // /api/storage/locations（可选的录像目录）
 
 // bindMigrate 录像迁移（2026-09-23）。
 //
@@ -18983,6 +19282,156 @@ function bindStorage(c, cams){
     if(el) el.scrollIntoView({behavior:'smooth', block:'center'});
   };
   bindMigrate();
+  // 1. 下拉框选择录像目录与设为写入目录
+  var recDirSelect = document.getElementById('stRecDirSelect');
+  var recDirApply = document.getElementById('stRecDirApply');
+  if(recDirSelect && recDirApply){
+    recDirSelect.onchange = function(){
+      var isSame = (recDirSelect.value === ((status||{}).recPath||''));
+      recDirApply.disabled = isSame;
+      if(!isSame){
+        recDirApply.classList.add('btn--pulse');
+      } else {
+        recDirApply.classList.remove('btn--pulse');
+      }
+    };
+    recDirApply.onclick = function(){
+      var targetDir = recDirSelect.value;
+      if(!targetDir) return;
+      applyRecordDir(targetDir);
+    };
+  }
+
+  // 2. 清理面板交互与实时估算
+  var cleanDays = document.getElementById('stCleanDaysSelect');
+  var cleanDev = document.getElementById('stCleanDevSelect');
+  var cleanAI = document.getElementById('stCleanProtectAICheck');
+  var cleanCache = document.getElementById('stCleanCacheCheck');
+  var cleanPools = document.getElementById('stCleanAllPoolsCheck');
+  var cleanSubmit = document.getElementById('stCleanSubmit');
+  var cleanSubmitTxt = document.getElementById('stCleanSubmitTxt');
+  var cleanEstGB = document.getElementById('stCleanEstGB');
+  var cleanEstFiles = document.getElementById('stCleanEstFiles');
+  var cleanEstDetail = document.getElementById('stCleanEstDetail');
+  var cleanEstStatus = document.getElementById('stCleanEstStatus');
+
+  var cleanDebounceTimer = null;
+  function updateCleanPreview(){
+    if(!cleanDays || !cleanSubmit) return;
+    if(cleanEstStatus) cleanEstStatus.textContent = '计算中...';
+    var days = cleanDays.value;
+    var dev = cleanDev ? cleanDev.value : '';
+    var ai = cleanAI ? (cleanAI.checked ? 'true' : 'false') : 'true';
+    var cache = cleanCache ? (cleanCache.checked ? 'true' : 'false') : 'false';
+    var pools = cleanPools ? (cleanPools.checked ? 'true' : 'false') : 'true';
+
+    var query = '?days=' + encodeURIComponent(days)
+      + '&device=' + encodeURIComponent(dev)
+      + '&protectAI=' + encodeURIComponent(ai)
+      + '&cleanCache=' + encodeURIComponent(cache)
+      + '&allPools=' + encodeURIComponent(pools);
+
+    api('/api/storage/cleanup-preview' + query).then(function(r){
+      if(cleanEstStatus) cleanEstStatus.textContent = '就绪';
+      var gb = r.totalGB || ((r.totalMB || 0) / 1024);
+      var files = r.fileCount || 0;
+      if(cleanEstGB) cleanEstGB.textContent = fmtGB(gb);
+      if(cleanEstFiles) cleanEstFiles.textContent = '(' + files.toLocaleString() + ' 个文件)';
+      if(cleanSubmitTxt) cleanSubmitTxt.textContent = '确认执行清理' + (gb > 0 ? (' (' + fmtGB(gb) + ')') : '');
+      cleanSubmit.disabled = (gb <= 0 && files <= 0);
+
+      var details = [];
+      if(r.deadline) details.push('清理时间点：' + r.deadline + ' 以前的视频');
+      if(r.protectedAICount > 0){
+        details.push('已保护 ' + r.protectedAICount + ' 个重要 AI 事件录像（约 ' + fmtGB(r.protectedAIGB || 0) + '）');
+      } else if(ai === 'true'){
+        details.push('AI 告警事件保护已开启');
+      }
+      if(cleanCache && cleanCache.checked && r.cacheMB > 0){
+        details.push('包含清空 ' + Math.round(r.cacheMB) + ' MB 转码切片缓存');
+      }
+      if(cleanEstDetail) cleanEstDetail.innerHTML = details.join('<br>') || '可立即释放存储空间';
+    }).catch(function(err){
+      if(cleanEstStatus) cleanEstStatus.textContent = '查询失败';
+    });
+  }
+
+  [cleanDays, cleanDev, cleanAI, cleanCache, cleanPools].forEach(function(el){
+    if(el){
+      el.onchange = function(){
+        clearTimeout(cleanDebounceTimer);
+        cleanDebounceTimer = setTimeout(updateCleanPreview, 150);
+      };
+    }
+  });
+
+  if(cleanSubmit){
+    cleanSubmit.onclick = function(){
+      var days = cleanDays ? cleanDays.value : '7';
+      var dev = cleanDev ? cleanDev.value : '';
+      var ai = cleanAI ? cleanAI.checked : true;
+      var cache = cleanCache ? cleanCache.checked : false;
+      var pools = cleanPools ? cleanPools.checked : true;
+      var gbTxt = cleanEstGB ? cleanEstGB.textContent : '';
+
+      var confirmMsg = '确认执行深度录像清理？\n\n'
+        + '· 清理范围: ' + (days === '0' ? '全部历史录像' : (days + ' 天以前的录像')) + '\n'
+        + '· 目标设备: ' + (dev || '全部摄像头') + '\n'
+        + '· 预计释放: ' + gbTxt + '\n'
+        + '· AI 事件保护: ' + (ai ? '已保护（不删除告警片段）' : '未保护') + '\n\n'
+        + '清理后相关录像文件将永久删除且不可恢复，是否继续？';
+
+      if(!confirm(confirmMsg)) return;
+
+      cleanSubmit.disabled = true;
+      api('/api/recordings/cleanup', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          days: parseInt(days, 10),
+          device: dev,
+          protectAI: ai,
+          cleanCache: cache,
+          allPools: pools,
+        })
+      }).then(function(res){
+        toast('清理完成：已删除 ' + (res.deleted || 0) + ' 个文件，释放 ' + fmtGB(res.freedGB || ((res.freedMB || 0)/1024)) + ' 空间', 'ok');
+        setTimeout(function(){ renderStorage(c); }, 800);
+      }).catch(function(err){
+        toast('清理失败: ' + err.message, 'err');
+        cleanSubmit.disabled = false;
+      });
+    };
+  }
+
+  // 3. 右侧自动守护策略保存
+  var saveClean = document.getElementById('stSaveClean');
+  if(saveClean){
+    saveClean.onclick = function(){
+      var keepVal = parseInt(document.getElementById('stKeepClean').value, 10) || 7;
+      var threshVal = parseFloat(document.getElementById('stThreshClean').value) || 10;
+      var autoVal = document.getElementById('stAutoClean').checked;
+      var lowVal = document.getElementById('stLowClean').value;
+      saveClean.disabled = true;
+      api('/api/storage/policy', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({
+          keepDays: keepVal,
+          minFreeGB: threshVal,
+          autoClean: autoVal,
+          lowSpaceMode: lowVal,
+        })
+      }).then(function(){
+        toast('存储守护策略已保存生效', 'ok');
+        saveClean.disabled = false;
+      }).catch(function(err){
+        toast('保存失败: ' + err.message, 'err');
+        saveClean.disabled = false;
+      });
+    };
+  }
+
   var rp = document.getElementById('stReport');
   if(rp) rp.onclick = function(){
     window.open(apiUrl('/api/diag/report'), '_blank');
