@@ -8451,14 +8451,8 @@ var recCachePollTimer = null;
 var recLoadSeq = 0;
 
 function isStaticMP4Cache(v, expectedDur){
-  if(!v || !isFinite(v.duration) || v.duration <= 2) return false;
-  var dur = expectedDur || 0;
-  if(dur <= 0){
-    var f = curRecFileObj();
-    if(f && f.duration > 0) dur = f.duration;
-  }
-  if(dur <= 0) return true;
-  return (Math.abs(v.duration - dur) < 25 || v.duration >= dur * 0.75);
+  if(!v || !isFinite(v.duration) || isNaN(v.duration) || v.duration <= 1) return false;
+  return true;
 }
 
 function updateRecBadge(f){
@@ -8536,14 +8530,11 @@ function playRecFile(target, seekSec){
       }
       // 非完整静态缓存（实时分片流）：不能就地截断返回，必须继续往下向服务端发起带 &t= 偏移的新连接！
     } else {
-      v.play().then(function(){
-        setRecLoading(false);
-        updateRecPlayBtn();
-      }).catch(function(){
-        setRecLoading(false);
-        updateRecPlayBtn();
-      });
-      return;
+      // 关键自愈：如果用户点击当前正在选中的片段，且当前画面正在正常渲染播放，才直接返回；
+      // 若处于黑屏 (videoWidth===0)、未就绪 (readyState < 2) 或异常卡死，跳出 isSame 重新触发完整加载起播！
+      if(v.videoWidth > 0 && v.readyState >= 3 && !v.paused && v.currentTime > 0){
+        return;
+      }
     }
   }
 
@@ -8552,6 +8543,7 @@ function playRecFile(target, seekSec){
   window._currentRecKey = targetKey;
 
   setRecLoading(true, '正在载入画面…');
+  updateTimeline24Needle();
 
   // 构建播放 URL：若需跳转，向后端传递 t= 参数支持服务端毫秒级关键帧寻址
   var playUrl = f.url;
@@ -8622,7 +8614,7 @@ function playRecFile(target, seekSec){
       function applySeek(){
         if(seekDone) return;
         // 关键保护：仅在就绪元数据确实属于当前目标片段时应用
-        if(!v.src || v.src.indexOf(encodeURIComponent(f.name)) < 0) return;
+        if(v.src && v.src.indexOf(encodeURIComponent(f.name)) < 0) return;
         try {
           // 仅在视频具备有限总时长（即本地静态 MP4 缓存）时应用前端 currentTime 寻址。
           // 静态缓存 MP4 具有完整 duration（与元数据 f.duration 一致）。
@@ -8687,13 +8679,18 @@ function playRecFile(target, seekSec){
         clearInterval(playWatchdog);
       }
     }, 200);
-    // 超时保底：6秒后无论如何必须移除遮罩，绝不让转圈死锁遮挡用户视线
+    // 超时保底自愈：4.5秒后若依然黑屏无画面，主动触发 load 和起播重试
     setTimeout(function(){
       if(thisLoadSeq === recLoadSeq){
+        if(v && (v.videoWidth === 0 || v.readyState < 2)){
+          console.warn('[recordings] 检测到首帧渲染超时，正在自动激活起播自愈…');
+          v.load();
+          v.play().catch(function(){});
+        }
         setRecLoading(false);
         clearInterval(playWatchdog);
       }
-    }, 6000);
+    }, 4500);
   }
 
   // 关键修复 3：直接起播！
@@ -8702,7 +8699,47 @@ function playRecFile(target, seekSec){
   var statusUrl = '/api/recordings/cache-status?name=' + encodeURIComponent(devName)
     + '&file=' + encodeURIComponent(f.name)
     + '&date=' + encodeURIComponent(dateStr);
-  api(statusUrl).catch(function(){});
+
+  // 关键增强：主动轮询 cache-status 并实现无缝静默升格 (Seamless Promotion to Static MP4)
+  var pollAttempts = 0;
+  function pollCachePromotion(){
+    if(thisLoadSeq !== recLoadSeq) return;
+    pollAttempts++;
+    api(statusUrl).then(function(res){
+      if(thisLoadSeq !== recLoadSeq) return;
+      if(res && res.cached){
+        var curT = v.currentTime || 0;
+        var wasPaused = v.paused;
+        if(v.videoWidth === 0 || v.readyState < 3 || !isStaticMP4Cache(v, f.duration)){
+          console.log('[recordings] 静态高清 MP4 缓存已就绪，正在无缝升级播放链路…', f.name);
+          var onPromo = function(){
+            v.removeEventListener('loadedmetadata', onPromo);
+            v.removeEventListener('canplay', onPromo);
+            try {
+              if(curT > 0.3 && isFinite(v.duration) && curT < v.duration) v.currentTime = curT;
+            } catch(e){}
+            if(!wasPaused) v.play().catch(function(){});
+            setRecLoading(false);
+            updateRecPlayBtn();
+          };
+          v.addEventListener('loadedmetadata', onPromo);
+          v.addEventListener('canplay', onPromo);
+          v.src = targetSrc;
+          v.load();
+          v.play().catch(function(){});
+        }
+        return;
+      }
+      if(pollAttempts < 25){
+        recCachePollTimer = setTimeout(pollCachePromotion, 1200);
+      }
+    }).catch(function(){
+      if(thisLoadSeq === recLoadSeq && pollAttempts < 12){
+        recCachePollTimer = setTimeout(pollCachePromotion, 1500);
+      }
+    });
+  }
+  pollCachePromotion();
 
   // 预测式智能预热（Smart Read-Ahead）：提前预热下一个片段
   // 当用户在播放片段 N 时，自动触发片段 N+1 的转码缓存，保证连续播放/切换时 100% 命中 SSD 静态缓存（70ms 瞬开）
@@ -15466,7 +15503,7 @@ function updateTimeline24Needle(){
   if(!needle || !v || !f) return;
 
   // 关键保护：若当前视频源并非当前活动片段，不要用旧视频的 currentTime 更新新片段的时间轴指针！
-  if(!v.src || v.src.indexOf(encodeURIComponent(f.name)) < 0) return;
+  if(v.src && v.src.indexOf(encodeURIComponent(f.name)) < 0) return;
 
   var fStart = timeToSec(f.startTime);
   var streamOff = window._currentStreamOffset || 0;
