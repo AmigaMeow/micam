@@ -71,7 +71,7 @@ func isTUTKDevice(did, model string) bool {
 // 同样双摄机型的 CW300 没有这个问题（反复测都正常）。
 //
 // 所以两条流之间强制留一点间隔，让摄像头来得及释放会话。
-const streamCooldown = 4 * time.Second
+const streamCooldown = 1500 * time.Millisecond
 
 // beginMiotStream 开始一条新流：
 //   - 取消该设备上一条流并等它退出（最多 3 秒）
@@ -85,8 +85,8 @@ func beginMiotStream(parent context.Context, did string) (context.Context, conte
 	if done, ok := miotStreamWG[did]; ok {
 		select {
 		case <-done:
-		case <-time.After(3 * time.Second):
-			logf("[miot] %s 的上一条流未在 3 秒内退出，继续", did)
+		case <-time.After(1500 * time.Millisecond):
+			logf("[miot] %s 的上一条流未在 1.5 秒内退出，继续", did)
 		}
 	}
 	// 冷却：等上一条流结束满 streamCooldown 再建新流。

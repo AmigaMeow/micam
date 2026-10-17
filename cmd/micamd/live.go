@@ -20,6 +20,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/micam/micam/internal/miot"
 	"github.com/micam/micam/internal/stream"
 	"github.com/micam/micam/internal/xiaomi"
 )
@@ -533,6 +534,12 @@ func (s *Server) handleMJPEG(w http.ResponseWriter, r *http.Request) {
 	lens := lensFromRequest(r)
 
 	logf("[mjpeg] 请求 did=%s fps=%d w=%d", did, fps, width)
+
+	if _, ok := miotBound(); ok && miot.FindLib("") != "" && miot.FindSidecar() != "" {
+		logf("[mjpeg] 官方通道就绪，自动转由官方通道推流 did=%s", did)
+		s.handleMiotLive(w, r)
+		return
+	}
 
 	dev, err := s.ensureDevice(did)
 	if err != nil {

@@ -1048,7 +1048,7 @@ func (s *Server) staticHandler() http.Handler {
 		// 配合 Last-Modified / ETag 走 304，既正确又省流量。
 		p := r.URL.Path
 		if p == "/" || p == "/index.html" || strings.HasSuffix(p, ".html") {
-			w.Header().Set("Cache-Control", "no-cache, must-revalidate")
+			w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate, max-age=0")
 			w.Header().Set("Pragma", "no-cache")
 			w.Header().Set("Expires", "0")
 		} else {

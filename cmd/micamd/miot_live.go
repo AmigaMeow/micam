@@ -162,6 +162,12 @@ func (s *Server) handleMiotLive(w http.ResponseWriter, r *http.Request) {
 	cmd := exec.CommandContext(ctx, miot.PythonBin(), args...)
 	// 独立进程组：超时时能连 ffmpeg 子进程一起杀掉，不留孤儿。
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error {
+		if cmd.Process != nil && cmd.Process.Pid > 0 {
+			return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		}
+		return nil
+	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		writeErr(w, 500, "启动失败: "+err.Error())
