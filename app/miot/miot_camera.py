@@ -321,17 +321,21 @@ def main():
                 dst = raw.rsplit(".", 1)[0] + ".mkv"
                 in_fmt = "h264" if seg.get("codec") == 4 else "hevc"
                 try:
+                    import shutil
+                    tmp_dst = dst + ".tmp.mkv"
                     subprocess.run(
-                        [args.ffmpeg, "-hide_banner", "-loglevel", "error",
-                         "-f", in_fmt, "-i", raw, "-c", "copy", dst],
+                        [args.ffmpeg, "-hide_banner", "-loglevel", "error", "-y",
+                         "-f", in_fmt, "-i", raw, "-c", "copy", tmp_dst],
                         timeout=60)
-                    if os.path.exists(dst) and os.path.getsize(dst) > 1024:
+                    if os.path.exists(tmp_dst) and os.path.getsize(tmp_dst) > 1024:
+                        shutil.move(tmp_dst, dst)
                         os.remove(raw)
                         print("[seg] %s (%d 字节, %s)" % (os.path.basename(dst),
                                                       os.path.getsize(dst), in_fmt),
                               file=sys.stderr, flush=True)
                     else:
-                        os.remove(dst)
+                        if os.path.exists(tmp_dst):
+                            os.remove(tmp_dst)
                 except Exception as e:
                     print("[seg] 转封装失败: %s" % e, file=sys.stderr, flush=True)
             else:

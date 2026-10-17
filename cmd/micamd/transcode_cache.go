@@ -153,7 +153,16 @@ func probeEncoder(ffmpegPath, name, sample string) error {
 	defer os.Remove(tmpPath)
 
 	args := []string{"-hide_banner", "-loglevel", "error", "-y"}
+	if strings.HasSuffix(name, "_qsv") {
+		args = append(args, "-hwaccel", "qsv", "-hwaccel_output_format", "qsv")
+	}
+	useSample := false
 	if sample != "" {
+		if fi, err := os.Stat(sample); err == nil && fi.Size() > 1024 {
+			useSample = true
+		}
+	}
+	if useSample {
 		args = append(args, "-t", "1", "-i", sample)
 	} else {
 		args = append(args, "-f", "lavfi", "-i", "testsrc=size=640x360:rate=15", "-t", "1")
@@ -186,8 +195,11 @@ func probeEncoder(ffmpegPath, name, sample string) error {
 
 // ---- 缓存路径 ----
 
-// cacheDir 转码缓存目录。
+// transcodeCacheDir 转码缓存目录（始终存放在本地高速 SSD 应用数据目录，杜绝写入慢速网络挂载/云盘导致 seek 报错）
 func (s *Server) transcodeCacheDir() string {
+	if s != nil && s.dataDir != "" {
+		return filepath.Join(s.dataDir, "transcode_cache")
+	}
 	return filepath.Join(s.recRoot(), ".cache")
 }
 
@@ -202,29 +214,11 @@ func (s *Server) cachePath(enc, name, date, file string) string {
 // 优先在源文件所属存储池的 .cache 下寻找（无论何种硬件编码指纹，只要已存在且有效即可秒开）。
 // 其次在当前活跃录像池及其它存储池中查找。若均未命中，返回首选写入路径。
 func (s *Server) findCachePath(enc, name, date, file, src string) string {
-	roots := s.recRoots()
-
-	var srcRoot string
-	if src != "" {
-		for _, r := range roots {
-			if strings.HasPrefix(src, r) {
-				srcRoot = r
-				break
-			}
-		}
+	localExact := filepath.Join(s.transcodeCacheDir(), name, date, file+"."+enc+".mp4")
+	if cacheValid(localExact, src) {
+		return localExact
 	}
-	if srcRoot == "" {
-		srcRoot = s.recRoot()
-	}
-
-	// 1. 优先检查源文件所在根目录下的 .cache（精确编码器匹配）
-	exact := filepath.Join(srcRoot, ".cache", name, date, file+"."+enc+".mp4")
-	if cacheValid(exact, src) {
-		return exact
-	}
-
-	// 2. 检查源文件所在根目录下任何可用编码器产出的有效缓存
-	if matches, err := filepath.Glob(filepath.Join(srcRoot, ".cache", name, date, file+".*.mp4")); err == nil {
+	if matches, err := filepath.Glob(filepath.Join(s.transcodeCacheDir(), name, date, file+".*.mp4")); err == nil {
 		for _, m := range matches {
 			if !strings.HasSuffix(m, ".part") && cacheValid(m, src) {
 				return m
@@ -232,14 +226,11 @@ func (s *Server) findCachePath(enc, name, date, file, src string) string {
 		}
 	}
 
-	// 3. 检查其它录像池的 .cache 目录
+	roots := s.recRoots()
 	for _, r := range roots {
-		if r == srcRoot {
-			continue
-		}
-		exactR := filepath.Join(r, ".cache", name, date, file+"."+enc+".mp4")
-		if cacheValid(exactR, src) {
-			return exactR
+		legacy := filepath.Join(r, ".cache", name, date, file+"."+enc+".mp4")
+		if cacheValid(legacy, src) {
+			return legacy
 		}
 		if matches, err := filepath.Glob(filepath.Join(r, ".cache", name, date, file+".*.mp4")); err == nil {
 			for _, m := range matches {
@@ -250,7 +241,7 @@ func (s *Server) findCachePath(enc, name, date, file, src string) string {
 		}
 	}
 
-	return exact
+	return localExact
 }
 
 // hasMoovAtom 快速检查 MP4 文件是否具有完整的 moov 元数据原子。

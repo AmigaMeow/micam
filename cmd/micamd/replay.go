@@ -223,7 +223,7 @@ func saveRecMeta() {
 // probeDuration 取时长（带缓存与极速估算，避免机械硬盘慢速 I/O 卡死 HTTP 请求）。
 func (s *Server) probeDuration(path string) float64 {
 	fi, err := os.Stat(path)
-	if err != nil {
+	if err != nil || fi.Size() < 64*1024 {
 		return 0
 	}
 
@@ -313,16 +313,22 @@ func (s *Server) triggerAutoRemux(root string) {
 			}
 			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 			defer cancel()
+			tmpDst := filepath.Join(os.TempDir(), filepath.Base(dst)+fmt.Sprintf(".%d.mkv", time.Now().UnixNano()))
 			cmd := exec.CommandContext(ctx, s.ffmpegPath(), "-hide_banner", "-loglevel", "error", "-y",
-				"-f", inFmt, "-i", pth, "-c", "copy", dst)
+				"-f", inFmt, "-i", pth, "-c", "copy", tmpDst)
 			if err := cmd.Run(); err == nil {
-				if fi, e := os.Stat(dst); e == nil && fi.Size() > 1024 {
-					_ = os.Remove(pth)
-					count++
-					logf("[replay] 后台自动封装孤立录像完成: %s -> %s (%.2fMB)",
-						filepath.Base(pth), filepath.Base(dst), float64(fi.Size())/(1<<20))
+				if fi, e := os.Stat(tmpDst); e == nil && fi.Size() > 1024 {
+					if data, rerr := os.ReadFile(tmpDst); rerr == nil {
+						if werr := os.WriteFile(dst, data, 0o644); werr == nil {
+							_ = os.Remove(pth)
+							count++
+							logf("[replay] 后台自动封装孤立录像完成: %s -> %s (%.2fMB)",
+								filepath.Base(pth), filepath.Base(dst), float64(fi.Size())/(1<<20))
+						}
+					}
 				}
 			}
+			_ = os.Remove(tmpDst)
 			return nil
 		})
 	}()
@@ -518,6 +524,9 @@ func (s *Server) collectRecFiles(root, name, date string) []recFileInfo {
 		if filepath.Ext(pth) != ".mkv" {
 			return nil
 		}
+		if info.Size() < 64*1024 {
+			return nil
+		}
 		rel, _ := filepath.Rel(root, pth)
 		parts := strings.Split(rel, string(filepath.Separator))
 		st := info.ModTime().Format("2006-01-02 15:04:05")
@@ -639,13 +648,10 @@ func (s *Server) handleRecPlay(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithCancel(r.Context())
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, s.ffmpegPath(), args...)
-
 	livePlayMu.Lock()
 	activeLiveStreams++
 	livePlayMu.Unlock()
 
-	// 实时播放让路：立刻中断后台闲时预热任务，但保留用户主动请求的建缓存任务
 	cacheJobMu.Lock()
 	for k, j := range activeCacheJobs {
 		if !j.isUser && j.cmd != nil && j.cmd.Process != nil {
@@ -662,7 +668,6 @@ func (s *Server) handleRecPlay(w http.ResponseWriter, r *http.Request) {
 		stillStreaming := activeLiveStreams > 0
 		livePlayMu.Unlock()
 
-		// 实时流结束后（用户暂停、切片或离开），若无其他活动实时流，在后台闲时补齐完整 MP4 静态缓存
 		if !stillStreaming && !cacheValid(dst, src) {
 			time.AfterFunc(2*time.Second, func() {
 				livePlayMu.Lock()
@@ -675,17 +680,69 @@ func (s *Server) handleRecPlay(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		writeErr(w, 500, err.Error())
-		return
+	makeCmd := func(seekSec float64) (*exec.Cmd, io.ReadCloser, *strings.Builder, error) {
+		cmdArgs := []string{"-hide_banner", "-loglevel", "error"}
+		if strings.HasSuffix(enc, "_qsv") {
+			cmdArgs = append(cmdArgs, "-hwaccel", "qsv", "-hwaccel_output_format", "qsv")
+		}
+		cmdArgs = append(cmdArgs, "-threads", "0", "-fflags", "+genpts", "-avoid_negative_ts", "make_zero")
+		if seekSec > 0 {
+			cmdArgs = append(cmdArgs, "-ss", fmt.Sprintf("%.2f", seekSec))
+		}
+		cmdArgs = append(cmdArgs, "-i", src)
+		cmdArgs = append(cmdArgs, encArgs...)
+		cmdArgs = append(cmdArgs,
+			"-bf", "0",
+			"-g", "25",
+			"-frag_duration", "300000",
+			"-an",
+			"-movflags", "frag_keyframe+empty_moov+default_base_moof",
+			"-f", "mp4", "pipe:1",
+		)
+		c := exec.CommandContext(ctx, s.ffmpegPath(), cmdArgs...)
+		p, err := c.StdoutPipe()
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		var eb strings.Builder
+		c.Stderr = &eb
+		if err := c.Start(); err != nil {
+			return nil, nil, nil, err
+		}
+		return c, p, &eb, nil
 	}
-	var errBuf strings.Builder
-	cmd.Stderr = &errBuf
-	if err := cmd.Start(); err != nil {
+
+	cmd, stdout, errBuf, err := makeCmd(start)
+	if err != nil {
 		writeErr(w, 500, "启动转码失败: "+err.Error())
 		return
 	}
+
+	buf := make([]byte, 16*1024)
+	n, readErr := stdout.Read(buf)
+
+	// 关键兜底：如果带偏移寻址因超出实际文件尾部或关键帧损坏而 0 字节退出，立即无缝降级到 0 秒起播
+	if (readErr != nil || n == 0) && start > 0 {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		logf("[replay] 偏移 t=%.1f 无画面或超出尾部，自动回退到 0 秒起播: %s", start, file)
+		cmd, stdout, errBuf, err = makeCmd(0)
+		if err != nil {
+			writeErr(w, 500, "回退转码失败: "+err.Error())
+			return
+		}
+		n, readErr = stdout.Read(buf)
+	}
+
+	if readErr != nil && n == 0 {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
+		msg := errBuf.String()
+		logf("[replay] 转码失败: %s, err=%v, stderr=%s", file, readErr, msg)
+		writeErr(w, 500, "视频文件损坏或无法读取")
+		return
+	}
+
 	defer func() {
 		_ = cmd.Process.Kill()
 		_ = cmd.Wait()
@@ -701,30 +758,29 @@ func (s *Server) handleRecPlay(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	logf("[replay] 转码 %s (t=%.1f, %s)", file, start, enc)
+	logf("[replay] 转码首包就绪 %s (t=%.1f, %s, %d 字节)", file, start, enc, n)
 
 	w.Header().Set("Content-Type", "video/mp4")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.WriteHeader(200)
+	if n > 0 {
+		_, _ = w.Write(buf[:n])
+	}
 	if f, ok := w.(http.Flusher); ok {
 		f.Flush()
 	}
-	buf := make([]byte, 16*1024)
+
 	for {
-		n, err := stdout.Read(buf)
-		if n > 0 {
-			if _, werr := w.Write(buf[:n]); werr != nil {
-				// 客户端已断开（切换片段、跳转或关闭），立即终止转码输出
+		nr, rerr := stdout.Read(buf)
+		if nr > 0 {
+			if _, werr := w.Write(buf[:nr]); werr != nil {
 				break
 			}
 			if f, ok := w.(http.Flusher); ok {
 				f.Flush()
 			}
 		}
-		if err != nil {
-			if err == io.EOF {
-				break
-			}
+		if rerr != nil {
 			break
 		}
 	}
@@ -957,8 +1013,10 @@ func (s *Server) handleRecThumb(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	root := s.recRoot()
-	thumbDir := filepath.Join(root, ".thumbs", name)
+	thumbDir := filepath.Join(s.dataDir, "thumbs", name)
+	if s.dataDir == "" {
+		thumbDir = filepath.Join(s.recRoot(), ".thumbs", name)
+	}
 	_ = os.MkdirAll(thumbDir, 0o755)
 	dst := filepath.Join(thumbDir, file+".jpg")
 
@@ -1332,7 +1390,10 @@ func (s *Server) handleRecFrame(w http.ResponseWriter, r *http.Request) {
 
 	// 缓存：文件名带时间点（取整到秒，避免缓存爆炸）
 	key := filepath.Base(file) + fmt.Sprintf(".t%d.w%d.jpg", int(t), w0)
-	cacheDir := filepath.Join(s.recRoot(), ".frames", name)
+	cacheDir := filepath.Join(s.dataDir, "frames", name)
+	if s.dataDir == "" {
+		cacheDir = filepath.Join(s.recRoot(), ".frames", name)
+	}
 	dst := filepath.Join(cacheDir, key)
 
 	if fi, err := os.Stat(dst); err == nil && fi.Size() > 0 {
@@ -1383,7 +1444,10 @@ func (s *Server) handleRecFrameStrip(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	cacheDir := filepath.Join(s.recRoot(), ".frames")
+	cacheDir := filepath.Join(s.dataDir, "frames")
+	if s.dataDir == "" {
+		cacheDir = filepath.Join(s.recRoot(), ".frames")
+	}
 	_ = os.MkdirAll(cacheDir, 0o755)
 	dst := filepath.Join(cacheDir, filepath.Base(file)+fmt.Sprintf(".strip%d.jpg", n))
 
