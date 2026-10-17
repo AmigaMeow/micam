@@ -243,7 +243,7 @@ func saveRecMeta() {
 	}
 }
 
-// probeDuration 取时长（优先读取元数据缓存，未命中时毫秒级精确探测，杜绝伪造时长造成时间轴越界黑屏）。
+// probeDuration 取时长（带元数据缓存与智能码率估算，0毫秒极速响应，绝不阻塞任何 HTTP 请求）。
 func (s *Server) probeDuration(path string) float64 {
 	fi, err := os.Stat(path)
 	if err != nil || fi.Size() < 64*1024 {
@@ -257,40 +257,44 @@ func (s *Server) probeDuration(path string) float64 {
 		return m.Duration
 	}
 
-	d := 0.0
-
-	// 1. 本地高速探测：使用 ffprobe 精确获取实际时长（本地 NVMe/SSD 耗时仅 20~40ms）
-	ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
-	out, perr := exec.CommandContext(ctx, s.ffprobePath(), "-v", "error",
-		"-show_entries", "format=duration",
-		"-of", "csv=p=0", path).Output()
-	cancel()
-	if perr == nil {
-		d, _ = strconv.ParseFloat(strings.TrimSpace(string(out)), 64)
+	maxDur := 300.0
+	if s != nil && s.rec != nil {
+		if seg := s.rec.GetConfig().Segment.Seconds(); seg > 0 {
+			maxDur = seg
+		}
 	}
 
-	// 2. 兜底估算：仅当 ffprobe 超时或在慢速存储上失败时按真实平均码率 (260KB/s) 估算，杜绝硬编码 300 秒！
-	if d <= 0 {
-		dur := 300.0
-		if s != nil && s.rec != nil {
-			if seg := s.rec.GetConfig().Segment.Seconds(); seg > 0 {
-				dur = seg
-			}
-		}
-		est := float64(fi.Size()) / (260 * 1024)
-		if est > 3 && est < dur {
-			d = est
-		} else {
-			d = dur
-		}
+	dur := float64(fi.Size()) / (260 * 1024)
+	if dur > maxDur {
+		dur = maxDur
+	} else if dur < 3.0 {
+		dur = 3.0
 	}
 
 	metaMu.Lock()
-	metaCache[path] = recMeta{Duration: d, Size: fi.Size(), ModTime: fi.ModTime().Unix()}
+	metaCache[path] = recMeta{Duration: dur, Size: fi.Size(), ModTime: fi.ModTime().Unix()}
 	metaMu.Unlock()
-	go saveRecMeta()
 
-	return d
+	// 对本地 SSD 录像异步后台精确探测，不阻断当前请求
+	if strings.HasPrefix(path, "/vol1/") && !strings.HasPrefix(path, "/vol02/") {
+		go func(pth string, sz, mt int64) {
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			out, perr := exec.CommandContext(ctx, s.ffprobePath(), "-v", "error",
+				"-show_entries", "format=duration",
+				"-of", "csv=p=0", pth).Output()
+			if perr == nil {
+				if realDur, _ := strconv.ParseFloat(strings.TrimSpace(string(out)), 64); realDur > 0 {
+					metaMu.Lock()
+					metaCache[pth] = recMeta{Duration: realDur, Size: sz, ModTime: mt}
+					metaMu.Unlock()
+					go saveRecMeta()
+				}
+			}
+		}(path, fi.Size(), fi.ModTime().Unix())
+	}
+
+	return dur
 }
 
 // ---- 日期列表 ----
