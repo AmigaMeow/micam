@@ -8116,7 +8116,8 @@ function startLiveMJPEG(did){
   var hint = $("#liveHint");
   if(!box) return;
 
-  var devObj = (cams || []).find(function(x){ return x.did === did; });
+  var devList = (typeof devices !== 'undefined' && devices) ? devices : ((typeof cams !== 'undefined' && cams) ? cams : []);
+  var devObj = devList.find(function(x){ return x.did === did; });
   if(devObj && (devObj.model === 'chuangmi.camera.ipc009' || devObj.protocol === 'tutk')){
     box.innerHTML = '<div class="player__ph" style="padding:28px 20px;text-align:center;max-width:520px;margin:auto;">'
       + icon('alert', 44)
@@ -9121,7 +9122,16 @@ function findRecFileObj(target){
   })[0];
   if(f) return f;
   // 4. 兜底任意同名
-  return list.filter(function(x){ return x.name === name; })[0] || null;
+  var loose = list.filter(function(x){ return x.name === name; })[0];
+  if(loose) return loose;
+  // 5. 兜底构造有效录像对象，防止空指针导致播放器挂起黑屏
+  return {
+    name: name,
+    dev: recState.dev || '',
+    date: recState.date || '',
+    duration: 300,
+    url: '/api/recordings/play?name=' + encodeURIComponent(recState.dev || '') + '&date=' + encodeURIComponent(recState.date || '') + '&file=' + encodeURIComponent(name)
+  };
 }
 
 function curRecFileObj(){
