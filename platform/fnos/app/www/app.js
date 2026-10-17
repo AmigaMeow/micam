@@ -3963,7 +3963,16 @@ function loadEventFrames(box, ev, root){
     var evDay = (ev.time || '').slice(0, 10);
     var matched = recState.files.find(function(f){
       if(f.date !== evDay && (!f.startTime || f.startTime.indexOf(evDay) !== 0)) return false;
-      if(ev.device && f.dev && f.dev !== ev.device && f.name.indexOf(ev.device) < 0) return false;
+      var devMatch = true;
+      if(ev.device && f.dev && f.dev !== ev.device && f.name.indexOf(ev.device) < 0){
+        var camObj = (typeof devices !== 'undefined' && devices) ? devices.find(function(c){ return c.did === ev.did || c.name === ev.device; }) : null;
+        if(camObj && (f.dev === camObj.name || f.dev === camObj.did)){
+          devMatch = true;
+        } else {
+          devMatch = false;
+        }
+      }
+      if(!devMatch) return false;
       var fStart = timeToSec(f.startTime);
       var fDur = f.duration || 300;
       return evSec >= fStart - 5 && evSec <= fStart + fDur + 10;
@@ -8142,7 +8151,7 @@ function startLiveMJPEG(did){
   // 2. 中层：真实实时视频流 (liveStreamImg) —— 初始透明，首帧就绪后渐显
   // 3. 顶层：轻量指示胶囊 (liveConnecting) —— 极简非侵入提示，首帧到达后自动隐退
   var posterUrl = apiUrl("/api/live/thumb?did=" + encodeURIComponent(did) + "&w=1280&t=" + Date.now());
-  var streamUrl = liveStreamURL(did, 15, liveWidth, currentLens);
+  var streamUrl = liveStreamURL(did, 15, liveWidth, currentLens) + '&_t=' + Date.now();
 
   box.innerHTML = ""
     + "<div class=\"player__stage\" style=\"position:relative;width:100%;height:100%;overflow:hidden;background:#000;\">"
@@ -8150,13 +8159,14 @@ function startLiveMJPEG(did){
     +   "<img id=\"liveStreamImg\" class=\"live-stream-img\" src=\"" + streamUrl + "\" alt=\"\" style=\"position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;opacity:0;transition:opacity .25s ease-in;z-index:2;\">"
     +   "<div id=\"liveConnecting\" class=\"live-connecting-pill\" style=\"position:absolute;top:16px;right:16px;z-index:5;display:inline-flex;align-items:center;gap:8px;padding:6px 14px;background:rgba(15,23,42,.85);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.15);border-radius:20px;color:#fff;font-size:12px;box-shadow:0 4px 16px rgba(0,0,0,.4);transition:all .3s ease;pointer-events:none;\">"
     +     "<span class=\"spinner-sm\" style=\"width:12px;height:12px;border:2px solid rgba(255,255,255,.25);border-top-color:#1890ff;border-radius:50%;display:inline-block;animation:spin 1s linear infinite;flex-shrink:0;\"></span>"
-    +     "<span>正在建立实时连线…</span>"
+    +     "<span id=\"liveConnectingText\">正在建立实时连线…</span>"
     +   "</div>"
     + "</div>";
 
   var poster = document.getElementById("livePoster");
   var stream = document.getElementById("liveStreamImg");
   var pill = document.getElementById("liveConnecting");
+  var pillText = document.getElementById("liveConnectingText");
   var pbLive = document.getElementById("pbLive");
 
   if(poster){
@@ -8166,11 +8176,16 @@ function startLiveMJPEG(did){
   }
 
   var frameRevealed = false;
+  var retryCount = 0;
+  var maxRetries = 10;
+  var reconnectTimer = null;
+
   function revealLiveStream(){
     if(frameRevealed) return;
     frameRevealed = true;
-    if(checkTimer) clearInterval(checkTimer);
-    if(liveTimer) clearTimeout(liveTimer);
+    if(checkTimer) { clearInterval(checkTimer); checkTimer = null; }
+    if(reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
+    if(liveTimer) { clearTimeout(liveTimer); liveTimer = null; }
 
     if(stream) stream.style.opacity = "1";
     if(poster) {
@@ -8185,31 +8200,59 @@ function startLiveMJPEG(did){
     if(pbLive) pbLive.innerHTML = "<span class=\"status-dot is-online\"></span>LIVE";
   }
 
-  // 50ms 高频自然宽高探测器，一旦首帧数据抵达立刻无缝淡入
+  function scheduleReconnect(reason){
+    if(frameRevealed){
+      frameRevealed = false;
+      if(stream) stream.style.opacity = "0.5";
+      if(poster) poster.style.opacity = "1";
+    }
+    if(retryCount >= maxRetries){
+      if(pill) {
+        pill.innerHTML = "<span class=\"status-dot is-offline\"></span><span>连接繁忙，请稍后刷新</span>";
+        pill.style.borderColor = "rgba(255,77,79,.4)";
+      }
+      if(st) st.textContent = "已停止";
+      if(hint) hint.textContent = "摄像头正被其它服务占用，请稍后再试";
+      return;
+    }
+    retryCount++;
+    var delay = retryCount === 1 ? 1200 : (retryCount === 2 ? 2000 : 3500);
+    if(pillText) pillText.textContent = "正在调度摄像头连接 (重试 " + retryCount + ")…";
+    if(st) st.textContent = "连接中";
+    if(hint) hint.textContent = reason || "摄像头握手中…";
+
+    if(reconnectTimer) clearTimeout(reconnectTimer);
+    reconnectTimer = setTimeout(function(){
+      if(!stream || !stream.parentElement) return;
+      stream.src = liveStreamURL(did, 15, liveWidth, currentLens) + '&_t=' + Date.now();
+    }, delay);
+  }
+
+  // 100ms 高频自然宽高探测器，一旦首帧真实画面到达立刻淡入
   var checkTimer = setInterval(function(){
     if(stream && stream.naturalWidth > 0 && stream.naturalHeight > 0){
       revealLiveStream();
     }
-  }, 50);
+  }, 100);
 
   stream.onload = function(){
-    revealLiveStream();
+    // 若尚未出真实画面却已触发 load，说明 HTTP 流被服务端异常结束（例如对端占线或首帧超时）
+    if(!frameRevealed){
+      scheduleReconnect("正在等待摄像头空闲…");
+    }
   };
 
   stream.onerror = function(){
-    if(checkTimer) clearInterval(checkTimer);
-    if(pill) {
-      pill.innerHTML = "<span class=\"status-dot is-offline\"></span><span>连接未就绪，重试中…</span>";
-      pill.style.borderColor = "rgba(255,77,79,.4)";
-    }
-    if(st) st.textContent = "失败";
-    if(hint) hint.textContent = "摄像头可能暂时被米家 App 或其它设备占用";
+    scheduleReconnect("连接中断，重连中…");
   };
 
+  // 10秒连接保护看门狗：如果 10 秒内仍未出帧，主动发起一次重连
   if(liveTimer) clearTimeout(liveTimer);
   liveTimer = setTimeout(function(){
-    if(!frameRevealed) revealLiveStream();
-  }, 30000);
+    if(!frameRevealed){
+      scheduleReconnect("首帧等待超时，自动重连…");
+    }
+  }, 10000);
 }
 
 function stopLive(){
