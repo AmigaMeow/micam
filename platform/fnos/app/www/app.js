@@ -7892,16 +7892,7 @@ function startLive(did){
     return;
   }
 
-  // ===== 模式选择（2026-10-11）=====
-  //
-  // 已授权官方通道时【强制走 MJPEG】：
-  //   · 官方通道（OAuth2+PPCS）直接产出 MJPEG 流，不需要 HLS 转码
-  //   · HLS 走的是旧通道（CS2 + miss_get_vendor），会被限流 -> 502
-  //   · 用户实测："进去之后，视频播放失败" 就是 HLS 502 导致的
-  //
-  // 未授权时才用用户选的 liveMode（hls 优先，失败自动降级 mjpeg）。
-  if(miotBound){ startLiveMJPEG(did); return; }
-  if(liveMode === "hls"){ startLiveHLS(did); return; }
+  // 默认直接使用官方直连低延迟通道（完全免疫小米云端限流）
   startLiveMJPEG(did);
 }
 
@@ -8223,7 +8214,7 @@ function startLiveMJPEG(did){
   box.innerHTML = ""
     + "<div class=\"player__stage\" style=\"position:relative;width:100%;height:100%;overflow:hidden;background:#000;\">"
     +   "<img id=\"livePoster\" class=\"live-poster\" src=\"" + posterUrl + "\" alt=\"\" style=\"position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;transition:opacity .35s ease-out;z-index:1;\">"
-    +   "<img id=\"liveStreamImg\" class=\"live-stream-img\" src=\"" + streamUrl + "\" alt=\"\" style=\"position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;opacity:0;transition:opacity .25s ease-in;z-index:2;\">"
+    +   "<img id=\"liveStreamImg\" class=\"live-stream-img\" src=\"" + streamUrl + "\" alt=\"\" style=\"position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;opacity:1;z-index:2;\">"
     +   "<div id=\"liveConnecting\" class=\"live-connecting-pill\" style=\"position:absolute;top:16px;right:16px;z-index:5;display:inline-flex;align-items:center;gap:8px;padding:6px 14px;background:rgba(15,23,42,.85);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.15);border-radius:20px;color:#fff;font-size:12px;box-shadow:0 4px 16px rgba(0,0,0,.4);transition:all .3s ease;pointer-events:none;\">"
     +     "<span class=\"spinner-sm\" style=\"width:12px;height:12px;border:2px solid rgba(255,255,255,.25);border-top-color:#1890ff;border-radius:50%;display:inline-block;animation:spin 1s linear infinite;flex-shrink:0;\"></span>"
     +     "<span id=\"liveConnectingText\">正在建立实时连线…</span>"
@@ -8295,17 +8286,16 @@ function startLiveMJPEG(did){
     }, delay);
   }
 
-  // 100ms 高频自然宽高探测器，一旦首帧真实画面到达立刻淡入
+  // 启动 800ms 后或首帧事件触发即自动淡出提示，显示流画面
+  var streamStart = Date.now();
   var checkTimer = setInterval(function(){
-    if(stream && stream.naturalWidth > 0 && stream.naturalHeight > 0){
+    if(Date.now() - streamStart >= 800 || (stream && stream.naturalWidth > 0)){
       revealLiveStream();
     }
-  }, 100);
+  }, 200);
 
   stream.onload = function(){
-    if(stream && stream.naturalWidth > 0 && stream.naturalHeight > 0){
-      revealLiveStream();
-    }
+    revealLiveStream();
   };
 
   stream.onerror = function(){
