@@ -29,6 +29,7 @@ package main
 
 import (
 	"github.com/micam/micam/internal/record"
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -718,28 +719,52 @@ func (s *Server) handleRecPlay(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	buf := make([]byte, 16*1024)
-	n, readErr := stdout.Read(buf)
+	var initialBuf bytes.Buffer
+	chunk := make([]byte, 16*1024)
+	hasMdat := false
 
-	// 关键兜底：如果带偏移寻址因超出实际文件尾部或关键帧损坏而 0 字节退出，立即无缝降级到 0 秒起播
-	if (readErr != nil || n == 0) && start > 0 {
+	readInitial := func(r io.Reader) {
+		initialBuf.Reset()
+		hasMdat = false
+		for {
+			nr, rerr := r.Read(chunk)
+			if nr > 0 {
+				initialBuf.Write(chunk[:nr])
+				if bytes.Contains(initialBuf.Bytes(), []byte("mdat")) {
+					hasMdat = true
+					break
+				}
+			}
+			if rerr != nil {
+				break
+			}
+			if initialBuf.Len() > 256*1024 {
+				break
+			}
+		}
+	}
+
+	readInitial(stdout)
+
+	// 关键兜底：如果带偏移寻址因超出实际文件尾部或关键帧损坏而无视频帧（未见 mdat 媒体数据），立即无缝降级到 0 秒起播
+	if !hasMdat && start > 0 {
 		_ = cmd.Process.Kill()
 		_ = cmd.Wait()
-		logf("[replay] 偏移 t=%.1f 无画面或超出尾部，自动回退到 0 秒起播: %s", start, file)
+		logf("[replay] 偏移 t=%.1f 无媒体数据(未见 mdat，仅 %d 字节)，自动回退到 0 秒起播: %s", start, initialBuf.Len(), file)
 		cmd, stdout, errBuf, err = makeCmd(0)
 		if err != nil {
 			writeErr(w, 500, "回退转码失败: "+err.Error())
 			return
 		}
-		n, readErr = stdout.Read(buf)
+		readInitial(stdout)
 	}
 
-	if readErr != nil && n == 0 {
+	if !hasMdat && initialBuf.Len() < 1024 {
 		_ = cmd.Process.Kill()
 		_ = cmd.Wait()
 		msg := errBuf.String()
-		logf("[replay] 转码失败: %s, err=%v, stderr=%s", file, readErr, msg)
-		writeErr(w, 500, "视频文件损坏或无法读取")
+		logf("[replay] 转码无可用视频流: %s, stderr=%s", file, msg)
+		writeErr(w, 500, "视频文件损坏或无可用画面")
 		return
 	}
 
@@ -758,18 +783,19 @@ func (s *Server) handleRecPlay(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	logf("[replay] 转码首包就绪 %s (t=%.1f, %s, %d 字节)", file, start, enc, n)
+	logf("[replay] 转码首包就绪 %s (t=%.1f, %s, 首分片=%d 字节)", file, start, enc, initialBuf.Len())
 
 	w.Header().Set("Content-Type", "video/mp4")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.WriteHeader(200)
-	if n > 0 {
-		_, _ = w.Write(buf[:n])
+	if initialBuf.Len() > 0 {
+		_, _ = w.Write(initialBuf.Bytes())
 	}
 	if f, ok := w.(http.Flusher); ok {
 		f.Flush()
 	}
 
+	buf := make([]byte, 32*1024)
 	for {
 		nr, rerr := stdout.Read(buf)
 		if nr > 0 {
