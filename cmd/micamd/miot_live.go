@@ -226,6 +226,25 @@ func (s *Server) handleMiotLive(w http.ResponseWriter, r *http.Request) {
 		flusher.Flush()
 	}
 
+	// 立即输出首帧封面（0ms出图，彻底杜绝浏览器启动等待期间黑屏或Safari [?] 破损图）
+	thumbMu.Lock()
+	if e, ok := thumbCache[did]; ok && len(e.Data) > 0 {
+		initialFrame := make([]byte, len(e.Data))
+		copy(initialFrame, e.Data)
+		thumbMu.Unlock()
+		head := "--" + boundary + "\r\n" +
+			"Content-Type: image/jpeg\r\n" +
+			"Content-Length: " + strconv.Itoa(len(initialFrame)) + "\r\n\r\n"
+		_, _ = w.Write([]byte(head))
+		_, _ = w.Write(initialFrame)
+		_, _ = w.Write([]byte("\r\n"))
+		if flusher != nil {
+			flusher.Flush()
+		}
+	} else {
+		thumbMu.Unlock()
+	}
+
 	var pending []byte
 	readBuf := make([]byte, 64*1024)
 	sent := 0
