@@ -37,8 +37,15 @@ func GenerateDailyDigest(events []*event.Event, date string) *AIDailyDigest {
 		GeneratedAt: time.Now().Format("2006-01-02 15:04:05"),
 	}
 
-	seenVehicles := make(map[string]bool)
-	seenPlates := make([]string, 0)
+	// 车辆聚类与统计
+	type vehicleCluster struct {
+		canonicalPlate string
+		isWhitelist    bool
+		whitelistName  string
+		count          int
+	}
+	clusters := make(map[string]*vehicleCluster)
+	clusterOrder := make([]string, 0)
 
 	for _, ev := range events {
 		if ev == nil {
@@ -62,13 +69,55 @@ func GenerateDailyDigest(events []*event.Event, date string) *AIDailyDigest {
 				s := ev.AITitle[strings.Index(ev.AITitle, "[")+1 : strings.Index(ev.AITitle, "]")]
 				plate = s
 			}
-			if plate != "" && !seenVehicles[plate] {
-				seenVehicles[plate] = true
-				seenPlates = append(seenPlates, plate)
-				digest.KeyEvents = append(digest.KeyEvents, fmt.Sprintf("%s 车辆 [%s] 到达院内停放", timeStr, plate))
-			} else if plate == "" && len(seenVehicles) == 0 {
-				digest.KeyEvents = append(digest.KeyEvents, fmt.Sprintf("%s 车辆驶入停放", timeStr))
+			norm := normalizePlate(plate)
+			if norm != "" {
+				// 1. 优先白名单匹配
+				var matchedWl *WhitelistItem
+				if gWhitelistStore != nil {
+					matchedWl = gWhitelistStore.MatchPlate(norm)
+				}
+
+				if matchedWl != nil {
+					canon := matchedWl.Value
+					if c, ok := clusters[canon]; ok {
+						c.count++
+					} else {
+						clusters[canon] = &vehicleCluster{
+							canonicalPlate: canon,
+							isWhitelist:    true,
+							whitelistName:  matchedWl.Name,
+							count:          1,
+						}
+						clusterOrder = append(clusterOrder, canon)
+						digest.KeyEvents = append(digest.KeyEvents, fmt.Sprintf("%s 家庭自用车 [%s] 驶入庭院", timeStr, canon))
+					}
+				} else {
+					// 2. 外部访客车辆模糊归并
+					foundCluster := false
+					for _, existingKey := range clusterOrder {
+						c := clusters[existingKey]
+						if !c.isWhitelist && isPlateFuzzyMatch(norm, c.canonicalPlate) {
+							c.count++
+							foundCluster = true
+							break
+						}
+					}
+					if !foundCluster {
+						clusters[norm] = &vehicleCluster{
+							canonicalPlate: norm,
+							isWhitelist:    false,
+							count:          1,
+						}
+						clusterOrder = append(clusterOrder, norm)
+						digest.KeyEvents = append(digest.KeyEvents, fmt.Sprintf("%s 访客车辆 [%s] 驶入停放", timeStr, norm))
+					}
+				}
+			} else {
+				if len(clusters) == 0 && len(digest.KeyEvents) == 0 {
+					digest.KeyEvents = append(digest.KeyEvents, fmt.Sprintf("%s 车辆驶入停放", timeStr))
+				}
 			}
+
 		case "person":
 			digest.PersonVisits++
 			if ev.Duration >= 20 {
@@ -83,13 +132,31 @@ func GenerateDailyDigest(events []*event.Event, date string) *AIDailyDigest {
 		}
 	}
 
-	// 生成 100 字自然语言高价值摘要
+	// 生成清晰、高级、无冗余噪声的自然语言安防简报
 	var sb strings.Builder
 	sb.WriteString(fmt.Sprintf("【%s 安防日程简报】", date))
 
 	if digest.VehicleArrivals > 0 {
-		if len(seenPlates) > 0 {
-			sb.WriteString(fmt.Sprintf("今日共记录车辆出入停放 %d 次，主要车牌包括 %s。", len(seenPlates), strings.Join(seenPlates, "、")))
+		var vehicleDescs []string
+		for _, key := range clusterOrder {
+			c := clusters[key]
+			if c.isWhitelist {
+				name := c.whitelistName
+				if name == "" {
+					name = "家庭自用车"
+				}
+				vehicleDescs = append(vehicleDescs, fmt.Sprintf("%s %s（%d 次，已免打扰）", name, c.canonicalPlate, c.count))
+			} else {
+				vehicleDescs = append(vehicleDescs, fmt.Sprintf("访客车 %s（%d 次）", c.canonicalPlate, c.count))
+			}
+		}
+
+		if len(vehicleDescs) > 0 {
+			if len(vehicleDescs) > 2 {
+				sb.WriteString(fmt.Sprintf("今日共记录车辆出入 %d 次，主要为 %s 等。", digest.VehicleArrivals, strings.Join(vehicleDescs[:2], "、")))
+			} else {
+				sb.WriteString(fmt.Sprintf("今日共记录车辆出入 %d 次，主要为 %s。", digest.VehicleArrivals, strings.Join(vehicleDescs, "、")))
+			}
 		} else {
 			sb.WriteString(fmt.Sprintf("今日共记录车辆出入停放 %d 次。", digest.VehicleArrivals))
 		}
@@ -100,11 +167,11 @@ func GenerateDailyDigest(events []*event.Event, date string) *AIDailyDigest {
 	if digest.PersonVisits > 0 {
 		sb.WriteString(fmt.Sprintf("检测到人员动态 %d 次", digest.PersonVisits))
 		if digest.SuspiciousAlerts > 0 {
-			sb.WriteString(fmt.Sprintf("（其中 %d 次逗留超过 20 秒需关注）", digest.SuspiciousAlerts))
+			sb.WriteString(fmt.Sprintf("（其中 %d 次在门前逗留超过 20 秒需关注）", digest.SuspiciousAlerts))
 		}
 		sb.WriteString("。")
 	} else {
-		sb.WriteString("门前人员活动正常。")
+		sb.WriteString("门前人员动态正常。")
 	}
 
 	if digest.PackageEvents > 0 {
@@ -126,6 +193,10 @@ func GenerateDailyDigest(events []*event.Event, date string) *AIDailyDigest {
 
 // handleAIDigest 处理 /api/ai/digest 请求
 func (s *Server) handleAIDigest(w http.ResponseWriter, r *http.Request) {
+	if gWhitelistStore == nil {
+		initWhitelistStore(s.dataDir)
+	}
+
 	date := r.URL.Query().Get("date")
 	if date == "" {
 		date = time.Now().Format("2006-01-02")
@@ -159,9 +230,12 @@ func (s *Server) handleAIDigest(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
-
 // sendDailyDigestNotification 汇总指定日期的事件并推送安防日报
 func (s *Server) sendDailyDigestNotification(date string) (*AIDailyDigest, error) {
+	if gWhitelistStore == nil {
+		initWhitelistStore(s.dataDir)
+	}
+
 	if date == "" {
 		date = time.Now().Format("2006-01-02")
 	}

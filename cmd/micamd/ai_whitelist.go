@@ -49,6 +49,55 @@ func normalizePlate(p string) string {
 	return p
 }
 
+// runeDiff 统计两个字符串的汉字/字母差异数（长度相同时）
+func runeDiff(a, b string) int {
+	ra := []rune(a)
+	rb := []rune(b)
+	if len(ra) != len(rb) {
+		return 999
+	}
+	diff := 0
+	for i := range ra {
+		if ra[i] != rb[i] {
+			diff++
+		}
+	}
+	return diff
+}
+
+// isPlateFuzzyMatch 智能容错 1 位字符 OCR 抖动（如 粤W61J59 vs 鄂W61J59）或后5位字符完全相同
+func isPlateFuzzyMatch(candidate, target string) bool {
+	cNorm := normalizePlate(candidate)
+	tNorm := normalizePlate(target)
+	if cNorm == "" || tNorm == "" {
+		return false
+	}
+	if cNorm == tNorm {
+		return true
+	}
+	if runeDiff(cNorm, tNorm) <= 1 {
+		return true
+	}
+	rc := []rune(cNorm)
+	rt := []rune(tNorm)
+	if len(rc) >= 6 && len(rt) >= 6 {
+		suffixC := string(rc[len(rc)-5:])
+		suffixT := string(rt[len(rt)-5:])
+		if suffixC == suffixT {
+			return true
+		}
+	}
+	// 针对 OCR 漏识 1 位（如 湘W6J59 vs 鄂W61J59）
+	if len(rc) >= 5 && len(rt) >= 6 {
+		sC := string(rc[1:])
+		sT := string(rt[1:])
+		if strings.Contains(sT, sC) || strings.Contains(sC, sT) {
+			return true
+		}
+	}
+	return false
+}
+
 func (ws *whitelistStore) load() {
 	ws.mu.Lock()
 	defer ws.mu.Unlock()
@@ -113,7 +162,7 @@ func (ws *whitelistStore) MatchPlate(plate string) *WhitelistItem {
 			continue
 		}
 		itemNorm := normalizePlate(item.Value)
-		if itemNorm == norm || (len(itemNorm) >= 6 && strings.Contains(norm, itemNorm)) || (len(norm) >= 6 && strings.Contains(itemNorm, norm)) {
+		if itemNorm == norm || isPlateFuzzyMatch(norm, itemNorm) {
 			return item
 		}
 	}
