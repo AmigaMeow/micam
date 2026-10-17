@@ -55,8 +55,8 @@ func evalRules(e *event.Event, cfg aiConfig, recentSame int) aiRuleResult {
 		hits = append(hits, "有人出现在门口")
 	}
 
-	// 2) 夜间人员活动与高危窥探
-	if (on("night_person") || on("night_suspicious")) && night && (e.Type == "person" || e.Type == "motion") {
+	// 2) 夜间人员活动与高危窥探（仅限真正检测到人员）
+	if (on("night_person") || on("night_suspicious")) && night && e.Type == "person" {
 		hits = append(hits, "夜间人员活动与异常窥探")
 	}
 
@@ -112,14 +112,16 @@ func evalRules(e *event.Event, cfg aiConfig, recentSame int) aiRuleResult {
 	}
 
 	// 重要度评分（用于排队优先级）
-	score := 0.3
+	score := 0.2
 	if e.Type == "person" {
-		score += 0.3
+		score += 0.4
 	}
 	if e.Type == "package" {
 		score += 0.35
 	}
-	if night {
+	if e.Type == "motion" && night {
+		score += 0.05 // 夜间纯画面变化赋予最低排队优先级，优先保障人/车/包裹
+	} else if night {
 		score += 0.2
 	}
 	if e.Duration >= 30 {

@@ -27,7 +27,7 @@ type tokenUsage struct {
 	CompletionTokens int
 }
 
-const judgeSystemPrompt = `你是一个监控画面判定助手。
+const judgeSystemPrompt = `你是一个严谨客观的监控画面判定助手。
 
 用户会给你一个查询问题，以及一张监控画面截图。
 你只需要判断：这张画面里**是否出现了**用户描述的内容。
@@ -35,13 +35,15 @@ const judgeSystemPrompt = `你是一个监控画面判定助手。
 严格输出 JSON，只有三个字段：
 {
   "match": true 或 false,
-  "note": "一句话说明你看到了什么（不超过 30 字）",
+  "note": "一句话说明你看到了什么（不超过 30 字，严禁 Emoji）",
   "confidence": 0.0 到 1.0
 }
 
-规则：
-- 只判断「有没有」，不要推测时间、地点、人物身份
-- 看不清就 match=false 且 confidence 给低值
+反幻觉与判定规则：
+- 严格以画面中肉眼可见的实体为准，绝不迎合用户问题
+- 看不清、距离远、遮挡严重或夜视模糊无法确认物种/目标时，必须 match=false 且 confidence 给低值
+- 飞虫掠过、蛛丝晃动、车灯反射属于环境噪点，严禁误判为人员或动物
+- 不要推测时间、地点、人物身份，只客观判定画面中是否有目标
 - 不要输出任何其他字段`
 
 // Judge 对一张图做判定。

@@ -143,12 +143,13 @@ func (m *metaStore) GetByDevName(devName string) string {
 // ---- 侦测状态 ----
 
 type motionState struct {
-	mu       sync.Mutex
-	prev     map[string][]uint8   // did -> 上一帧灰度
-	prevAt   map[string]time.Time // did -> 上次采样的缓存时间戳（用于判断缓存是否更新）
-	lastEvt  map[string]time.Time // did -> 上次记录事件的时间
-	streak   map[string]int       // 连续触发次数
-	segStart map[string]segInfo   // did -> 当前活动段（用于累计时长）
+	mu         sync.Mutex
+	prev       map[string][]uint8   // did -> 上一帧灰度
+	prevAt     map[string]time.Time // did -> 上次采样的缓存时间戳（用于判断缓存是否更新）
+	lastEvt    map[string]time.Time // did -> 上次记录事件的时间
+	streak     map[string]int       // 连续触发次数
+	pureStreak map[string]int       // 连续纯画面变化次数（用于防飞虫噪点退避）
+	segStart   map[string]segInfo   // did -> 当前活动段（用于累计时长）
 }
 
 // segInfo 一段连续活动的累积信息
@@ -169,11 +170,12 @@ var (
 )
 
 var motion = &motionState{
-	prev:     map[string][]uint8{},
-	prevAt:   map[string]time.Time{},
-	lastEvt:  map[string]time.Time{},
-	streak:   map[string]int{},
-	segStart: map[string]segInfo{},
+	prev:       map[string][]uint8{},
+	prevAt:     map[string]time.Time{},
+	lastEvt:    map[string]time.Time{},
+	streak:     map[string]int{},
+	pureStreak: map[string]int{},
+	segStart:   map[string]segInfo{},
 }
 
 const (
@@ -250,37 +252,20 @@ func (s *Server) detectOnce() {
 		}
 
 		score := meanAbsDiff(prev, gray)
-		if score < motionThresh {
-			continue
+		now := time.Now()
+		thresh := motionThresh
+		if isNightTimeStr(now.Format("2006-01-02 15:04:05")) {
+			// 夜间红外补光灯下，飞虫近景反光和红外噪点高，将微小变动阈值提升至 8.5
+			thresh = 8.5
 		}
-		if score < motionThresh {
+		if score < thresh {
 			motion.mu.Lock()
 			motion.streak[d.Did] = 0
+			motion.pureStreak[d.Did] = 0
 			motion.mu.Unlock()
 			continue
 		}
 
-		// 触发：静默期内不重复记，但要累计时长
-		motion.mu.Lock()
-		last := motion.lastEvt[d.Did]
-		if time.Since(last) < motionSilence {
-			// 同一段活动的延续：累加时长并顺延录像
-			if seg, ok := motion.segStart[d.Did]; ok {
-				seg.Duration += int(motionInterval / time.Second)
-				if score > seg.Peak {
-					seg.Peak = score
-				}
-				motion.segStart[d.Did] = seg
-			}
-			motion.mu.Unlock()
-			s.renewMotionRecording(d)
-			continue
-		}
-		motion.lastEvt[d.Did] = time.Now()
-		motion.streak[d.Did]++
-		motion.mu.Unlock()
-
-		s.triggerMotionRecording(d, false)
 		thumbName := s.eventStore.SaveThumb(data)
 		name := d.Name
 		if m := s.meta.Get(d.Did); m.Alias != "" {
@@ -288,16 +273,12 @@ func (s *Server) detectOnce() {
 		}
 
 		// 置信度：把帧差分数映射到 78~99 区间
-		// （帧差不是概率，这只是给 UI 一个直观的强弱指示）
 		conf := 78 + score*0.45
 		if conf > 99 {
 			conf = 99
 		}
 
 		// ---- AI 分类（可选）----
-		//
-		// 帧差只能告诉我们「有变化」，AI 告诉我们「是什么」。
-		// AI 未启用/不可用时静默跳过，保持 motion 类型 —— 不阻塞、不报错。
 		evType := event.TypeMotion
 		evDesc := "检测到画面变化"
 		evConf := conf
@@ -338,10 +319,13 @@ func (s *Server) detectOnce() {
 			}
 		}
 
+		isRealTarget := false
 		if foundPerson != nil {
+			isRealTarget = true
 			evType, evDesc, evConf = "person", "检测到有人", foundPerson.Conf*100
 			aiBox, aiCls = foundPerson.Box, foundPerson.Cls
 		} else if foundAnimal != nil {
+			isRealTarget = true
 			evType = "animal"
 			if foundAnimal.Cls == "dog" {
 				evDesc = "检测到小狗"
@@ -353,12 +337,12 @@ func (s *Server) detectOnce() {
 			evConf = foundAnimal.Conf * 100
 			aiBox, aiCls = foundAnimal.Box, foundAnimal.Cls
 		} else if foundPackage != nil {
+			isRealTarget = true
 			evType, evDesc, evConf = "package", "检测到包裹", foundPackage.Conf*100
 			aiBox, aiCls = foundPackage.Box, foundPackage.Cls
 		} else if foundVehicle != nil {
 			homeStationaryMu.Lock()
 			st := homeStationaryCars[d.Did]
-			now := time.Now()
 			isStationary := false
 			if st != nil && len(st.box) >= 4 && len(foundVehicle.Box) >= 4 {
 				iou := boxIoU(foundVehicle.Box, st.box)
@@ -378,6 +362,7 @@ func (s *Server) detectOnce() {
 					emitted:  now,
 				}
 				homeStationaryMu.Unlock()
+				isRealTarget = true
 				evType, evDesc, evConf = "vehicle", "检测到车辆", foundVehicle.Conf*100
 				aiBox, aiCls = foundVehicle.Box, foundVehicle.Cls
 			} else {
@@ -392,6 +377,41 @@ func (s *Server) detectOnce() {
 				aiBox, aiCls = foundVehicle.Box, foundVehicle.Cls
 			}
 		}
+
+		// 静默期计算：高价值真实目标 60 秒即响应；纯画面变化实行防刷屏退避
+		silence := motionSilence
+		motion.mu.Lock()
+		if isRealTarget {
+			motion.pureStreak[d.Did] = 0
+		} else {
+			motion.pureStreak[d.Did]++
+			pStreak := motion.pureStreak[d.Did]
+			if pStreak == 2 {
+				silence = 180 * time.Second // 连续纯画面变化退避到 3 分钟
+			} else if pStreak >= 3 {
+				silence = 300 * time.Second // 连续纯画面变化退避到 5 分钟
+			}
+		}
+
+		last := motion.lastEvt[d.Did]
+		if time.Since(last) < silence {
+			// 同一段活动的延续：累加时长并顺延录像
+			if seg, ok := motion.segStart[d.Did]; ok {
+				seg.Duration += int(motionInterval / time.Second)
+				if score > seg.Peak {
+					seg.Peak = score
+				}
+				motion.segStart[d.Did] = seg
+			}
+			motion.mu.Unlock()
+			s.renewMotionRecording(d)
+			continue
+		}
+		motion.lastEvt[d.Did] = now
+		motion.streak[d.Did]++
+		motion.mu.Unlock()
+
+		s.triggerMotionRecording(d, false)
 
 		if aiCls != "" {
 			logf("[ai] %s 识别为 %s (%.0f%%)", d.Name, aiCls, evConf)
