@@ -2244,13 +2244,18 @@ function renderHome(c){
       //    整体下移约 9px，三张卡的基线对不齐（实测 bodyCY 208.8 vs 217.5）。
       //    现在每张卡都给 note（没有信息时给一句中性的说明），结构统一。
       // ---- 限流静默警告横幅 ----
-      + (h.silenced
-          ? '<div style="background:rgba(234,179,8,.12);border:1px solid rgba(234,179,8,.4);border-radius:10px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;gap:10px">'
+      + (h.silenced && !miotBound
+          ? '<div style="background:rgba(234,179,8,.12);border:1px solid rgba(234,179,8,.4);border-radius:10px;padding:12px 16px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap">'
+          + '<div style="display:flex;align-items:center;gap:10px">'
           + icon('alert-triangle',18)
-          + '<div><b style="color:#f59e0b">移动侦测暂停中</b>'
+          + '<div><b style="color:#f59e0b">移动侦测暂停中（传统接口被小米限流）</b>'
           + '<div style="font-size:13px;color:var(--text-2);margin-top:2px">'
-          + '小米云 API 触发限流保护，约 ' + (h.silenceMin || 0) + ' 分钟后自动恢复。恢复前不会产生新事件，录像不受影响。'
+          + '传统凭据 API 触发小米限流保护（约 ' + (h.silenceMin || 0) + ' 分钟后恢复）。<b>推荐启用官方通道</b>，走局域网直连彻底免限流。'
           + '</div></div></div>'
+          + '<div style="display:flex;gap:8px">'
+          + '<button class="btn btn--sm btn--primary" id="btnHomeMiotAuth">' + icon('zap',13) + '一键启用官方通道</button>'
+          + '<button class="btn btn--sm" id="btnHomeResetSilence">' + icon('refresh',13) + '解除静默重试</button>'
+          + '</div></div>'
           : '')
 
       + '<div class="stat-cards">'
@@ -2356,6 +2361,41 @@ function renderHome(c){
     Array.prototype.forEach.call(c.querySelectorAll('.event-item'), function(el){
       el.onclick = function(){ gotoReplay(el.dataset.ev, el.dataset.evt); };
     });
+
+    var bMiot = c.querySelector('#btnHomeMiotAuth');
+    if(bMiot){
+      bMiot.onclick = function(){
+        bMiot.disabled = true;
+        toast('正在一键激活官方通道…', 'ok');
+        api('/api/miot/auto-auth', { method:'POST' }).then(function(r){
+          bMiot.disabled = false;
+          if(r && r.ok){
+            toast('官方通道激活成功！移动侦测已恢复', 'ok');
+            miotBound = true;
+            renderHome(c);
+          } else {
+            toast('请在「账号」页完成官方通道绑定', 'warn');
+            page = 'accounts'; renderMenu(); render();
+          }
+        }).catch(function(e){
+          bMiot.disabled = false;
+          page = 'accounts'; renderMenu(); render();
+        });
+      };
+    }
+    var bReset = c.querySelector('#btnHomeResetSilence');
+    if(bReset){
+      bReset.onclick = function(){
+        bReset.disabled = true;
+        api('/api/live/renew', { method:'POST' }).then(function(){
+          toast('已重置限流锁定状态，正在重新探测…', 'ok');
+          renderHome(c);
+        }).catch(function(e){
+          bReset.disabled = false;
+          toast('重置失败: ' + e.message, 'err');
+        });
+      };
+    }
 
     // 「查看全部」跳转
     Array.prototype.forEach.call(c.querySelectorAll('[data-go]'), function(a){
@@ -7084,6 +7124,9 @@ function lensParam(){
 // 这个函数把这些情况变成明确的提示 + 可操作按钮。
 function liveCredGuard(did){
   if(!did) return;
+  // 关键：若已绑定官方通道（OAuth2 + PPCS），实时流走独立官方端点，不依赖 miss_get_vendor 凭据，绝不应被此拦截
+  if(miotBound) return;
+
   api('/api/live/cred-status').then(function(d){
     var list = (d && d.devices) || [];
     var me = null;
@@ -7114,20 +7157,44 @@ function liveCredGuard(did){
     var html = ''
       + '<div class="cred-warn">'
       +   '<div class="cred-warn__icon">' + icon('alert',26) + '</div>'
-      +   '<div class="cred-warn__title">摄像头凭据异常，暂时无法播放</div>'
+      +   '<div class="cred-warn__title">摄像头传统凭据受限，暂时无法播放</div>'
       +   '<div class="cred-warn__desc">' + esc(reason) + '<br>'
-      +     '常见原因：小米服务对账号做了临时限流（throttle deny），或登录态需要重新获取。'
+      +     '常见原因：传统接口受小米临时限流（throttle deny）。<br><b style="color:var(--primary-color, #1890ff);">推荐切换至官方通道（OAuth2+PPCS），彻底免除限流困扰。</b>'
       +   '</div>'
       +   '<div class="cred-warn__acts">'
-      +     '<button class="btn btn--primary" id="credRetry">' + icon('refresh',14) + '立即重试</button>'
+      +     '<button class="btn btn--primary" id="credMiotSync">' + icon('zap',14) + '一键激活官方通道 (推荐)</button>'
+      +     '<button class="btn" id="credRetry">' + icon('refresh',14) + '重试老凭据</button>'
       +     '<button class="btn" id="credRelogin">' + icon('qr',14) + '重新登录账号</button>'
       +   '</div>'
-      +   '<div class="cred-warn__hint">系统会每 12 分钟自动重试一次，恢复后无需手动操作。</div>'
+      +   '<div class="cred-warn__hint">激活官方通道后走局域网直连，不受云端 API 限流影响。</div>'
       + '</div>';
 
     if(ph){ ph.outerHTML = html; }
     else if(step){ step.closest('.player__overlay').insertAdjacentHTML('beforebegin', html); }
 
+    var syncBtn = document.getElementById('credMiotSync');
+    if(syncBtn){
+      syncBtn.onclick = function(){
+        syncBtn.disabled = true;
+        syncBtn.textContent = '正在激活官方通道…';
+        toast('正在一键同步小米官方授权…', 'ok');
+        api('/api/miot/auto-auth', { method:'POST' }).then(function(r){
+          syncBtn.disabled = false;
+          if(r && r.ok){
+            toast('官方通道激活成功！正在切入实时流…', 'ok');
+            miotBound = true;
+            render();
+          } else {
+            toast('一键激活未完成: ' + ((r && r.error) || '建议在账号页扫码或绑定官方通道'), 'warn');
+            page = 'accounts'; renderMenu(); render();
+          }
+        }).catch(function(e){
+          syncBtn.disabled = false;
+          toast('请求失败，正在引导至账号页绑定…', 'warn');
+          page = 'accounts'; renderMenu(); render();
+        });
+      };
+    }
     var rb = document.getElementById('credRetry');
     if(rb) rb.onclick = function(){
       var b = this; b.disabled = true; b.textContent = '正在重试…';
