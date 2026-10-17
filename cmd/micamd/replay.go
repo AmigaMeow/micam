@@ -644,7 +644,8 @@ func (s *Server) collectRecFiles(root, name, date string) []recFileInfo {
 		if err != nil || info == nil || info.IsDir() {
 			return nil
 		}
-		if filepath.Ext(pth) != ".mkv" {
+		ext := strings.ToLower(filepath.Ext(pth))
+		if ext != ".mkv" && ext != ".mp4" {
 			return nil
 		}
 		if info.Size() < 64*1024 {
@@ -656,7 +657,7 @@ func (s *Server) collectRecFiles(root, name, date string) []recFileInfo {
 		rel, _ := filepath.Rel(root, pth)
 		parts := strings.Split(rel, string(filepath.Separator))
 		st := info.ModTime().Format("2006-01-02 15:04:05")
-		base := strings.TrimSuffix(info.Name(), ".mkv")
+		base := strings.TrimSuffix(strings.TrimSuffix(info.Name(), ".mkv"), ".mp4")
 		fileDate := ""
 		if len(base) >= 8 {
 			if t, err := time.ParseInLocation("20060102", base[:8], time.Local); err == nil {

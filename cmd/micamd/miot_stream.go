@@ -25,13 +25,30 @@ import (
 )
 
 var (
-	miotStreamMu  sync.Mutex
-	miotStreamCtx = map[string]context.CancelFunc{} // did -> 取消函数
-	miotStreamWG  = map[string]chan struct{}{}      // did -> 流退出信号
-	miotStreamEnd = map[string]time.Time{}          // did -> 上一条流结束时刻
-	tutkDevicesMu sync.RWMutex
-	tutkDevices   = map[string]bool{}
+	miotStreamMu      sync.Mutex
+	miotStreamCtx     = map[string]context.CancelFunc{} // did -> 取消函数
+	miotStreamWG      = map[string]chan struct{}{}      // did -> 流退出信号
+	miotStreamEnd     = map[string]time.Time{}          // did -> 上一条流结束时刻
+	miotStreamingList = map[string]bool{}               // did -> 正在进行实时预览
+	tutkDevicesMu     sync.RWMutex
+	tutkDevices       = map[string]bool{}
 )
+
+func setMiotStreaming(did string, active bool) {
+	miotStreamMu.Lock()
+	defer miotStreamMu.Unlock()
+	if active {
+		miotStreamingList[did] = true
+	} else {
+		delete(miotStreamingList, did)
+	}
+}
+
+func isMiotStreaming(did string) bool {
+	miotStreamMu.Lock()
+	defer miotStreamMu.Unlock()
+	return miotStreamingList[did]
+}
 
 func isTUTKDevice(did, model string) bool {
 	if strings.Contains(strings.ToLower(model), "ipc009") {
@@ -92,6 +109,7 @@ func beginMiotStream(parent context.Context, did string) (context.Context, conte
 	done := make(chan struct{})
 	miotStreamCtx[did] = cancel
 	miotStreamWG[did] = done
+	miotStreamingList[did] = true
 	miotStreamMu.Unlock()
 
 	finish := func() {
@@ -102,6 +120,7 @@ func beginMiotStream(parent context.Context, did string) (context.Context, conte
 			if d, ok2 := miotStreamWG[did]; ok2 && d == done {
 				delete(miotStreamCtx, did)
 				delete(miotStreamWG, did)
+				delete(miotStreamingList, did)
 				miotStreamEnd[did] = time.Now()
 			}
 		}

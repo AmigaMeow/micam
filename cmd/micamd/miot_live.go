@@ -149,10 +149,15 @@ func (s *Server) handleMiotLive(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ⚠️ 每设备串行化：摄像头同一时刻只接受一条 PPCS 连接。
-	//    切画质时前端会立刻发新流，必须先把旧流踢掉，否则新流建不上。
+	//    若后台录像正在运行，主动让出连接，保证用户实时流优先秒开。
+	s.yieldCameraForLive(did)
+
 	ctx, cancel, finishStream := beginMiotStream(r.Context(), did)
 	defer cancel()
-	defer finishStream()
+	defer func() {
+		finishStream()
+		go s.resumeRecordingIfNeeded(did)
+	}()
 
 	cmd := exec.CommandContext(ctx, miot.PythonBin(), args...)
 	// 独立进程组：超时时能连 ffmpeg 子进程一起杀掉，不留孤儿。
@@ -234,24 +239,8 @@ func (s *Server) handleMiotLive(w http.ResponseWriter, r *http.Request) {
 		flusher.Flush()
 	}
 
-	// 立即输出首帧封面（0ms出图，彻底杜绝浏览器启动等待期间黑屏或Safari [?] 破损图）
-	thumbMu.Lock()
-	if e, ok := thumbCache[did]; ok && len(e.Data) > 0 {
-		initialFrame := make([]byte, len(e.Data))
-		copy(initialFrame, e.Data)
-		thumbMu.Unlock()
-		head := "--" + boundary + "\r\n" +
-			"Content-Type: image/jpeg\r\n" +
-			"Content-Length: " + strconv.Itoa(len(initialFrame)) + "\r\n\r\n"
-		_, _ = w.Write([]byte(head))
-		_, _ = w.Write(initialFrame)
-		_, _ = w.Write([]byte("\r\n"))
-		if flusher != nil {
-			flusher.Flush()
-		}
-	} else {
-		thumbMu.Unlock()
-	}
+	// 前端已具备 livePoster 底层封面展示，此处只输出真实解码帧，
+	// 避免在摄像头握手或异常断开时向浏览器注入伪画面导致前端误判为播放中而冻结。
 
 	var pending []byte
 	readBuf := make([]byte, 64*1024)
@@ -317,8 +306,8 @@ func (s *Server) handleMiotLive(w http.ResponseWriter, r *http.Request) {
 				sentBytes += len(frame)
 				// 真实图像帧计数（<1KB 的是 x265 碎片/控制帧，不是画面）
 				if len(frame) > 1024 {
-					if realFrames == 0 {
-						// 用户正在观看实时流：将第一张清晰画面更新至缩略图缓存（零额外开销）
+					if realFrames == 0 || realFrames%45 == 0 {
+						// 用户正在观看实时流：定期将清晰画面更新至缩略图缓存（零额外开销）
 						frameCopy := make([]byte, len(frame))
 						copy(frameCopy, frame)
 						thumbMu.Lock()
@@ -328,7 +317,9 @@ func (s *Server) handleMiotLive(w http.ResponseWriter, r *http.Request) {
 							LastHit: time.Now(),
 						}
 						thumbMu.Unlock()
-						logf("[thumb] 实时流首帧自动更新缩略图 did=%s (%d 字节)", did, len(frame))
+						if realFrames == 0 {
+							logf("[thumb] 实时流首帧自动更新缩略图 did=%s (%d 字节)", did, len(frame))
+						}
 					}
 					realFrames++
 				}

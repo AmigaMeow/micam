@@ -264,7 +264,7 @@ func (s *Server) detectOnce() {
 		motion.mu.Lock()
 		last := motion.lastEvt[d.Did]
 		if time.Since(last) < motionSilence {
-			// 同一段活动的延续：累加时长
+			// 同一段活动的延续：累加时长并顺延录像
 			if seg, ok := motion.segStart[d.Did]; ok {
 				seg.Duration += int(motionInterval / time.Second)
 				if score > seg.Peak {
@@ -273,6 +273,7 @@ func (s *Server) detectOnce() {
 				motion.segStart[d.Did] = seg
 			}
 			motion.mu.Unlock()
+			s.renewMotionRecording(d)
 			continue
 		}
 		motion.lastEvt[d.Did] = time.Now()
@@ -534,11 +535,11 @@ func (s *Server) findEventRecording(devName, did, eventTime string) (string, flo
 	dateStr := t.Format("2006-01-02")
 	roots := s.recRoots()
 
-	names := []string{devName}
+	names := []string{devName, sanitizeName(devName)}
 	if did != "" {
 		for _, c := range s.allCameras() {
-			if c.Did == did && c.Name != "" && c.Name != devName {
-				names = append(names, c.Name)
+			if c.Did == did {
+				names = append(names, c.Name, sanitizeName(c.Name))
 			}
 		}
 		names = append(names, did)
@@ -551,10 +552,17 @@ func (s *Server) findEventRecording(devName, did, eventTime string) (string, flo
 	}
 	var best *matchCandidate
 
+	seenNames := make(map[string]bool)
+	var uniqNames []string
 	for _, n := range names {
-		if n == "" {
-			continue
+		n = strings.TrimSpace(n)
+		if n != "" && !seenNames[n] {
+			seenNames[n] = true
+			uniqNames = append(uniqNames, n)
 		}
+	}
+
+	for _, n := range uniqNames {
 		for _, root := range roots {
 			files := s.collectRecFiles(root, n, dateStr)
 			for _, f := range files {
@@ -576,7 +584,7 @@ func (s *Server) findEventRecording(devName, did, eventTime string) (string, flo
 				}
 
 				diff := math.Abs(offset)
-				if diff < 300 && (best == nil || diff < best.diffSec) {
+				if diff < 600 && (best == nil || diff < best.diffSec) {
 					best = &matchCandidate{
 						file:    f.Name,
 						offset:  math.Max(0, offset),

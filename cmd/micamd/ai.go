@@ -22,6 +22,7 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
@@ -550,7 +551,8 @@ func (a *aiClient) startLocked(cfg aiConfig) error {
 	if err != nil {
 		return err
 	}
-	cmd.Stderr = os.Stderr // 推理日志直接进主日志
+	var stderrBuf bytes.Buffer
+	cmd.Stderr = io.MultiWriter(os.Stderr, &stderrBuf)
 
 	if err := cmd.Start(); err != nil {
 		a.status = "error"
@@ -584,10 +586,26 @@ func (a *aiClient) startLocked(cfg aiConfig) error {
 	select {
 	case <-done:
 		if rerr != nil {
+			time.Sleep(100 * time.Millisecond)
+			errOut := strings.TrimSpace(stderrBuf.String())
+			if errOut == "" {
+				errOut = rerr.Error()
+			} else {
+				lines := strings.Split(errOut, "\n")
+				if len(lines) > 4 {
+					errOut = strings.Join(lines[len(lines)-4:], " | ")
+				}
+			}
 			a.status = "error"
-			a.lastErr = "推理进程无响应: " + rerr.Error()
+			a.lastErr = "推理服务启动失败: " + errOut
 			a.stopLocked()
-			return rerr
+			return fmt.Errorf("%s", a.lastErr)
+		}
+		if rmsg.Error != "" {
+			a.status = "error"
+			a.lastErr = "模型加载失败: " + rmsg.Error
+			a.stopLocked()
+			return fmt.Errorf("%s", a.lastErr)
 		}
 	case <-time.After(30 * time.Second):
 		a.status = "error"

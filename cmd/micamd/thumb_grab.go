@@ -85,6 +85,18 @@ func thumbGrabDone(did string) {
 // 走 sidecar（PPCS + ffmpeg），拿到第一个 JPEG 就返回。
 // 不依赖 miss_get_vendor，所以不受限流影响。
 func (s *Server) grabFrameViaMiot(did string) ([]byte, error) {
+	// 如果设备正在进行实时预览，或者缓存内有新鲜图片，直接复用缓存，绝不抢占 PPCS 连接槽
+	thumbMu.Lock()
+	if c, ok := thumbCache[did]; ok && len(c.Data) > 0 {
+		if isMiotStreaming(did) || time.Since(c.Time) < 30*time.Second {
+			data := make([]byte, len(c.Data))
+			copy(data, c.Data)
+			thumbMu.Unlock()
+			return data, nil
+		}
+	}
+	thumbMu.Unlock()
+
 	token, ok := miotBound()
 	if !ok {
 		return nil, errNoMiotToken

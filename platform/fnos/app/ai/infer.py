@@ -36,7 +36,13 @@ import base64
 import time
 import traceback
 
-import numpy as np
+try:
+    import numpy as np
+except ImportError as e:
+    sys.stderr.write("[infer] 缺失必要依赖 numpy: %s\n" % e)
+    sys.stderr.write("[infer] 请安装依赖: pip install numpy onnxruntime opencv-python-headless\n")
+    sys.stderr.flush()
+    sys.exit(1)
 
 # ---- COCO 80 类（YOLOv8 默认训练集）----
 COCO_CLASSES = [
@@ -283,8 +289,9 @@ def main():
         det = Detector(model_name)
     except Exception as e:
         log("模型加载失败: %s" % e)
-        # 仍然进入循环，但所有 detect 都返回错误
-        # （这样 Go 侧能拿到清晰的错误信息，而不是进程消失）
+        sys.stdout.write(json.dumps({"ready": False, "error": str(e), "model": model_name}) + "\n")
+        sys.stdout.flush()
+        sys.exit(1)
 
     log("就绪，等待请求")
     sys.stdout.write(json.dumps({"ready": True, "model": model_name}) + "\n")

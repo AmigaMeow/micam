@@ -59,6 +59,13 @@ func (s *Server) triggerMotionRecording(dev *xiaomi.Device, isAIEvent bool) {
 	did := dev.Did
 	motionRec.activeUntil[did] = time.Now().Add(time.Duration(postRoll) * time.Second)
 
+	// 如果正在实时预览中，摄像头独占信道被用户占用，暂不启动录像，录像时长已顺延
+	if isMiotStreaming(did) {
+		logf("[rec-motion] 设备 %s 正在进行实时预览，暂缓启动独立录像（延录至 %s）", did, motionRec.activeUntil[did].Format("15:04:05"))
+		motionRec.mu.Unlock()
+		return
+	}
+
 	// 检查是否已经在录
 	isRec := false
 	for _, st := range s.rec.List() {
@@ -77,6 +84,24 @@ func (s *Server) triggerMotionRecording(dev *xiaomi.Device, isAIEvent bool) {
 			}
 		}()
 	}
+}
+
+// renewMotionRecording 画面持续活动时顺延录像停止时间
+func (s *Server) renewMotionRecording(dev *xiaomi.Device) {
+	if dev == nil || !s.cfg.RecordEnabled {
+		return
+	}
+	mode := s.cfg.RecordMode
+	if mode != "motion" && mode != "ai_event" {
+		return
+	}
+	postRoll := s.cfg.RecordPostRollSec
+	if postRoll <= 0 {
+		postRoll = 30
+	}
+	motionRec.mu.Lock()
+	motionRec.activeUntil[dev.Did] = time.Now().Add(time.Duration(postRoll) * time.Second)
+	motionRec.mu.Unlock()
 }
 
 // checkTimeouts 检查静止超时的设备并停止录像。

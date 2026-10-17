@@ -256,6 +256,43 @@ func (s *Server) stopRecordingMiot(did string) bool {
 	return ok
 }
 
+// yieldCameraForLive 实时预览请求接入时，若后台录像正在使用该摄像头，主动停止并让出连接
+func (s *Server) yieldCameraForLive(did string) {
+	if s.stopRecordingMiot(did) {
+		logf("[miot] 实时预览请求接入，已主动让出录像连接 did=%s", did)
+		time.Sleep(1500 * time.Millisecond) // 等待摄像头硬件会话表释放
+	}
+}
+
+// resumeRecordingIfNeeded 实时预览结束后，按需自动恢复全天或动体录像
+func (s *Server) resumeRecordingIfNeeded(did string) {
+	time.Sleep(3 * time.Second) // 等待预览进程退出并释放连接
+	if isMiotStreaming(did) {
+		return
+	}
+	dev, err := s.ensureDevice(did)
+	if err != nil || dev == nil || !dev.IsOnline {
+		return
+	}
+	if !s.cfg.RecordEnabled {
+		return
+	}
+	if s.cfg.RecordMode == "always" {
+		logf("[rec] 实时预览结束，自动恢复全天录像 did=%s", did)
+		_ = s.startRecording(dev)
+		return
+	}
+	if s.cfg.RecordMode == "motion" || s.cfg.RecordMode == "ai_event" {
+		motionRec.mu.Lock()
+		until, ok := motionRec.activeUntil[did]
+		motionRec.mu.Unlock()
+		if ok && time.Now().Before(until) {
+			logf("[rec-motion] 实时预览结束，恢复动体延录 did=%s (剩余 %.0fs)", did, time.Until(until).Seconds())
+			_ = s.startRecording(dev)
+		}
+	}
+}
+
 func minDur(a, b time.Duration) time.Duration {
 	if a < b {
 		return a
