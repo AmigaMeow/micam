@@ -961,13 +961,13 @@ func (s *Server) buildCache(src, dst string, encArgs []string, enc, label string
 		return
 	}
 
-	if err := os.Rename(tmp, dst); err != nil {
+	if !hasValidMP4Structure(tmp) {
+		logf("[cache] 生成失败 %s: 转码文件缺少有效 MP4 结构", label)
 		_ = os.Remove(tmp)
 		return
 	}
-	if !hasMoovAtom(dst) {
-		logf("[cache] 生成失败 %s: 文件缺少 moov 原子", label)
-		_ = os.Remove(dst)
+	if err := os.Rename(tmp, dst); err != nil {
+		_ = os.Remove(tmp)
 		return
 	}
 	fi, _ := os.Stat(dst)
@@ -1641,6 +1641,7 @@ func (s *Server) handleRecCacheStatus(w http.ResponseWriter, r *http.Request) {
 	name := safeName(r.URL.Query().Get("name"))
 	file := filepath.Base(r.URL.Query().Get("file"))
 	date := safeName(r.URL.Query().Get("date"))
+	nocache := r.URL.Query().Get("nocache") == "1"
 	if name == "" || file == "" || date == "" {
 		writeErr(w, 400, "缺少参数")
 		return
@@ -1660,6 +1661,9 @@ func (s *Server) handleRecCacheStatus(w http.ResponseWriter, r *http.Request) {
 	}
 	enc, encArgs := s.pickFileEncoder(src)
 	dst := s.findCachePath(enc, name, date, file, src)
+	if nocache {
+		_ = os.Remove(dst)
+	}
 	ready := cacheValid(dst, src)
 
 	cacheJobMu.Lock()

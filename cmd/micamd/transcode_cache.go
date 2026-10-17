@@ -31,6 +31,8 @@ package main
 
 import (
 	"bytes"
+	"encoding/binary"
+	"io"
 	"context"
 	"fmt"
 	"os"
@@ -244,8 +246,9 @@ func (s *Server) findCachePath(enc, name, date, file, src string) string {
 	return localExact
 }
 
-// hasMoovAtom 快速检查 MP4 文件是否具有完整的 moov 元数据原子。
-func hasMoovAtom(path string) bool {
+// hasValidMP4Structure 严格校验快开 MP4 文件的结构完整性。
+// 必须同时包含 moov、trak、mdat 元数据原子，且 mvhd 头部尺寸合法，杜绝截断或 faststart 移位失败的损坏缓存。
+func hasValidMP4Structure(path string) bool {
 	f, err := os.Open(path)
 	if err != nil {
 		return false
@@ -253,29 +256,48 @@ func hasMoovAtom(path string) bool {
 	defer f.Close()
 
 	fi, err := f.Stat()
-	if err != nil || fi.Size() < 128 {
+	if err != nil || fi.Size() < 4096 {
 		return false
 	}
 
-	buf := make([]byte, 2*1024*1024)
-	n, _ := f.Read(buf)
-	if n > 8 && bytes.Contains(buf[:n], []byte("moov")) {
-		return true
+	readLen := int64(4 * 1024 * 1024)
+	if fi.Size() < readLen {
+		readLen = fi.Size()
 	}
-	if fi.Size() > int64(len(buf)) {
-		offset := fi.Size() - int64(len(buf))
-		n, _ = f.ReadAt(buf, offset)
-		if n > 8 && bytes.Contains(buf[:n], []byte("moov")) {
-			return true
-		}
+	buf := make([]byte, readLen)
+	n, err := io.ReadFull(f, buf)
+	if err != nil && err != io.ErrUnexpectedEOF && err != io.EOF {
+		return false
 	}
-	return false
+	data := buf[:n]
+
+	if !bytes.Contains(data, []byte("moov")) ||
+		!bytes.Contains(data, []byte("trak")) ||
+		!bytes.Contains(data, []byte("mdat")) {
+		return false
+	}
+
+	mvhdIdx := bytes.Index(data, []byte("mvhd"))
+	if mvhdIdx < 4 {
+		return false
+	}
+	mvhdSize := binary.BigEndian.Uint32(data[mvhdIdx-4 : mvhdIdx])
+	// ISO 标准 mvhd: v0 为 108 字节 (0x6c)，v1 为 120 字节 (0x78)
+	if mvhdSize != 108 && mvhdSize != 120 {
+		return false
+	}
+
+	return true
+}
+
+func hasMoovAtom(path string) bool {
+	return hasValidMP4Structure(path)
 }
 
 // cacheValid 缓存是否可用（存在、比源文件新且 MP4 结构有效）。
 func cacheValid(dst, src string) bool {
 	di, err := os.Stat(dst)
-	if err != nil || di.Size() < 1024 {
+	if err != nil || di.Size() < 4096 {
 		return false
 	}
 	si, err := os.Stat(src)
@@ -285,8 +307,8 @@ func cacheValid(dst, src string) bool {
 	if di.ModTime().Before(si.ModTime().Add(-2 * time.Second)) {
 		return false
 	}
-	if !hasMoovAtom(dst) {
-		logf("[cache] 发现损坏缓存（无 moov 原子），自动清除: %s", filepath.Base(dst))
+	if !hasValidMP4Structure(dst) {
+		logf("[cache] 发现损坏缓存（MP4 结构损坏），自动清除: %s", filepath.Base(dst))
 		_ = os.Remove(dst)
 		return false
 	}
