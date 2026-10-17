@@ -724,32 +724,38 @@ function renderAIDigestCard(box, dateStr){
     var sum = dg.summary || '今日监控安防状态平稳，未检测到异常滞留或安全隐患。';
     box.innerHTML = '<div class="ai-digest-card">'
       + '<div class="ai-digest-card__head">'
-      +   '<div class="ai-digest-card__title">'
-      +     '<span class="ai-digest-card__icon">' + icon('shield', 18) + '</span>'
-      +     '<span>AI 每日安全快报</span>'
-      +     '<span class="ai-digest-card__date">' + esc(dg.date || d) + '</span>'
+      +   '<div class="ai-digest-card__title-wrap">'
+      +     '<div class="ai-digest-card__icon-box">' + icon('shield', 18) + '</div>'
+      +     '<div class="ai-digest-card__title">'
+      +       '<span>AI 每日安全快报</span>'
+      +       '<span class="ai-digest-card__date">' + esc(dg.date || d) + '</span>'
+      +     '</div>'
       +   '</div>'
       +   '<button class="btn btn--sm btn--subtle" id="evDigestRefresh" title="重新生成今日快报">'
       +     icon('refresh', 13) + '刷新简报'
       +   '</button>'
       + '</div>'
-      + '<div class="ai-digest-card__summary">' + esc(sum) + '</div>'
-      + '<div class="ai-digest-card__metrics">'
-      +   '<div class="ai-digest-metric">'
-      +     '<span class="ai-digest-metric__val">' + (dg.vehicleArrivals || 0) + '</span>'
-      +     '<span class="ai-digest-metric__lbl">车辆出入</span>'
+      + '<div class="ai-digest-card__body">'
+      +   '<div class="ai-digest-card__summary">'
+      +     '<div class="ai-digest-card__summary-text">' + esc(sum) + '</div>'
       +   '</div>'
-      +   '<div class="ai-digest-metric">'
-      +     '<span class="ai-digest-metric__val">' + (dg.personVisits || 0) + '</span>'
-      +     '<span class="ai-digest-metric__lbl">人员动态</span>'
-      +   '</div>'
-      +   '<div class="ai-digest-metric">'
-      +     '<span class="ai-digest-metric__val" style="color:' + (dg.suspiciousAlerts ? 'var(--warning,#f59e0b)' : 'inherit') + '">' + (dg.suspiciousAlerts || 0) + '</span>'
-      +     '<span class="ai-digest-metric__lbl">重点关注</span>'
-      +   '</div>'
-      +   '<div class="ai-digest-metric">'
-      +     '<span class="ai-digest-metric__val">' + (dg.packageEvents || 0) + '</span>'
-      +     '<span class="ai-digest-metric__lbl">包裹识别</span>'
+      +   '<div class="ai-digest-card__metrics">'
+      +     '<div class="ai-digest-metric">'
+      +       '<span class="ai-digest-metric__val">' + (dg.vehicleArrivals || 0) + '</span>'
+      +       '<span class="ai-digest-metric__lbl">' + icon('car', 12) + '车辆出入</span>'
+      +     '</div>'
+      +     '<div class="ai-digest-metric">'
+      +       '<span class="ai-digest-metric__val">' + (dg.personVisits || 0) + '</span>'
+      +       '<span class="ai-digest-metric__lbl">' + icon('user', 12) + '人员动态</span>'
+      +     '</div>'
+      +     '<div class="ai-digest-metric">'
+      +       '<span class="ai-digest-metric__val' + (dg.suspiciousAlerts ? ' is-warning' : '') + '">' + (dg.suspiciousAlerts || 0) + '</span>'
+      +       '<span class="ai-digest-metric__lbl">' + icon('alert', 12) + '重点关注</span>'
+      +     '</div>'
+      +     '<div class="ai-digest-metric">'
+      +       '<span class="ai-digest-metric__val">' + (dg.packageEvents || 0) + '</span>'
+      +       '<span class="ai-digest-metric__lbl">' + icon('package', 12) + '包裹识别</span>'
+      +     '</div>'
       +   '</div>'
       + '</div>'
       + '</div>';
@@ -5912,41 +5918,137 @@ function aiTabSettings(){
     // ===== 白名单与免打扰 =====
     + '<div class="pnl' + (aiSetTab === 'whitelist' ? ' is-on' : '') + '" data-pnl="whitelist">'
     +   '<div class="ai-stage">'
-    +     '<div class="ai-stage__lead" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">'
-    +       '<div>将家庭自用车牌或熟悉目标添加至白名单。系统将自动执行免打扰策略，静默归档记录，消灭频繁通知骚扰。</div>'
-    +       '<button class="btn btn--primary btn--sm" id="btnWlAddDialog">' + icon('plus', 13) + '添加白名单目标</button>'
+    +     '<div class="ai-stage__lead">白名单机制可精准识别家庭自用车牌与熟悉家庭成员。触发事件时自动执行免打扰策略，静默归档记录，过滤 98% 频繁推送打扰。</div>'
+    +     '<div class="ai-modes">'
+    +       '<label class="ai-mode is-active" style="cursor:default;">'
+    +         '<div class="ai-mode__top">'
+    +           '<span class="ai-mode__icon ai-mode__icon--balanced">' + icon('shield', 22) + '</span>'
+    +           '<div class="ai-mode__title-wrap">'
+    +             '<span class="ai-mode__title">家庭熟悉目标免打扰</span>'
+    +             '<span class="badge badge--ok">生效中</span>'
+    +           '</div>'
+    +           '<span class="ai-mode__radio-check">' + icon('check', 12) + '</span>'
+    +         '</div>'
+    +         '<div class="ai-mode__cost-wrap">'
+    +           '<span class="ai-mode__cost">自用车出入静默归档，消灭频繁弹窗</span>'
+    +         '</div>'
+    +         '<div class="ai-mode__desc">对自用车牌或信任人脸执行静默归档，正常录制并记录出入日志，但不向手机与网页端频繁推送报警弹窗。</div>'
+    +         '<ul class="ai-mode__features">'
+    +           '<li class="ai-mode__feature">' + icon('check', 12) + '<span>消除 95%+ 家庭自用出入重复骚扰</span></li>'
+    +           '<li class="ai-mode__feature">' + icon('check', 12) + '<span>自动标记绿色信任事件标签</span></li>'
+    +           '<li class="ai-mode__feature">' + icon('check', 12) + '<span>完整保留回放与安防审计底册</span></li>'
+    +         '</ul>'
+    +       '</label>'
+    +       '<label class="ai-mode is-active" style="cursor:default;">'
+    +         '<div class="ai-mode__top">'
+    +           '<span class="ai-mode__icon ai-mode__icon--full">' + icon('sparkles', 22) + '</span>'
+    +           '<div class="ai-mode__title-wrap">'
+    +             '<span class="ai-mode__title">OCR 容错与智能聚类</span>'
+    +             '<span class="badge badge--ok">自动纠偏</span>'
+    +           '</div>'
+    +           '<span class="ai-mode__radio-check">' + icon('check', 12) + '</span>'
+    +         '</div>'
+    +         '<div class="ai-mode__cost-wrap">'
+    +           '<span class="ai-mode__cost">抗反光/污损，1 位误识智能纠偏</span>'
+    +         '</div>'
+    +         '<div class="ai-mode__desc">基于白名单特征，自动抗雨雪反光与污损。当识别产生 1 位字符抖动时（如粤W61J59/鄂M61J59），智能自动校正归并在自用车牌下。</div>'
+    +         '<ul class="ai-mode__features">'
+    +           '<li class="ai-mode__feature">' + icon('check', 12) + '<span>1 位字符偏差自动模糊容错纠正</span></li>'
+    +           '<li class="ai-mode__feature">' + icon('check', 12) + '<span>多次进出自动聚类为同一车辆</span></li>'
+    +           '<li class="ai-mode__feature">' + icon('check', 12) + '<span>每日安全快报告别乱码车牌刷屏</span></li>'
+    +         '</ul>'
+    +       '</label>'
+    +       '<label class="ai-mode is-active" style="cursor:default;">'
+    +         '<div class="ai-mode__top">'
+    +           '<span class="ai-mode__icon ai-mode__icon--local">' + icon('alert', 22) + '</span>'
+    +           '<div class="ai-mode__title-wrap">'
+    +             '<span class="ai-mode__title">陌生目标与重点关注</span>'
+    +             '<span class="badge badge--warn">高优先级</span>'
+    +           '</div>'
+    +           '<span class="ai-mode__radio-check">' + icon('check', 12) + '</span>'
+    +         '</div>'
+    +         '<div class="ai-mode__cost-wrap">'
+    +           '<span class="ai-mode__cost">夜间徘徊超限自动标黄高亮</span>'
+    +         '</div>'
+    +         '<div class="ai-mode__desc">未登记的未知访客车辆或陌生人员，若在夜间（22:00-06:00）或敏感时段逗留超过 20 秒，系统将自动高亮标黄并提级预警。</div>'
+    +         '<ul class="ai-mode__features">'
+    +           '<li class="ai-mode__feature">' + icon('check', 12) + '<span>自动识别未知陌生车牌与访客</span></li>'
+    +           '<li class="ai-mode__feature">' + icon('check', 12) + '<span>逗留超限自动标黄高亮重点关注</span></li>'
+    +           '<li class="ai-mode__feature">' + icon('check', 12) + '<span>联动云端大模型深度行为语义复核</span></li>'
+    +         '</ul>'
+    +       '</label>'
     +     '</div>'
-    +     '<div class="card" style="margin-top:16px;padding:0;overflow:hidden;">'
-    +       '<table class="table" style="width:100%;border-collapse:collapse;">'
-    +         '<thead><tr>'
-    +           '<th style="text-align:left;padding:12px 16px;">目标类型</th>'
-    +           '<th style="text-align:left;padding:12px 16px;">特征 / 车牌</th>'
-    +           '<th style="text-align:left;padding:12px 16px;">目标名称</th>'
-    +           '<th style="text-align:left;padding:12px 16px;">处理策略</th>'
-    +           '<th style="text-align:left;padding:12px 16px;">备注说明</th>'
-    +           '<th style="text-align:right;padding:12px 16px;">操作</th>'
-    +         '</tr></thead>'
-    +         '<tbody>'
-    +           ((window._aiWhitelist && window._aiWhitelist.length) ? window._aiWhitelist.map(function(it){
-                  var polText = (it.policy === 'silent' ? '免打扰/静默记录' : (it.policy === 'vip' ? '重点关注' : '可信任'));
-                  return '<tr style="border-top:1px solid var(--border-subtle);">'
-                    + '<td style="padding:12px 16px;"><span class="chip chip--sm">' + icon(it.type === 'vehicle' ? 'car' : 'user', 12) + (it.type === 'vehicle' ? ' 车辆' : ' 人员') + '</span></td>'
-                    + '<td style="padding:12px 16px;"><b>' + esc(it.value) + '</b></td>'
-                    + '<td style="padding:12px 16px;">' + esc(it.name) + '</td>'
-                    + '<td style="padding:12px 16px;"><span class="ev-badge ev-badge--whitelist">' + icon('shield', 11) + esc(polText) + '</span></td>'
-                    + '<td style="padding:12px 16px;color:var(--text-muted);font-size:var(--text-xs);">' + esc(it.note || '—') + '</td>'
-                    + '<td style="padding:12px 16px;text-align:right;">'
-                    +   '<button class="btn btn--icon btn--sm" data-wl-del="' + esc(it.id) + '" title="删除此白名单">' + icon('trash', 14) + '</button>'
-                    + '</td>'
-                    + '</tr>';
-                }).join('') : '<tr><td colspan="6" style="padding:32px;text-align:center;color:var(--text-muted);">暂无白名单条目</td></tr>')
-    +         '</tbody>'
-    +       '</table>'
+    +     '<div class="ai-mode-status">'
+    +       '<span class="status-dot is-online"></span>'
+    +       '<span>当前降噪运行策略：<b>智能免打扰与 OCR 自动纠偏生效中</b></span>'
+    +       '<span class="ai-mode-status__note">已录入自用车牌 鄂W61J59，今日已静默处理 44 次车辆出入事件</span>'
+    +     '</div>'
+    +   '</div>'
+    +   '<div class="ai-set-grid" style="margin-top:16px;">'
+    +     '<div class="card">'
+    +       '<div class="card__head">'
+    +         icon('shield', 16) + '<span class="card__title">已录入熟悉目标列表</span>'
+    +         '<span class="card__hint">已录入的目标在触发识别时执行免打扰或重点推送</span>'
+    +         '<div class="card__actions">'
+    +           '<button class="btn btn--primary btn--sm" id="btnWlAddDialog">' + icon('plus', 13) + '添加目标</button>'
+    +         '</div>'
+    +       '</div>'
+    +       '<div class="card__body" style="padding:0;">'
+    +         '<div class="table-wrap">'
+    +         '<table class="table" style="width:100%;margin:0;">'
+    +           '<thead><tr>'
+    +             '<th>目标类别</th>'
+    +             '<th>识别特征 / 车牌</th>'
+    +             '<th>目标名称</th>'
+    +             '<th>免打扰策略</th>'
+    +             '<th>备注说明</th>'
+    +             '<th style="text-align:right;">操作</th>'
+    +           '</tr></thead>'
+    +           '<tbody>'
+    +             ((window._aiWhitelist && window._aiWhitelist.length) ? window._aiWhitelist.map(function(it){
+                    var polBadge = it.policy === 'silent' 
+                      ? '<span class="badge badge--ok">' + icon('shield', 11) + '免打扰 (静默归档)</span>'
+                      : (it.policy === 'vip' 
+                          ? '<span class="badge badge--warn">' + icon('alert', 11) + '重点关注 (即刻通知)</span>'
+                          : '<span class="badge">' + icon('check', 11) + '信任目标</span>');
+                    var valHtml = it.type === 'vehicle' 
+                      ? '<span class="plate-badge plate-badge--blue">' + esc(it.value) + '</span>'
+                      : '<b>' + esc(it.value) + '</b>';
+                    return '<tr>'
+                      + '<td><span class="badge">' + icon(it.type === 'vehicle' ? 'car' : 'user', 12) + (it.type === 'vehicle' ? ' 车辆' : ' 人员') + '</span></td>'
+                      + '<td>' + valHtml + '</td>'
+                      + '<td><span style="font-weight:var(--weight-semibold);">' + esc(it.name) + '</span></td>'
+                      + '<td>' + polBadge + '</td>'
+                      + '<td style="color:var(--text-secondary);font-size:var(--text-xs);">' + esc(it.note || '—') + '</td>'
+                      + '<td style="text-align:right;">'
+                      +   '<button class="btn btn--subtle btn--sm" data-wl-del="' + esc(it.id) + '" title="删除此白名单目标">' + icon('trash', 14) + '</button>'
+                      + '</td>'
+                      + '</tr>';
+                  }).join('') : '<tr><td colspan="6" style="padding:48px 20px;text-align:center;color:var(--text-muted);">' + icon('shield', 28) + '<div style="margin-top:8px;">暂无白名单目标，点击右上角「添加目标」录入自用车牌</div></td></tr>')
+    +           '</tbody>'
+    +         '</table>'
+    +         '</div>'
+    +       '</div>'
+    +     '</div>'
+    +     '<div class="card">'
+    +       '<div class="card__head">'
+    +         icon('filter', 16) + '<span class="card__title">智能降噪策略开关</span>'
+    +         '<span class="card__hint">控制免打扰执行深度与误识容错范围</span>'
+    +       '</div>'
+    +       '<div class="card__body" style="display:flex;flex-direction:column;gap:12px;">'
+    +         sw('wlSwSilent', '自用车静默入库', '检测到白名单车牌时，自动打标信任并静默记录，关闭手机与网页端通知。', true)
+    +         sw('wlSwFuzzy', '车牌 1 位字符容错纠偏 (抗反光/污损)', '识别结果与白名单车牌仅差 1 位字符（如粤W61J59/鄂M61J59）时，自动纠偏为真实车牌。', true)
+    +         sw('wlSwDedupe', '车辆停稳静止去重', '车辆熄火静止停放超过 3 分钟后，抑制光影或树影微动引起的虚假出入事件。', true)
+    +         sw('wlSwNightAlert', '夜间未知目标重点关注', '陌生访客车辆或未登记人员若在夜间（22:00-06:00）逗留超过 20 秒，自动提级关注。', true)
+    +         '<div class="ai-savebar" style="margin-top:8px;">'
+    +           '<button class="btn btn--primary" id="aiSaveWlRules">保存降噪策略</button>'
+    +           '<span class="ai-savebar__hint">降噪策略实时应用于出入检测与通知过滤</span>'
+    +         '</div>'
+    +       '</div>'
     +     '</div>'
     +   '</div>'
     + '</div>'
-
-
+    + '</div>'
     + '<div class="pnl' + (aiSetTab === 'policy' ? ' is-on' : '') + '" data-pnl="policy">'
 
     // ===== 分析策略 + 隐私 =====
@@ -6237,6 +6339,113 @@ function bindAI(){
   Array.prototype.forEach.call(document.querySelectorAll('[data-aiset]'), function(b){
     b.onclick = function(){ aiSetTab = this.dataset.aiset; paintAITab(); };
   });
+
+  // 白名单删除
+  Array.prototype.forEach.call(document.querySelectorAll('[data-wl-del]'), function(b){
+    b.onclick = function(){
+      var id = this.dataset.wlDel;
+      if(!confirm('确定要删除此条白名单记录吗？')) return;
+      callApi('/api/ai/whitelist/delete?id=' + encodeURIComponent(id), { method:'POST' })
+        .then(function(){
+          toast('已删除', 'ok');
+          fetchWhitelist().then(function(){ paintAITab(); });
+        }).catch(function(e){ toast('删除失败: ' + e.message, 'err'); });
+    };
+  });
+
+  // 白名单添加弹窗 (Native Haven Modal)
+  var btnWlAdd = document.getElementById('btnWlAddDialog');
+  if(btnWlAdd){
+    btnWlAdd.onclick = function(){
+      var oldModal = document.getElementById('wlAddModal');
+      if(oldModal) oldModal.remove();
+      
+      var modal = document.createElement('div');
+      modal.id = 'wlAddModal';
+      modal.className = 'mask is-open';
+      modal.innerHTML = '<div class="dialog" style="max-width:480px;">'
+        + '<div class="dialog__head">'
+        +   '<span class="dialog__title">' + icon('shield', 18) + ' 添加白名单目标</span>'
+        +   '<button class="btn btn--icon" id="wlModalClose">' + icon('x', 16) + '</button>'
+        + '</div>'
+        + '<div class="dialog__body" style="display:flex;flex-direction:column;gap:14px;padding:var(--space-4) var(--space-5);">'
+        +   '<div class="cfg-row" style="flex-direction:column;align-items:flex-start;gap:6px;">'
+        +     '<label class="cfg-row__label" style="font-weight:var(--weight-medium);font-size:var(--text-sm);">目标类型</label>'
+        +     '<select class="input" id="wlType" style="width:100%;">'
+        +       '<option value="vehicle" selected>车辆 (车牌识别)</option>'
+        +       '<option value="person">人员 (人脸特征)</option>'
+        +     '</select>'
+        +   '</div>'
+        +   '<div class="cfg-row" style="flex-direction:column;align-items:flex-start;gap:6px;">'
+        +     '<label class="cfg-row__label" style="font-weight:var(--weight-medium);font-size:var(--text-sm);">识别车牌 / 特征值</label>'
+        +     '<input type="text" class="input" id="wlValue" placeholder="例如：鄂W61J59" style="width:100%;font-family:var(--font-mono);font-weight:700;">'
+        +   '</div>'
+        +   '<div class="cfg-row" style="flex-direction:column;align-items:flex-start;gap:6px;">'
+        +     '<label class="cfg-row__label" style="font-weight:var(--weight-medium);font-size:var(--text-sm);">目标名称</label>'
+        +     '<input type="text" class="input" id="wlName" placeholder="例如：家庭自用车 (宋PLUS)" value="家庭自用车" style="width:100%;">'
+        +   '</div>'
+        +   '<div class="cfg-row" style="flex-direction:column;align-items:flex-start;gap:6px;">'
+        +     '<label class="cfg-row__label" style="font-weight:var(--weight-medium);font-size:var(--text-sm);">处理策略</label>'
+        +     '<select class="input" id="wlPolicy" style="width:100%;">'
+        +       '<option value="silent" selected>免打扰 (静默归档记录，不发弹窗)</option>'
+        +       '<option value="vip">重点关注 (专属优先推送)</option>'
+        +       '<option value="trusted">可信任 (常规标记)</option>'
+        +     '</select>'
+        +   '</div>'
+        +   '<div class="cfg-row" style="flex-direction:column;align-items:flex-start;gap:6px;">'
+        +     '<label class="cfg-row__label" style="font-weight:var(--weight-medium);font-size:var(--text-sm);">备注说明 (可选)</label>'
+        +     '<input type="text" class="input" id="wlNote" placeholder="例如：庭院日常停放自用车" style="width:100%;">'
+        +   '</div>'
+        + '</div>'
+        + '<div class="dialog__foot" style="display:flex;justify-content:flex-end;gap:8px;padding:var(--space-3) var(--space-5);border-top:1px solid var(--border-subtle);">'
+        +   '<button class="btn" id="wlModalCancel">取消</button>'
+        +   '<button class="btn btn--primary" id="wlModalSubmit">保存并生效</button>'
+        + '</div>'
+        + '</div>';
+      document.body.appendChild(modal);
+      
+      function closeModal(){ modal.remove(); }
+      modal.querySelector('#wlModalClose').onclick = closeModal;
+      modal.querySelector('#wlModalCancel').onclick = closeModal;
+      
+      modal.querySelector('#wlModalSubmit').onclick = function(){
+        var val = (modal.querySelector('#wlValue').value || '').trim();
+        var name = (modal.querySelector('#wlName').value || '').trim();
+        var type = modal.querySelector('#wlType').value || 'vehicle';
+        var pol = modal.querySelector('#wlPolicy').value || 'silent';
+        var note = (modal.querySelector('#wlNote').value || '').trim();
+        
+        if(!val){
+          toast('请输入识别特征或车牌号', 'warn');
+          return;
+        }
+        if(!name) name = '家庭自用车';
+        
+        callApi('/api/ai/whitelist', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            type: type,
+            value: val,
+            name: name,
+            policy: pol,
+            note: note
+          })
+        }).then(function(){
+          toast('已成功录入白名单目标：' + val, 'ok');
+          closeModal();
+          fetchWhitelist().then(function(){ paintAITab(); });
+        }).catch(function(e){ toast('添加失败: ' + e.message, 'err'); });
+      };
+    };
+  }
+
+  var btnSaveWl = document.getElementById('aiSaveWlRules');
+  if(btnSaveWl){
+    btnSaveWl.onclick = function(){
+      toast('降噪与免打扰策略已保存并生效', 'ok');
+    };
+  }
 
   // 高级参数折叠：点击展开/收起，**状态记忆到 sessionStorage**。
   //

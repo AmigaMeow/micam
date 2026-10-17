@@ -8633,73 +8633,159 @@ body.has-mobile-fullscreen {
 /* ===== AI 每日安全快报卡片 (Daily Security Digest) ===== */
 .ai-digest-card {
   margin-bottom: var(--space-4, 16px);
-  background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(30, 41, 59, 0.45) 100%);
-  border: 1px solid rgba(16, 185, 129, 0.25);
+  background: var(--surface-1);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-xl, 12px);
-  padding: 16px 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  position: relative;
+  box-shadow: var(--shadow-sm);
   overflow: hidden;
+  transition: border-color var(--duration-fast, 0.15s), box-shadow var(--duration-fast, 0.15s);
+  position: relative;
+}
+.ai-digest-card:hover {
+  border-color: var(--border);
+  box-shadow: var(--shadow-md);
 }
 .ai-digest-card__head {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  padding: var(--space-4, 14px) var(--space-5, 20px);
+  border-bottom: 1px solid var(--border-subtle);
+  background: var(--surface-1);
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 10px;
+}
+.ai-digest-card__title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.ai-digest-card__icon-box {
+  width: 32px;
+  height: 32px;
+  border-radius: var(--radius-md, 8px);
+  background: color-mix(in srgb, var(--online) 14%, transparent);
+  color: var(--online);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 .ai-digest-card__title {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: var(--text-base, 14px);
+  gap: 10px;
+  font-size: var(--text-base, 15px);
   font-weight: var(--weight-semibold, 600);
-  color: var(--text, #fff);
-}
-.ai-digest-card__icon {
-  color: #10b981;
-  display: flex;
-  align-items: center;
+  color: var(--text);
 }
 .ai-digest-card__date {
   font-size: var(--text-xs, 12px);
-  color: var(--text-muted, #8b949e);
-  font-weight: normal;
-  background: rgba(255, 255, 255, 0.05);
-  padding: 2px 8px;
+  color: var(--text-secondary);
+  font-weight: var(--weight-normal, 400);
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  padding: 2px 10px;
   border-radius: 999px;
+  font-variant-numeric: tabular-nums;
+}
+.ai-digest-card__body {
+  padding: var(--space-4, 16px) var(--space-5, 20px);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4, 16px);
 }
 .ai-digest-card__summary {
   font-size: var(--text-sm, 13px);
-  color: var(--text-secondary, #e2e8f0);
-  line-height: 1.6;
+  color: var(--text);
+  line-height: 1.65;
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg, 8px);
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.ai-digest-card__summary-text {
+  color: var(--text);
+  font-weight: var(--weight-normal, 400);
 }
 .ai-digest-card__metrics {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
-  gap: 10px;
-  margin-top: 4px;
+  grid-template-columns: repeat(4, 1fr);
+  gap: var(--space-3, 12px);
+}
+@media (max-width: 640px) {
+  .ai-digest-card__metrics {
+    grid-template-columns: repeat(2, 1fr);
+  }
 }
 .ai-digest-metric {
-  background: rgba(0, 0, 0, 0.25);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: var(--radius-md, 6px);
-  padding: 8px 12px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg, 8px);
+  padding: 12px 16px;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
+  transition: transform var(--duration-fast, 0.15s), border-color var(--duration-fast, 0.15s);
+}
+.ai-digest-metric:hover {
+  border-color: var(--border);
+  transform: translateY(-1px);
 }
 .ai-digest-metric__val {
-  font-size: var(--text-xl, 18px);
+  font-size: 24px;
   font-weight: var(--weight-bold, 700);
-  color: var(--text, #fff);
+  color: var(--text);
   line-height: 1.2;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.5px;
+}
+.ai-digest-metric__val.is-warning {
+  color: var(--warning);
 }
 .ai-digest-metric__lbl {
-  font-size: var(--text-xs, 11px);
-  color: var(--text-muted, #8b949e);
+  font-size: var(--text-xs, 12px);
+  color: var(--text-secondary);
+  font-weight: var(--weight-medium, 500);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ===== 车牌真实徽章 (Plate Badge) ===== */
+.plate-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  line-height: 1.4;
+  vertical-align: middle;
+}
+.plate-badge--blue {
+  background: #1d4ed8;
+  color: #ffffff !important;
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  text-shadow: 0 1px 1px rgba(0, 0, 0, 0.3);
+}
+.plate-badge--green {
+  background: linear-gradient(180deg, #f0fdf4 0%, #22c55e 100%);
+  color: #0f172a !important;
+  border: 1px solid #16a34a;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+.plate-badge--yellow {
+  background: #f59e0b;
+  color: #000000 !important;
+  border: 1px solid #d97706;
 }
 
 /* ===== 白名单徽章与即点即播样式 ===== */
@@ -8761,4 +8847,24 @@ body.has-mobile-fullscreen {
   background: rgba(0, 0, 0, 0.6);
   padding: 2px 10px;
   border-radius: 999px;
+}
+
+/* 自定义细窄滚动条，杜绝粗黑原生滚动条影响视觉美感 */
+.table-wrap {
+  overflow-x: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-subtle) transparent;
+}
+.table-wrap::-webkit-scrollbar {
+  height: 4px;
+}
+.table-wrap::-webkit-scrollbar-track {
+  background: transparent;
+}
+.table-wrap::-webkit-scrollbar-thumb {
+  background: var(--border-subtle);
+  border-radius: 4px;
+}
+.table-wrap::-webkit-scrollbar-thumb:hover {
+  background: var(--border);
 }
