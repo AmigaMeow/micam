@@ -271,20 +271,38 @@ func hasValidMP4Structure(path string) bool {
 	}
 	data := buf[:n]
 
-	if !bytes.Contains(data, []byte("moov")) ||
-		!bytes.Contains(data, []byte("trak")) ||
-		!bytes.Contains(data, []byte("mdat")) {
+	hasMoov := bytes.Contains(data, []byte("moov"))
+	hasTrak := bytes.Contains(data, []byte("trak"))
+	hasMdat := bytes.Contains(data, []byte("mdat"))
+
+	// 头部未见 moov/trak 时（非 faststart 或大元数据），检查文件尾部 4MB
+	if (!hasMoov || !hasTrak) && fi.Size() > readLen {
+		tailLen := int64(4 * 1024 * 1024)
+		if fi.Size() < tailLen {
+			tailLen = fi.Size()
+		}
+		tailBuf := make([]byte, tailLen)
+		if _, err := f.ReadAt(tailBuf, fi.Size()-tailLen); err == nil {
+			if !hasMoov && bytes.Contains(tailBuf, []byte("moov")) {
+				hasMoov = true
+			}
+			if !hasTrak && bytes.Contains(tailBuf, []byte("trak")) {
+				hasTrak = true
+			}
+			data = append(data, tailBuf...)
+		}
+	}
+
+	if !hasMoov || !hasTrak || !hasMdat {
 		return false
 	}
 
 	mvhdIdx := bytes.Index(data, []byte("mvhd"))
-	if mvhdIdx < 4 {
-		return false
-	}
-	mvhdSize := binary.BigEndian.Uint32(data[mvhdIdx-4 : mvhdIdx])
-	// ISO 标准 mvhd: v0 为 108 字节 (0x6c)，v1 为 120 字节 (0x78)
-	if mvhdSize != 108 && mvhdSize != 120 {
-		return false
+	if mvhdIdx >= 4 {
+		mvhdSize := binary.BigEndian.Uint32(data[mvhdIdx-4 : mvhdIdx])
+		if mvhdSize != 108 && mvhdSize != 120 {
+			return false
+		}
 	}
 
 	return true

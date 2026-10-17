@@ -905,6 +905,28 @@ func (s *Server) handleRecPlay(w http.ResponseWriter, r *http.Request) {
 	if !hasMdat && initialBuf.Len() < 1024 {
 		_ = cmd.Process.Kill()
 		_ = cmd.Wait()
+		if enc != "libx264" {
+			logf("[replay] 硬件编码器 %s 未产出有效数据，自动降级为 libx264 软件编码: %s", enc, file)
+			enc = "libx264"
+			encArgs = encoderArgs("libx264")
+			cmd, stdout, errBuf, err = makeCmd(start)
+			if err == nil {
+				readInitial(stdout)
+				if !hasMdat && start > 0 {
+					_ = cmd.Process.Kill()
+					_ = cmd.Wait()
+					cmd, stdout, errBuf, err = makeCmd(0)
+					if err == nil {
+						readInitial(stdout)
+					}
+				}
+			}
+		}
+	}
+
+	if !hasMdat && initialBuf.Len() < 1024 {
+		_ = cmd.Process.Kill()
+		_ = cmd.Wait()
 		msg := errBuf.String()
 		logf("[replay] 转码无可用视频流: %s, stderr=%s", file, msg)
 		writeErr(w, 500, "视频文件损坏或无可用画面")
@@ -1018,8 +1040,8 @@ func (s *Server) buildCache(src, dst string, encArgs []string, enc, label string
 	if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 		return
 	}
-	tmp := dst + ".part"
-	_ = os.Remove(tmp)
+	tmp := fmt.Sprintf("%s.tmp.%d", dst, time.Now().UnixNano())
+	defer os.Remove(tmp)
 
 	t0 := time.Now()
 	args := []string{
@@ -1046,23 +1068,45 @@ func (s *Server) buildCache(src, dst string, encArgs []string, enc, label string
 	job.cmd = cmd
 
 	out, err := cmd.CombinedOutput()
+	if err != nil || !hasValidMP4Structure(tmp) {
+		if enc != "libx264" {
+			logf("[cache] 硬件转码未生成有效 MP4，自动降级为 libx264 软件重试: %s", label)
+			softArgs := encoderArgs("libx264")
+			softCmdArgs := []string{
+				"-hide_banner", "-loglevel", "error",
+				"-fflags", "+genpts",
+				"-avoid_negative_ts", "make_zero",
+				"-threads", "0",
+				"-y", "-i", src,
+			}
+			softCmdArgs = append(softCmdArgs, softArgs...)
+			softCmdArgs = append(softCmdArgs,
+				"-an",
+				"-movflags", "+faststart",
+				"-f", "mp4",
+				tmp,
+			)
+			cmd = exec.Command(s.ffmpegPath(), softCmdArgs...)
+			job.cmd = cmd
+			out, err = cmd.CombinedOutput()
+			enc = "libx264"
+		}
+	}
+
 	if err != nil {
 		msg := strings.TrimSpace(string(out))
 		if len(msg) > 200 {
 			msg = msg[:200]
 		}
 		logf("[cache] 转码结束 %s: %s", label, msg)
-		_ = os.Remove(tmp)
 		return
 	}
 
 	if !hasValidMP4Structure(tmp) {
 		logf("[cache] 生成失败 %s: 转码文件缺少有效 MP4 结构", label)
-		_ = os.Remove(tmp)
 		return
 	}
 	if err := os.Rename(tmp, dst); err != nil {
-		_ = os.Remove(tmp)
 		return
 	}
 	fi, _ := os.Stat(dst)
