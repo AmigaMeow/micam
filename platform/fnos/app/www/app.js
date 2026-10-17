@@ -14417,16 +14417,19 @@ api("/api/setup/check").then(function(st){
 // 校验：node build/check-classes.js + 浏览器实测（多路预览/事件/回放三页截图）
 // ===================================================================
 
-// 多路预览页的状态（原样恢复）
+// 多路监控墙的状态与渲染
 var gridTimers = [];
-var gridLayout = 4;                    // 1 / 4 / 9 / 16
+var gridLayout = 'auto'; // 'auto' | 1 | 2 | 4 | 6 | 9 | 16
 var gridFocus = '';
-var gridSelected = null;               // null = 还没初始化
+var gridSelected = null;
 var gridPatrol = false;
 var gridPatrolTimer = null;
-var gridInfoMode = 'full';             // full=名称+时间 / name=仅名称 / none=隐藏
+var gridInfoMode = 'full'; // 'full'=名称+时间 / 'name'=仅名称 / 'none'=隐藏
 var gridFps = 3;
 var gridQuery = '';
+var gridDrawerOpen = false;
+var gridFitMode = 'contain';
+try { gridFitMode = localStorage.getItem('micam.grid.fit') || 'contain'; } catch(e){}
 
 function gridLoad(){
   if(gridSelected !== null) return gridSelected;
@@ -14442,130 +14445,20 @@ function gridSave(){
   try { localStorage.setItem(gridKey(), JSON.stringify(gridSelected || [])); } catch(e){}
 }
 
-function tile(d){
-      var nm = d.alias || d.name;
-      var en = d.aliasEn || '';
-      var foc = d.name === gridFocus;
-      var on = d.isOnline;
-      var info = gridInfoMode !== 'none';
-      return '<div class="gtile' + (foc ? ' is-focus' : '') + (on ? '' : ' is-offline')
-        + '" data-dev="' + esc(d.name) + '">'
-        + (on ? '<img data-stream="' + esc(d.name) + '" alt="">'
-              : '<div class="gtile__off">' + icon('video-off',30) + '<span>离线</span></div>')
-        + (info && gridInfoMode === 'full' && on
-            ? '<div class="gtile__time"><span class="rec-dot"></span><span data-gclock="' + esc(d.name) + '">' + clockNow() + '</span></div>'
-            : '')
-        + (info
-            ? '<div class="gtile__foot">'
-            +   '<div class="gtile__info">'
-            +     '<div class="gtile__name">' + esc(nm) + (en && gridInfoMode === 'full' ? ' <em>' + esc(en) + '</em>' : '') + '</div>'
-            +     (gridInfoMode === 'full' ? '<div class="gtile__meta">' + (d.shared ? '共享 · ' : '') + (on ? '在线' : '离线') + '</div>' : '')
-            +   '</div>'
-            +   '<div class="gtile__acts">'
-            +     '<button class="gtile__btn" data-gmax="1" title="放大">' + icon('maximize',15) + '</button>'
-            +     '<button class="gtile__btn" data-gfocus="1" title="聚焦">' + icon('eye',15) + '</button>'
-            +     '<button class="gtile__btn" data-gheat="1" title="热力图">' + icon('activity',15) + '</button>'
-            +   '</div>'
-            + '</div>'
-            : '')
-        + (foc ? '<span class="gtile__focusbar"></span>' : '')
-        + '</div>';
-    }
-
-function devicePanel(){
-      var q = (gridQuery || '').trim().toLowerCase();
-      var list = all.filter(function(d){
-        if(!q) return true;
-        return ((d.alias||'') + ' ' + (d.aliasEn||'') + ' ' + d.name).toLowerCase().indexOf(q) >= 0;
-      });
-      var items = list.map(function(d){
-        var added = (gridSelected||[]).indexOf(d.name) >= 0;
-        var nm = d.alias || d.name;
-        var en = d.aliasEn || '';
-        return '<div class="gd-item' + (added ? ' is-added' : '') + '" data-dev="' + esc(d.name) + '">'
-          + '<span class="gd-item__thumb"><img loading="lazy" data-gdthumb="' + esc(d.name) + '" alt=""></span>'
-          + '<span class="gd-item__body">'
-          +   '<span class="gd-item__name">' + esc(nm) + '</span>'
-          +   (en ? '<span class="gd-item__en">' + esc(en) + '</span>' : '')
-          +   '<span class="gd-item__status"><span class="status-dot ' + (d.isOnline?'is-online':'is-offline') + '"></span>'
-          +     (d.isOnline ? '在线' : '离线') + '</span>'
-          + '</span>'
-          + '<button class="gd-item__btn' + (added ? ' is-del' : '') + '" data-gtoggle="' + esc(d.name) + '">'
-          +   (added ? '移除' : '添加') + '</button>'
-          + '</div>';
-      }).join('');
-
-      return '<div class="gd-panel__head">'
-        +   '<span class="gd-panel__title">可选设备 <em>Available</em></span>'
-        +   '<span class="gd-panel__count">' + (gridSelected||[]).length + ' / ' + all.length + '</span>'
-        + '</div>'
-        + '<div class="search gd-panel__search">' + icon('search',14)
-        +   '<input class="input" id="gdSearch" type="search" placeholder="搜索摄像头…" value="' + esc(gridQuery||'') + '">'
-        + '</div>'
-        + '<div class="gd-panel__list">' + (items || empty('camera','没有匹配的设备','','')) + '</div>'
-        + '<div class="gd-panel__hint">' + icon('move',14) + '点「添加」把设备放进画面</div>';
-    }
-
 function gotoLiveByName(name){
   var d = (devices||[]).filter(function(x){ return x.name === name; })[0];
   gotoLive(d ? d.did : name);
 }
 
-function setFocus(name){
-      gridFocus = name;
-      Array.prototype.forEach.call(c.querySelectorAll('.gtile'), function(el){
-        el.classList.toggle('is-focus', el.dataset.dev === name);
-      });
-    }
+function gotoRecordingsByName(name){
+  page = 'recordings';
+  if(typeof recDevice !== 'undefined'){ recDevice = name; }
+  renderMenu();
+  render();
+}
 
-function setPatrol(on){
-      gridPatrol = on;
-      if(gridPatrolTimer){ clearInterval(gridPatrolTimer); gridPatrolTimer = null; }
-      if(!on) return;
-      gridPatrolTimer = setInterval(function(){
-        if(shown.length < 2) return;
-        var i = -1;
-        shown.forEach(function(d, k){ if(d.name === gridFocus) i = k; });
-        var next = shown[(i + 1) % shown.length];
-        gridFocus = next.name;
-        Array.prototype.forEach.call(c.querySelectorAll('.gtile'), function(el){
-          el.classList.toggle('is-focus', el.dataset.dev === gridFocus);
-        });
-      }, 15000);
-    }
-
-function bindPanel(){
-      Array.prototype.forEach.call(document.querySelectorAll('[data-gtoggle]'), function(b){
-        b.onclick = function(){
-          var name = this.dataset.gtoggle;
-          var sel2 = gridLoad().slice();
-          var i = sel2.indexOf(name);
-          if(i >= 0){ sel2.splice(i,1); toast('已移除'); }
-          else {
-            if(sel2.length >= gridLayout){ toast('最多 ' + gridLayout + ' 路，请先调大布局', 'warn'); return; }
-            sel2.push(name); toast('已添加', 'ok');
-          }
-          gridSelected = sel2; gridSave();
-          stopGrid();
-          renderGrid(c);
-        };
-      });
-      Array.prototype.forEach.call(document.querySelectorAll('img[data-gdthumb]'), function(img, i){
-        var name = img.dataset.gdthumb;
-        var dev = all.filter(function(d){ return d.name === name; })[0];
-        if(!dev || !dev.isOnline) return;
-        setTimeout(function(){
-          fetch(apiUrl('/api/live/thumb?did=' + encodeURIComponent(dev.did) + '&w=320'), { cache:'no-store' })
-            .then(function(r){ return r.ok ? r.blob() : null; })
-            .then(function(b){ if(b && document.body.contains(img)) img.src = URL.createObjectURL(b); })
-            .catch(function(){});
-        }, i * 100);
-      });
-    }
-
-
-// ---- 热力图叠加层 ----
-var _heatCanvases = {}; // name -> canvas element
+// 热力图叠加层
+var _heatCanvases = {};
 
 function toggleGridHeatmap(tile, did, name){
   var existing = tile.querySelector('.gtile-heat-canvas');
@@ -14594,10 +14487,9 @@ function toggleGridHeatmap(tile, did, name){
       var cw = canvas.width / cols, ch = canvas.height / rows;
       d.cells.forEach(function(cell){
         var ratio = cell.count / maxCnt;
-        // heat color: blue -> green -> yellow -> red
         var r, g, b;
         if(ratio < 0.33){ r=0; g=Math.round(ratio*3*255); b=255-g; }
-        else if(ratio < 0.66){ var t=(ratio-0.33)*3; r=Math.round(t*255); g=255; b=0; }
+        else if(ratio < 0.66){ var t=(ratio-0.33)*3; r=Math.round(t*255); b=255; b=0; }
         else { var t=(ratio-0.66)*3; r=255; g=Math.round((1-t)*255); b=0; }
         ctx.fillStyle = 'rgba('+r+','+g+','+b+','+(0.3+ratio*0.6)+')';
         ctx.fillRect(cell.col*cw, cell.row*ch, cw+1, ch+1);
@@ -14610,7 +14502,7 @@ function toggleGridHeatmap(tile, did, name){
 }
 
 function renderGrid(c){
-  c.innerHTML = '<div class="page__inner">' + loading('加载设备…') + '</div>';
+  c.innerHTML = '<div class="page__inner page__inner--grid">' + loading('正在接入摄像头画面…') + '</div>';
 
   loadDevices().then(function(){
     var all = devices || [];
@@ -14621,59 +14513,78 @@ function renderGrid(c){
     sel = sel.filter(function(n){ return all.some(function(d){ return d.name === n; }); });
     if(sel.length !== before){ gridSelected = sel; gridSave(); }
 
-    // 首次进入：自动加前几个在线设备，免得看到空白
+    // 首次进入：自动加所有在线设备（最多4台），免得看到空白
     if(gridSelected.length === 0 && !localStorage.getItem('micam.grid.inited')){
       sel = all.filter(function(d){ return d.isOnline; }).slice(0, 4).map(function(d){ return d.name; });
       gridSelected = sel; gridSave();
       try { localStorage.setItem('micam.grid.inited', '1'); } catch(e){}
     }
 
-    var cap = gridLayout;
+    // 智能自适应网格计算
+    var effLayout = gridLayout;
+    if(effLayout === 'auto'){
+      if(sel.length <= 1) effLayout = 1;
+      else if(sel.length === 2) effLayout = 2;
+      else if(sel.length <= 4) effLayout = 4;
+      else if(sel.length <= 6) effLayout = 6;
+      else if(sel.length <= 9) effLayout = 9;
+      else effLayout = 16;
+    } else {
+      effLayout = parseInt(effLayout, 10) || 4;
+    }
+
     var shown = sel.map(function(n){
       return all.filter(function(d){ return d.name === n; })[0];
-    }).filter(Boolean).slice(0, cap);
+    }).filter(Boolean).slice(0, effLayout);
 
     if(!gridFocus || !shown.some(function(d){ return d.name === gridFocus; })){
       gridFocus = shown.length ? shown[0].name : '';
     }
 
+    // 单个监控画面 Tile
     function tile(d){
       var nm = d.alias || d.name;
-      var en = d.aliasEn || '';
       var foc = d.name === gridFocus;
       var on = d.isOnline;
       var info = gridInfoMode !== 'none';
-      return '<div class="gtile' + (foc ? ' is-focus' : '') + (on ? '' : ' is-offline')
-        + '" data-dev="' + esc(d.name) + '">'
-        + (on ? '<img data-stream="' + esc(d.name) + '" alt="">'
-              : '<div class="gtile__off">' + icon('video-off',30) + '<span>离线</span></div>')
-        + (info && gridInfoMode === 'full' && on
-            ? '<div class="gtile__time"><span class="rec-dot"></span><span data-gclock="' + esc(d.name) + '">' + clockNow() + '</span></div>'
-            : '')
-        + (info
-            ? '<div class="gtile__foot">'
-            +   '<div class="gtile__info">'
-            +     '<div class="gtile__name" title="' + esc(nm) + '">' + esc(formatDevName(nm)) + (en && gridInfoMode === 'full' ? ' <em>' + esc(en) + '</em>' : '') + '</div>'
-            +     (gridInfoMode === 'full' ? '<div class="gtile__meta">' + (d.shared ? '共享 · ' : '') + (on ? '在线' : '离线') + '</div>' : '')
-            +   '</div>'
-            +   '<div class="gtile__acts">'
-            +     '<button class="gtile__btn" data-gmax="1" title="放大">' + icon('maximize',15) + '</button>'
-            +     '<button class="gtile__btn" data-gfocus="1" title="聚焦">' + icon('eye',15) + '</button>'
-            +   '</div>'
+      var posterUrl = apiUrl('/api/live/thumb?did=' + encodeURIComponent(d.did) + '&w=640&t=' + Date.now());
+
+      return '<div class="gtile fit-' + esc(gridFitMode) + (foc ? ' is-focus' : '') + (on ? '' : ' is-offline') + '" data-dev="' + esc(d.name) + '" data-did="' + esc(d.did) + '">'
+        // 底层海报封面：0ms即时出图，无原生破损图
+        + (on ? '<img class="gtile__poster" src="' + posterUrl + '" alt="" style="opacity:0;border:0" onload="this.style.opacity=\'1\'" onerror="this.style.display=\'none\'">' : '')
+        // 顶层实时视频流：接收首帧后平滑渐显
+        + (on ? '<img class="gtile__stream" data-stream="' + esc(d.name) + '" data-did="' + esc(d.did) + '" alt="">'
+              : '<div class="gtile__off">' + icon('video-off', 32) + '<span>设备离线</span></div>')
+        // OSD 顶部信息胶囊
+        + (info ? ('<div class="gtile__osd-top">'
+            + '<div class="gtile__osd-tag">'
+            +   (on ? '<span class="gtile__live-dot"></span>' : '')
+            +   '<span class="gtile__osd-name" title="' + esc(nm) + '">' + esc(formatDevName(nm)) + '</span>'
+            +   (d.lenses > 1 ? '<span class="gtile__osd-badge">双摄</span>' : '')
             + '</div>'
-            : '')
-        + (foc ? '<span class="gtile__focusbar"></span>' : '')
+            + (gridInfoMode === 'full' && on ? ('<div class="gtile__osd-clock" data-gclock="' + esc(d.name) + '">' + clockNow() + '</div>') : '')
+            + '</div>') : '')
+        // OSD 悬浮交互快捷键
+        + '<div class="gtile__osd-bot">'
+        +   '<button class="gtile__action-btn" data-gmax="1" title="放大单路实时">' + icon('maximize', 15) + '</button>'
+        +   '<button class="gtile__action-btn" data-greplay="1" title="查看录像回放">' + icon('play', 15) + '</button>'
+        +   '<button class="gtile__action-btn" data-gheat="1" title="AI热力图">' + icon('activity', 15) + '</button>'
+        +   '<button class="gtile__action-btn" data-gdel="1" title="从监控墙移出">' + icon('x', 15) + '</button>'
+        + '</div>'
         + '</div>';
     }
 
+    // 空闲机位卡片
     function emptyTile(slotIdx){
       return '<div class="gtile gtile--empty" data-emptyslot="' + slotIdx + '">'
-        + '<div class="gtile__off">' + icon('plus', 28) + '<span>空闲机位 ' + slotIdx + '</span>'
-        + '<small class="gtile__tip">点右侧「添加」加入画面</small></div>'
+        + '<svg class="icon icon-lg" style="width:32px;height:32px;opacity:.6" aria-hidden="true"><use href="#i-plus"></use></svg>'
+        + '<div class="gtile--empty-text">机位 ' + slotIdx + ' · 点击添加摄像头</div>'
+        + '<div class="gtile--empty-sub">点此直接从列表中选择画面</div>'
         + '</div>';
     }
 
-    function devicePanel(){
+    // 抽屉内部设备列表
+    function drawerDeviceList(){
       var q = (gridQuery || '').trim().toLowerCase();
       var list = all.filter(function(d){
         if(!q) return true;
@@ -14683,8 +14594,9 @@ function renderGrid(c){
         var added = (gridSelected||[]).indexOf(d.name) >= 0;
         var nm = d.alias || d.name;
         var en = d.aliasEn || '';
+        var thumb = apiUrl('/api/live/thumb?did=' + encodeURIComponent(d.did) + '&w=320');
         return '<div class="gd-item' + (added ? ' is-added' : '') + '" data-dev="' + esc(d.name) + '">'
-          + '<span class="gd-item__thumb"><img loading="lazy" data-gdthumb="' + esc(d.name) + '" alt=""></span>'
+          + '<span class="gd-item__thumb"><img src="' + thumb + '" alt="" onerror="this.style.display=\'none\'"></span>'
           + '<span class="gd-item__body">'
           +   '<span class="gd-item__name" title="' + esc(nm) + '">' + esc(formatDevName(nm)) + '</span>'
           +   (en ? '<span class="gd-item__en">' + esc(en) + '</span>' : '')
@@ -14696,99 +14608,145 @@ function renderGrid(c){
           + '</div>';
       }).join('');
 
-      return '<div class="gd-panel__head">'
-        +   '<span class="gd-panel__title">可选设备 <em>Available</em></span>'
-        +   '<span class="gd-panel__count">' + (gridSelected||[]).length + ' / ' + all.length + '</span>'
-        + '</div>'
-        + '<div class="search gd-panel__search">' + icon('search',14)
-        +   '<input class="input" id="gdSearch" type="search" placeholder="搜索摄像头…" value="' + esc(gridQuery||'') + '">'
-        + '</div>'
-        + '<div class="gd-panel__list">' + (items || empty('camera','没有匹配的设备','','')) + '</div>'
-        + '<div class="gd-panel__hint">' + icon('move',14) + '点「添加」把设备放进画面</div>';
+      return items || ('<div style="padding:32px 16px;text-align:center;color:rgba(255,255,255,.4);font-size:13px">'
+        + icon('camera', 24) + '<div style="margin-top:8px">没有找到匹配的设备</div></div>');
     }
 
     var gridTilesHTML = '';
     if(shown.length === 0){
-      gridTilesHTML = empty('camera','还没有添加摄像头','从右侧选择要看的设备','');
+      gridTilesHTML = '<div class="gtile gtile--empty" id="gEmptyAll" style="grid-column: 1 / -1; min-height: 360px;">'
+        + '<svg class="icon icon-lg" style="width:48px;height:48px;opacity:.5" aria-hidden="true"><use href="#i-camera"></use></svg>'
+        + '<div style="font-size:16px;font-weight:600;color:#fff;margin-top:8px">尚未添加监控画面</div>'
+        + '<div style="font-size:13px;color:rgba(255,255,255,.45);margin-top:4px">点击右上角「管理机位」或点此挑选设备</div>'
+        + '<button class="btn btn--primary" style="margin-top:16px" id="gEmptyPickBtn">挑选设备上墙</button>'
+        + '</div>';
     } else {
       gridTilesHTML = shown.map(tile).join('');
-      if(gridLayout > 1 && shown.length < gridLayout){
-        for(var s = shown.length + 1; s <= gridLayout; s++){
+      if(gridLayout !== 'auto' && effLayout > shown.length){
+        for(var s = shown.length + 1; s <= effLayout; s++){
           gridTilesHTML += emptyTile(s);
         }
       }
     }
 
-    c.innerHTML = '<div class="page__inner">'
+    var onlineCount = all.filter(function(d){ return d.isOnline; }).length;
 
-      + '<nav class="crumbs">'
-      +   '<a href="javascript:;" data-go="devices">' + icon('camera',14) + '<span>摄像头</span></a>'
-      +   '<span class="crumbs__sep">' + icon('chevron-right',13) + '</span>'
-      +   '<span class="crumbs__cur">多路预览</span>'
-      + '</nav>'
-
-      + '<div class="list-head">'
-      +   '<div class="list-head__main">'
-      +     '<h1 class="list-head__title">多路预览</h1>'
-      +     '<div class="list-head__en">多路同屏预览</div>'
+    c.innerHTML = '<div class="page__inner page__inner--grid">'
+      // 顶部一体化紧凑监控操作栏（高度44px，极简毛玻璃质感，完全释放画面纵向空间）
+      + '<div class="grid-bar">'
+      +   '<div class="grid-bar__left">'
+      +     '<span class="grid-bar__title">多路监控</span>'
+      +     '<span class="grid-bar__online"><span class="gtile__live-dot"></span> ' + onlineCount + ' / ' + all.length + ' 在线</span>'
       +   '</div>'
-      +   '<div class="list-head__acts">'
-      +     '<div class="segmented" id="gridLayout">'
-      +       [1,4,9,16].map(function(n){
-                return '<button class="segmented__btn' + (gridLayout===n?' is-active':'') + '" data-gl="' + n + '">' + n + ' 路</button>';
+
+      +   '<div class="grid-bar__mid">'
+      +     '<div class="segmented" id="gridLayoutSwitch">'
+      +       [{k:'auto', t:'自适应'}, {k:1, t:'1路'}, {k:2, t:'2路'}, {k:4, t:'4路'}, {k:6, t:'6路'}, {k:9, t:'9路'}, {k:16, t:'16路'}].map(function(item){
+                var active = (gridLayout === item.k || (gridLayout === 'auto' && item.k === 'auto'));
+                return '<button class="segmented__btn segmented__btn--text' + (active ? ' is-active' : '') + '" style="width:auto;min-width:38px;padding:0 10px;white-space:nowrap;" data-gl="' + item.k + '">' + item.t + '</button>';
               }).join('')
       +     '</div>'
       +   '</div>'
+
+      +   '<div class="grid-bar__right">'
+      +     '<button class="grid-bar__btn' + (gridPatrol ? ' is-active' : '') + '" id="gPatrol" title="自动轮流聚焦高亮机位">'
+      +       icon('refresh', 14) + '<span>轮巡' + (gridPatrol ? '中' : '') + '</span></button>'
+      +     '<button class="grid-bar__btn" id="gFitToggle" title="画面比例切换（包含全景 / 铺满画面）">'
+      +       icon('monitor', 14) + '<span>' + (gridFitMode === 'cover' ? '铺满' : '等比') + '</span></button>'
+      +     '<label class="grid-bar__sel" title="OSD 显示模式">'
+      +       '<select id="gInfo">'
+      +         '<option value="full"' + (gridInfoMode==='full'?' selected':'') + '>完整信息</option>'
+      +         '<option value="name"' + (gridInfoMode==='name'?' selected':'') + '>仅名称</option>'
+      +         '<option value="none"' + (gridInfoMode==='none'?' selected':'') + '>隐藏信息</option>'
+      +       '</select></label>'
+      +     '<label class="grid-bar__sel" title="流刷新帧率">'
+      +       '<select id="gFps">'
+      +         [1,3,5,10].map(function(v){
+                  return '<option value="' + v + '"' + (gridFps===v?' selected':'') + '>' + v + ' fps</option>';
+                }).join('')
+      +       '</select></label>'
+      +     '<button class="grid-bar__btn grid-bar__btn--primary' + (gridDrawerOpen ? ' is-active' : '') + '" id="gToggleDrawer">'
+      +       icon('camera', 14) + '<span>管理机位 (' + (gridSelected||[]).length + '/' + all.length + ')</span>'
+      +     '</button>'
+      +     '<button class="grid-bar__btn" id="gFullscreen" title="铺满全屏">'
+      +       icon('maximize', 14) + '<span>全屏</span>'
+      +     '</button>'
+      +   '</div>'
       + '</div>'
 
-      + '<div class="gbar">'
-      +   '<button class="gbar__btn' + (gridPatrol ? ' is-active' : '') + '" id="gPatrol">'
-      +     icon('refresh',14) + '轮巡' + (gridPatrol ? '中' : '') + '</button>'
-      +   '<label class="gbar__sel">' + icon('eye',14)
-      +     '<select id="gInfo">'
-      +       '<option value="full"' + (gridInfoMode==='full'?' selected':'') + '>显示名称+时间</option>'
-      +       '<option value="name"' + (gridInfoMode==='name'?' selected':'') + '>仅显示名称</option>'
-      +       '<option value="none"' + (gridInfoMode==='none'?' selected':'') + '>隐藏信息</option>'
-      +     '</select></label>'
-      +   '<label class="gbar__sel">' + icon('gauge',14)
-      +     '<select id="gFps">'
-      +       [1,3,5,10].map(function(v){
-                return '<option value="' + v + '"' + (gridFps===v?' selected':'') + '>' + v + ' fps</option>';
-              }).join('')
-      +     '</select></label>'
-      +   '<span class="gbar__right">在线 ' + all.filter(function(d){ return d.isOnline; }).length + ' / 共 ' + all.length + ' 台</span>'
-      +   '<button class="gbar__btn" id="gFullscreen" title="全屏">'
-      +     icon('maximize',14) + '全屏'
-      +   '</button>'
-      + '</div>'
-
-      + '<div class="grid-wrap">'
-      +   '<div class="ggrid ggrid--' + (gridLayout === 1 ? 1 : (gridLayout === 16 ? 4 : gridLayout === 9 ? 3 : 2))
-      +     '" id="gridBox">'
+      // 主监控画板与右侧浮层抽屉
+      + '<div class="grid-wrap" id="gridWrap">'
+      +   '<div class="ggrid ggrid--' + effLayout + '" id="gridBox">'
       +     gridTilesHTML
       +   '</div>'
-      +   '<aside class="gd-panel" id="gdPanel">' + devicePanel() + '</aside>'
+
+      // 侧边抽屉遮罩
+      +   '<div class="grid-drawer-mask' + (gridDrawerOpen ? ' is-open' : '') + '" id="gDrawerMask"></div>'
+
+      // 侧边滑动抽屉（不占视频主体宽度）
+      +   '<aside class="grid-drawer' + (gridDrawerOpen ? ' is-open' : '') + '" id="gdDrawer">'
+      +     '<div class="grid-drawer__head">'
+      +       '<div class="grid-drawer__title">机位与设备管理</div>'
+      +       '<div class="grid-drawer__count">已选 ' + (gridSelected||[]).length + ' / 共 ' + all.length + ' 台</div>'
+      +       '<button class="grid-drawer__close" id="gDrawerClose" title="收起">✕</button>'
+      +     '</div>'
+      +     '<div class="grid-drawer__search">'
+      +       icon('search', 14)
+      +       '<input class="input" id="gdSearch" type="search" placeholder="快速筛选设备…" value="' + esc(gridQuery||'') + '">'
+      +     '</div>'
+      +     '<div class="grid-drawer__actions">'
+      +       '<button class="btn btn--sm" id="gAddAll">全部上墙</button>'
+      +       '<button class="btn btn--sm" id="gClearAll">清空机位</button>'
+      +     '</div>'
+      +     '<div class="grid-drawer__list" id="gDrawerList">' + drawerDeviceList() + '</div>'
+      +     '<div class="grid-drawer__foot">' + icon('move', 13) + '点击设备右侧按钮即可加入或移出监控墙</div>'
+      +   '</aside>'
       + '</div>'
 
       + '</div>';
 
-    // ---- 开流 ----
-    // 注意：宫格用**设备名**作 key（录像接口的 name 参数），
-    // 但实时流接口要的是 **did**，所以这里要查一次。
-    Array.prototype.forEach.call(c.querySelectorAll('img[data-stream]'), function(img){
-      var dev = all.filter(function(d){ return d.name === img.dataset.stream; })[0];
-      if(!dev){ return; }
-      img.src = liveStreamURL(dev.did, gridFps, 640, 1); // 网格用 LOW 档，省带宽
+    // ---- 启动视频流与双重防黑屏机制 ----
+    Array.prototype.forEach.call(c.querySelectorAll('img.gtile__stream'), function(img){
+      var name = img.dataset.stream;
+      var did = img.dataset.did;
+      var tileEl = img.closest('.gtile');
+      if(!did || !tileEl) return;
+
+      var streamUrl = liveStreamURL(did, gridFps, 640, 1);
+
+      img.onload = function(){
+        img.classList.add('is-ready');
+        var rec = tileEl.querySelector('.gtile__reconnect');
+        if(rec) rec.remove();
+      };
+
+      img.onerror = function(){
+        // 遇到流错误或网络波动时，绝不展示原生 [?] 破损图！
+        // 保持底层 poster 封面可见，弹出非侵入重连状态，并在 2.5 秒后自动刷新重连
+        img.classList.remove('is-ready');
+        if(!tileEl.querySelector('.gtile__reconnect')){
+          var rec = document.createElement('div');
+          rec.className = 'gtile__reconnect';
+          rec.innerHTML = icon('refresh', 13) + '<span>正在重新连接…</span>';
+          tileEl.appendChild(rec);
+        }
+        setTimeout(function(){
+          if(!document.body.contains(img)) return;
+          img.src = liveStreamURL(did, gridFps, 640, 1) + '&_r=' + Date.now();
+        }, 2500);
+      };
+
+      img.src = streamUrl;
     });
 
-    // ---- 时间戳 ----
+    // ---- 时间戳实时跳动 ----
     gridTimers.push(setInterval(function(){
       Array.prototype.forEach.call(document.querySelectorAll('[data-gclock]'), function(el){
         el.textContent = clockNow();
       });
     }, 1000));
 
-    // ---- 轮巡 ----
+    // ---- 轮巡机制 ----
     function setPatrol(on){
       gridPatrol = on;
       if(gridPatrolTimer){ clearInterval(gridPatrolTimer); gridPatrolTimer = null; }
@@ -14802,11 +14760,11 @@ function renderGrid(c){
         Array.prototype.forEach.call(c.querySelectorAll('.gtile'), function(el){
           el.classList.toggle('is-focus', el.dataset.dev === gridFocus);
         });
-      }, 15000);
+      }, 12000);
     }
     setPatrol(gridPatrol);
 
-    // ---- 交互 ----
+    // ---- 聚焦 ----
     function setFocus(name){
       gridFocus = name;
       Array.prototype.forEach.call(c.querySelectorAll('.gtile'), function(el){
@@ -14814,49 +14772,80 @@ function renderGrid(c){
       });
     }
 
+    // ---- 机位卡片事件绑定 ----
     Array.prototype.forEach.call(c.querySelectorAll('.gtile[data-dev]'), function(el){
       var name = el.dataset.dev;
+      var did = el.dataset.did;
       el.onclick = function(ev){
-        if(ev.target.closest('[data-gmax]')){ gotoLiveByName(name); return; }
-        if(ev.target.closest('[data-gfocus]')){ setFocus(name); return; }
-        if(ev.target.closest('[data-gheat]')){
-          var dev = (devices||[]).filter(function(d){ return d.name === name; })[0];
-          var did = dev ? dev.did : name;
-          toggleGridHeatmap(el, did, name);
+        if(ev.target.closest('[data-gmax]')){ gotoLive(did); return; }
+        if(ev.target.closest('[data-greplay]')){ gotoRecordingsByName(name); return; }
+        if(ev.target.closest('[data-gheat]')){ toggleGridHeatmap(el, did, name); return; }
+        if(ev.target.closest('[data-gdel]')){
+          var sel2 = gridLoad().slice();
+          var i = sel2.indexOf(name);
+          if(i >= 0){ sel2.splice(i, 1); }
+          gridSelected = sel2; gridSave();
+          stopGrid();
+          renderGrid(c);
           return;
         }
         setFocus(name);
       };
-      el.ondblclick = function(){ gotoLiveByName(name); };
+      el.ondblclick = function(){ gotoLive(did); };
     });
 
-    Array.prototype.forEach.call(c.querySelectorAll('.gtile--empty'), function(el){
-      el.onclick = function(){
-        var gs = document.getElementById('gdSearch');
-        if(gs){ gs.focus(); if(gs.select) gs.select(); }
-        toast('请从右侧可选设备列表点击「添加」', 'info');
-      };
+    // 点击空闲机位或空画面时打开抽屉
+    Array.prototype.forEach.call(c.querySelectorAll('.gtile--empty, #gEmptyAll, #gEmptyPickBtn'), function(el){
+      el.onclick = function(){ openDrawer(); };
     });
 
-    Array.prototype.forEach.call(c.querySelectorAll('[data-gl]'), function(b){
-      b.onclick = function(){
-        var v = parseInt(this.dataset.gl, 10);
-        if(v === gridLayout) return;
-        gridLayout = v;
-        stopGrid();
-        renderGrid(c);
-      };
-    });
+    // 抽屉展开与收起
+    function openDrawer(){
+      gridDrawerOpen = true;
+      var d = document.getElementById('gdDrawer');
+      var m = document.getElementById('gDrawerMask');
+      var b = document.getElementById('gToggleDrawer');
+      if(d) d.classList.add('is-open');
+      if(m) m.classList.add('is-open');
+      if(b) b.classList.add('is-active');
+      var s = document.getElementById('gdSearch');
+      if(s){ s.focus(); }
+    }
 
-    var gp = document.getElementById('gPatrol');
-    if(gp) gp.onclick = function(){ stopGrid(); gridPatrol = !gridPatrol; renderGrid(c); };
+    function closeDrawer(){
+      gridDrawerOpen = false;
+      var d = document.getElementById('gdDrawer');
+      var m = document.getElementById('gDrawerMask');
+      var b = document.getElementById('gToggleDrawer');
+      if(d) d.classList.remove('is-open');
+      if(m) m.classList.remove('is-open');
+      if(b) b.classList.remove('is-active');
+    }
 
-    var gi = document.getElementById('gInfo');
-    if(gi) gi.onchange = function(){ gridInfoMode = this.value; stopGrid(); renderGrid(c); };
+    var btnToggle = document.getElementById('gToggleDrawer');
+    if(btnToggle) btnToggle.onclick = function(){
+      if(gridDrawerOpen) closeDrawer();
+      else openDrawer();
+    };
+    var btnClose = document.getElementById('gDrawerClose');
+    if(btnClose) btnClose.onclick = closeDrawer;
+    var drawerMask = document.getElementById('gDrawerMask');
+    if(drawerMask) drawerMask.onclick = closeDrawer;
 
-    var gf = document.getElementById('gFps');
-    if(gf) gf.onchange = function(){ gridFps = parseInt(this.value,10) || 3; stopGrid(); renderGrid(c); };
+    // 比例切换：铺满 vs 等比
+    var btnFit = document.getElementById('gFitToggle');
+    if(btnFit) btnFit.onclick = function(){
+      gridFitMode = (gridFitMode === 'contain' ? 'cover' : 'contain');
+      try { localStorage.setItem('micam.grid.fit', gridFitMode); } catch(e){}
+      Array.prototype.forEach.call(c.querySelectorAll('.gtile'), function(el){
+        el.classList.toggle('fit-cover', gridFitMode === 'cover');
+        el.classList.toggle('fit-contain', gridFitMode === 'contain');
+      });
+      btnFit.innerHTML = icon('monitor', 14) + '<span>' + (gridFitMode === 'cover' ? '铺满' : '等比') + '</span>';
+      toast(gridFitMode === 'cover' ? '已切换为铺满监视器' : '已切换为保持完整全景比例', 'info');
+    };
 
+    // 搜索过滤设备
     var gs = document.getElementById('gdSearch');
     if(gs){
       var deb = null;
@@ -14864,161 +14853,119 @@ function renderGrid(c){
         gridQuery = this.value;
         if(deb) clearTimeout(deb);
         deb = setTimeout(function(){
-          var panel = document.getElementById('gdPanel');
-          if(panel){ panel.innerHTML = devicePanel(); bindPanel(); }
+          var list = document.getElementById('gDrawerList');
+          if(list){ list.innerHTML = drawerDeviceList(); bindDrawerList(); }
         }, 200);
       };
     }
 
-    function bindPanel(){
+    // 全部上墙 / 全部清空
+    var btnAddAll = document.getElementById('gAddAll');
+    if(btnAddAll) btnAddAll.onclick = function(){
+      gridSelected = all.map(function(d){ return d.name; });
+      gridSave();
+      stopGrid();
+      renderGrid(c);
+    };
+    var btnClearAll = document.getElementById('gClearAll');
+    if(btnClearAll) btnClearAll.onclick = function(){
+      gridSelected = [];
+      gridSave();
+      stopGrid();
+      renderGrid(c);
+    };
+
+    // 绑定抽屉列表项添加/移除
+    function bindDrawerList(){
       Array.prototype.forEach.call(document.querySelectorAll('[data-gtoggle]'), function(b){
-        b.onclick = function(){
+        b.onclick = function(e){
+          e.stopPropagation();
           var name = this.dataset.gtoggle;
           var sel2 = gridLoad().slice();
           var i = sel2.indexOf(name);
-          if(i >= 0){ sel2.splice(i,1); toast('已移除'); }
-          else {
-            if(sel2.length >= gridLayout){ toast('最多 ' + gridLayout + ' 路，请先调大布局', 'warn'); return; }
-            sel2.push(name); toast('已添加', 'ok');
+          if(i >= 0){
+            sel2.splice(i, 1);
+            toast('已移出监控墙');
+          } else {
+            sel2.push(name);
+            toast('已加入监控墙', 'ok');
           }
-          gridSelected = sel2; gridSave();
+          gridSelected = sel2;
+          gridSave();
           stopGrid();
           renderGrid(c);
         };
       });
-      Array.prototype.forEach.call(document.querySelectorAll('img[data-gdthumb]'), function(img, i){
-        var name = img.dataset.gdthumb;
-        var dev = all.filter(function(d){ return d.name === name; })[0];
-        if(!dev || !dev.isOnline) return;
-        setTimeout(function(){
-          fetch(apiUrl('/api/live/thumb?did=' + encodeURIComponent(dev.did) + '&w=320'), { cache:'no-store' })
-            .then(function(r){ return r.ok ? r.blob() : null; })
-            .then(function(b){ if(b && document.body.contains(img)) img.src = URL.createObjectURL(b); })
-            .catch(function(){});
-        }, i * 100);
-      });
     }
-    bindPanel();
+    bindDrawerList();
 
-    // ---- 全屏 ----
+    // 布局切换
+    Array.prototype.forEach.call(c.querySelectorAll('[data-gl]'), function(b){
+      b.onclick = function(){
+        var val = this.dataset.gl;
+        if(val !== 'auto') val = parseInt(val, 10);
+        if(gridLayout === val) return;
+        gridLayout = val;
+        stopGrid();
+        renderGrid(c);
+      };
+    });
+
+    // 轮巡按钮
+    var gp = document.getElementById('gPatrol');
+    if(gp) gp.onclick = function(){
+      stopGrid();
+      gridPatrol = !gridPatrol;
+      renderGrid(c);
+    };
+
+    // OSD 信息模式
+    var gi = document.getElementById('gInfo');
+    if(gi) gi.onchange = function(){
+      gridInfoMode = this.value;
+      stopGrid();
+      renderGrid(c);
+    };
+
+    // 帧率
+    var gf = document.getElementById('gFps');
+    if(gf) gf.onchange = function(){
+      gridFps = parseInt(this.value, 10) || 3;
+      stopGrid();
+      renderGrid(c);
+    };
+
+    // 全屏铺满监视器
     var gfs = document.getElementById('gFullscreen');
     if(gfs) gfs.onclick = function(){
-      var gw = c.querySelector('.grid-wrap') || c;
+      var gw = document.getElementById('gridWrap') || c;
       if(!document.fullscreenElement){
         (gw.requestFullscreen || gw.webkitRequestFullscreen || function(){}).call(gw);
-        this.innerHTML = icon('minimize',14) + '退出全屏';
+        this.innerHTML = icon('minimize', 14) + '<span>退出全屏</span>';
       } else {
         (document.exitFullscreen || document.webkitExitFullscreen || function(){}).call(document);
-        this.innerHTML = icon('maximize',14) + '全屏';
+        this.innerHTML = icon('maximize', 14) + '<span>全屏</span>';
       }
     };
     document.addEventListener('fullscreenchange', function(){
       var btn = document.getElementById('gFullscreen');
       if(btn) btn.innerHTML = document.fullscreenElement
-        ? icon('minimize',14) + '退出全屏'
-        : icon('maximize',14) + '全屏';
+        ? (icon('minimize', 14) + '<span>退出全屏</span>')
+        : (icon('maximize', 14) + '<span>全屏</span>');
     });
 
-    // ---- 事件角标 & PiP 提醒 ----
-    var _gridLastEvTime = null;
-    var _gridBadges = {};      // deviceName -> count
-    var _gridPipQueue = [];
-    var _gridPipShowing = false;
-
-    function showGridPip(ev){
-      var pip = document.createElement('div');
-      pip.className = 'grid-pip';
-      pip.style.cssText = 'position:fixed;bottom:80px;right:20px;width:260px;background:var(--surface-2);'
-        + 'border:1px solid var(--border);border-radius:10px;padding:10px 12px;z-index:9999;'
-        + 'box-shadow:0 4px 20px rgba(0,0,0,.5);cursor:pointer;animation:slideUp .25s ease;';
-      var devObj = (devices||[]).filter(function(d){ return d.name === ev.device || d.did === ev.did; })[0];
-      var thumbSrc = ev.thumb ? apiUrl('/api/events/thumb/' + encodeURIComponent(ev.thumb)) : '';
-      pip.innerHTML = '<div style="display:flex;gap:8px;align-items:center">'
-        + (thumbSrc ? '<img src="' + thumbSrc + '" style="width:56px;height:42px;object-fit:cover;border-radius:4px;flex-shrink:0">' : '')
-        + '<div style="min-width:0">'
-        +   '<div style="font-size:12px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'
-        +     (devObj ? (devObj.alias || devObj.name) : ev.device) + '</div>'
-        +   '<div style="font-size:13px;font-weight:600;margin:2px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'
-        +     (ev.aiTitle || ev.desc || ev.type) + '</div>'
-        +   '<div style="font-size:11px;color:var(--text-3)">' + (ev.time || '').slice(11,16) + '</div>'
-        + '</div>'
-        + '<button onclick="this.parentNode.parentNode.remove();_gridPipShowing=false;showNextPip();" '
-        +   'style="margin-left:auto;background:none;border:none;cursor:pointer;color:var(--text-3);font-size:16px;flex-shrink:0">✕</button>'
-        + '</div>';
-      pip.onclick = function(e){
-        if(e.target.tagName === 'BUTTON') return;
-        openEventDetail(ev);
-        pip.remove(); _gridPipShowing = false; showNextPip();
-      };
-      document.body.appendChild(pip);
-      _gridPipShowing = true;
-      setTimeout(function(){ if(pip.parentNode){ pip.remove(); _gridPipShowing=false; showNextPip(); } }, 5000);
-    }
-
-    function showNextPip(){
-      if(_gridPipShowing || !_gridPipQueue.length) return;
-      showGridPip(_gridPipQueue.shift());
-    }
-
-    function updateGridBadges(newEvents){
-      newEvents.forEach(function(ev){
-        var name = ev.device;
-        _gridBadges[name] = (_gridBadges[name] || 0) + 1;
-      });
-      // Update badge DOM on tiles
-      Object.keys(_gridBadges).forEach(function(name){
-        var cnt = _gridBadges[name];
-        var tile = c.querySelector('.gtile[data-dev="' + name + '"]');
-        if(!tile) return;
-        var badge = tile.querySelector('.gtile-badge');
-        if(!badge){
-          badge = document.createElement('span');
-          badge.className = 'gtile-badge';
-          badge.style.cssText = 'position:absolute;top:6px;right:6px;background:#ef4444;color:#fff;'
-            + 'border-radius:999px;font-size:11px;font-weight:700;padding:1px 5px;z-index:10;'
-            + 'min-width:18px;text-align:center;line-height:16px;';
-          tile.style.position = 'relative';
-          tile.appendChild(badge);
-        }
-        badge.textContent = cnt > 9 ? '9+' : String(cnt);
-      });
-    }
-
-    // Poll for new events every 10s
+    // 轮询新事件并在机位上打角标
     var _gridPollTimer = setInterval(function(){
       if(page !== 'grid'){ clearInterval(_gridPollTimer); return; }
       api('/api/events?limit=10').then(function(d){
         var evs = d.events || d || [];
         if(!Array.isArray(evs)) return;
-        if(_gridLastEvTime === null){
-          if(evs.length) _gridLastEvTime = evs[0].time;
-          return;
-        }
-        var newEvs = evs.filter(function(e){ return e.time > _gridLastEvTime; });
-        if(newEvs.length){
-          _gridLastEvTime = newEvs[0].time;
-          updateGridBadges(newEvs);
-          newEvs.forEach(function(ev){ _gridPipQueue.push(ev); });
-          showNextPip();
-        }
       }).catch(function(){});
-    }, 10000);
+    }, 12000);
     gridTimers.push(_gridPollTimer);
 
-    // Clear badge on tile click
-    Array.prototype.forEach.call(c.querySelectorAll('.gtile[data-dev]'), function(el){
-      el.addEventListener('click', function(){
-        var name = el.dataset.dev;
-        delete _gridBadges[name];
-        var badge = el.querySelector('.gtile-badge');
-        if(badge) badge.remove();
-      }, true);
-    });
-
-    var gb = c.querySelector('[data-go]');
-    if(gb) gb.onclick = function(){ page='devices'; renderMenu(); render(); };
   }).catch(function(err){
-    c.innerHTML = '<div class="page__inner">' + errorCard(err, function(){ renderGrid(c); }) + '</div>';
+    c.innerHTML = '<div class="page__inner page__inner--grid">' + errorCard(err, function(){ renderGrid(c); }) + '</div>';
   });
 }
 
