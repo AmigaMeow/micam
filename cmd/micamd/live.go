@@ -78,6 +78,9 @@ func (s *Server) resolveSource(dev *xiaomi.Device) (string, error) {
 	}
 	src, err := stream.BuildSource(sessions[0], dev, "cn")
 	if err != nil {
+		if strings.Contains(err.Error(), "throttle") {
+			return "", fmt.Errorf("云台方向控制需小米云下发动态P2P凭据，当前账号处于小米云限流冷却期 (throttle deny)。冷却后将自动恢复连线，视频与录像不受影响")
+		}
 		return "", fmt.Errorf("向小米云申请凭据失败: %w", err)
 	}
 	s.store.SaveSource(dev.Did, src)
