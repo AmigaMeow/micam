@@ -4206,6 +4206,23 @@
   white-space: nowrap;
 }
 .ev-tag.is-custom { background: color-mix(in oklab, var(--accent) 18%, transparent); color: var(--accent); }
+.ev-tag--noise {
+  background: color-mix(in oklab, var(--text-tertiary, #888) 15%, transparent);
+  color: var(--text-secondary);
+  border: 1px dashed color-mix(in oklab, var(--text-tertiary, #888) 35%, transparent);
+}
+.ev-noise-toggle {
+  display: inline-flex; align-items: center; gap: 6px;
+  font-size: var(--text-sm); color: var(--text-secondary);
+  cursor: pointer; user-select: none; padding: 4px 10px;
+  border-radius: var(--radius-md); background: var(--surface-2);
+  border: 1px solid var(--border-subtle);
+  transition: all 0.2s ease;
+}
+.ev-noise-toggle:hover {
+  background: var(--surface-3); color: var(--text-primary);
+}
+.ev-noise-toggle input { cursor: pointer; }
 
 /* 批量工具栏 */
 .ev-bulkbar {

@@ -2994,10 +2994,25 @@ var evState = {
   to: '',
   did: '',
   type: 'all',
+  hideNoise: true,      // 默认开启：过滤无目标微小变动与夜间飞虫噪点
   q: '',
   sort: 'newest',       // newest / oldest / confidence
   page: 1,
 };
+
+function isNoiseEvent(x){
+  if(x.type !== 'motion') return false;
+  if(x.aiCls && x.aiCls !== 'motion') return false;
+  var tags = (x.aiTags || []).join(' ');
+  var summary = (x.aiSummary || '') + ' ' + (x.aiTitle || '') + ' ' + (x.desc || '');
+  if(/飞虫|蛛丝|光影|噪点|误报/.test(tags) || /飞虫|掠过|光线变化|强光闪现|环境噪点/.test(summary)){
+    return true;
+  }
+  if((x.score || 0) < 12.0 && (!x.importance || x.importance <= 0.25)){
+    return true;
+  }
+  return false;
+}
 var evMarks = {};       // id -> {bookmark, watch, tags}
 var evBulk = false;     // 批量选择模式
 var evSel = {};         // 选中的事件 id
@@ -3138,6 +3153,11 @@ function paintEvents(c){
 
     if(evState.did) l = l.filter(function(x){ return x.did === evState.did; });
 
+    // 默认在「全部」视图下过滤无目标的微小噪点与飞虫
+    if(evState.hideNoise && evState.type === 'all'){
+      l = l.filter(function(x){ return !isNoiseEvent(x); });
+    }
+
     // 车牌格式识别（省简称+A-Z+5位）-> 自动走车牌精确检索
   var q0 = (evState.q||'').trim().toUpperCase();
   var plateLike = /^[京津冀晋蒙辽吉黑沪苏浙皖闽赣鲁豫鄂湘粤桂琼渝川贵云藏陕甘青宁新][A-Z][A-Z0-9]{5}$/.test(q0);
@@ -3245,6 +3265,10 @@ function paintEvents(c){
             return '<option value="' + x[0] + '"' + (evState.sort === x[0] ? ' selected' : '') + '>' + x[1] + '</option>';
           }).join('')
     +   '</select>'
+    +   '<label class="ev-noise-toggle" title="隐藏夜间飞虫、反光晃动等无目标微小变动">'
+    +     '<input type="checkbox" id="evHideNoise"' + (evState.hideNoise ? ' checked' : '') + '> '
+    +     '<span>隐藏微小噪点' + (list0.filter(isNoiseEvent).length > 0 ? ' (' + list0.filter(isNoiseEvent).length + ')' : '') + '</span>'
+    +   '</label>'
     + '</div>'
 
     // 近 7 天趋势（用户反馈第 5 条）
@@ -3407,6 +3431,9 @@ function paintEvents(c){
     if(x.aiPlate && isPlateWhitelisted(x.aiPlate)){
       tagRow += '<span class="ev-tag ev-tag--whitelist">' + icon('shield',11) + '家庭自用车 · 免打扰</span>';
     }
+    if(isNoiseEvent(x)){
+      tagRow += '<span class="ev-tag ev-tag--noise">微小噪点</span>';
+    }
 
     return '<article class="ev-card2' + (on ? ' is-sel' : '') + '" data-id="' + esc(x.id) + '">'
       + '<div class="ev-card2__img">'
@@ -3503,6 +3530,8 @@ function paintEvents(c){
   if(ts) ts.onchange = function(){ evState.type = this.value || 'all'; paintEvents(c); };
   var so = document.getElementById('evSort');
   if(so) so.onchange = function(){ evState.sort = this.value; paintList(); };
+  var hn = document.getElementById('evHideNoise');
+  if(hn) hn.onchange = function(){ evState.hideNoise = this.checked; paintList(); };
   var sq = document.getElementById('evSearch');
   if(sq){
     var deb = null;
