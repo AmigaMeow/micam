@@ -67,4 +67,4 @@ echo "==> 生成最终 .fpk 插件包"
 OUT="$DIST/micam_${VERSION}_amd64.fpk"
 tar -C "$STAGE" -czf "$OUT" .
 ls -lh "$OUT"
-echo "🎉 打包成功: $OUT"
+echo "打包成功: $OUT"

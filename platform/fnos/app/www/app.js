@@ -208,7 +208,7 @@ function applyRouteFromUrl(){
       if(sub1 && ['overview', 'qa', 'search', 'investigate', 'settings'].indexOf(sub1) >= 0){
         aiTab = (sub1 === 'search' || sub1 === 'investigate') ? 'qa' : sub1;
       }
-      if(sub2 && ['mode', 'prov', 'policy', 'usage'].indexOf(sub2) >= 0){
+      if(sub2 && ['mode', 'whitelist', 'prov', 'policy', 'usage'].indexOf(sub2) >= 0){
         aiSetTab = sub2;
       }
     } else if(page === 'storage'){
@@ -355,6 +355,10 @@ function openModal(title, bodyHTML, onReady){
 }
 
 function closeModal(){
+  try {
+    var v = document.getElementById('evdVideo');
+    if(v){ v.pause(); v.src = ''; }
+  } catch(e){}
   if(_modalEl){
     _modalEl.remove();
     _modalEl = null;
@@ -381,6 +385,7 @@ function apiUrl(path){
 }
 
 function api(path, opt){ return fetch(apiUrl(path), opt).then(function(r){ return r.json(); }); }
+setTimeout(fetchWhitelist, 0);
 
 // ===== 敏感接口访问码（2026-09-23）=====
 //
@@ -535,6 +540,250 @@ function icon(name, size){
   var style = size ? ' style="width:'+size+'px;height:'+size+'px"' : "";
   return '<svg class="'+cls+'"'+style+' aria-hidden="true"><use href="#i-'+name+'"/></svg>';
 }
+
+// ===== AI 白名单管理、抽屉式回放与每日简报支持 =====
+window._aiWhitelist = window._aiWhitelist || [];
+
+function callApi(url, opt){
+  if(typeof api === 'function') return api(url, opt);
+  if(typeof window !== 'undefined' && window.api) return window.api(url, opt);
+  var base = (typeof apiUrl === 'function' ? apiUrl(url) : url);
+  return fetch(base, opt).then(function(r){ return r.json(); });
+}
+
+function fetchWhitelist(){
+  return callApi('/api/ai/whitelist').then(function(r){
+    if(r && r.ok && Array.isArray(r.whitelist)){
+      window._aiWhitelist = r.whitelist;
+    }
+    return window._aiWhitelist;
+  }).catch(function(){ return window._aiWhitelist || []; });
+}
+
+function normalizePlateStr(p){
+  if(!p) return '';
+  return String(p).toUpperCase().replace(/[·•\s\-_]/g, '');
+}
+
+function isPlateWhitelisted(plate){
+  if(!plate) return false;
+  var norm = normalizePlateStr(plate);
+  if(!norm) return false;
+  var wl = window._aiWhitelist || [];
+  for(var i = 0; i < wl.length; i++){
+    var it = wl[i];
+    if(it && it.type === 'vehicle'){
+      var itNorm = normalizePlateStr(it.value);
+      if(itNorm === norm || (itNorm.length >= 6 && norm.indexOf(itNorm) >= 0) || (norm.length >= 6 && itNorm.indexOf(norm) >= 0)){
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
+function findWhitelistItem(plate){
+  if(!plate) return null;
+  var norm = normalizePlateStr(plate);
+  if(!norm) return null;
+  var wl = window._aiWhitelist || [];
+  for(var i = 0; i < wl.length; i++){
+    var it = wl[i];
+    if(it && it.type === 'vehicle'){
+      var itNorm = normalizePlateStr(it.value);
+      if(itNorm === norm || (itNorm.length >= 6 && norm.indexOf(itNorm) >= 0) || (norm.length >= 6 && itNorm.indexOf(norm) >= 0)){
+        return it;
+      }
+    }
+  }
+  return null;
+}
+
+// 右侧抽屉式回放播放器 (Replay Drawer)
+function openReplayDrawer(dev, file, offSec, timeStr, titleStr, did){
+  var el = document.getElementById('replayDrawer');
+  if(!el){
+    var wrapper = document.createElement('div');
+    wrapper.id = 'replayDrawer';
+    wrapper.className = 'replay-drawer';
+    wrapper.innerHTML = '<div class="replay-drawer__mask" id="replayDrawerMask"></div>'
+      + '<div class="replay-drawer__panel">'
+      +   '<div class="replay-drawer__head">'
+      +     '<div class="replay-drawer__title-box">'
+      +       '<div class="replay-drawer__title" id="drawerTitle">事件线索片段</div>'
+      +       '<div class="replay-drawer__sub" id="drawerSub"></div>'
+      +     '</div>'
+      +     '<button class="btn btn--icon" id="drawerCloseBtn" title="关闭抽屉">' + icon('x', 18) + '</button>'
+      +   '</div>'
+      +   '<div class="replay-drawer__body">'
+      +     '<div class="replay-drawer__video-box">'
+      +       '<video id="drawerVideo" controls autoplay playsinline></video>'
+      +     '</div>'
+      +     '<div class="replay-drawer__meta">'
+      +       '<div class="replay-drawer__tip">'
+      +         icon('info', 14) + '<span>正在右侧抽屉预览证据片段。左侧 AI 问答对话与检索记录已完整保留。</span>'
+      +       '</div>'
+      +       '<div class="replay-drawer__actions">'
+      +         '<button class="btn btn--primary" id="drawerGotoFull" style="flex:1;">'
+      +           icon('film', 14) + '跳转至完整 24h 时间轴回放'
+      +         '</button>'
+      +       '</div>'
+      +     '</div>'
+      +   '</div>'
+      + '</div>';
+    document.body.appendChild(wrapper);
+    
+    document.getElementById('replayDrawerMask').onclick = closeReplayDrawer;
+    document.getElementById('drawerCloseBtn').onclick = closeReplayDrawer;
+  }
+  
+  var titleEl = document.getElementById('drawerTitle');
+  var subEl = document.getElementById('drawerSub');
+  var videoEl = document.getElementById('drawerVideo');
+  var fullBtn = document.getElementById('drawerGotoFull');
+  
+  if(titleEl) titleEl.textContent = titleStr || '事件线索片段';
+  if(subEl) subEl.innerHTML = icon('camera', 12) + ' ' + esc(dev || '') + (timeStr ? ' · ' + esc(timeStr) : '');
+  
+  var targetDev = dev;
+  if(!targetDev && did){
+    var d = (devices || []).filter(function(x){ return x.did === did; })[0];
+    if(d) targetDev = d.name;
+  }
+  
+  fullBtn.onclick = function(){
+    closeReplayDrawer();
+    gotoReplay(did, timeStr);
+  };
+  
+  var off = parseFloat(offSec) || 0;
+  if(file){
+    var vUrl = apiUrl('/api/recordings/play?name=' + encodeURIComponent(targetDev || '')
+      + '&file=' + encodeURIComponent(file)
+      + (off > 0 ? '&t=' + off.toFixed(1) : ''));
+    videoEl.src = vUrl;
+    videoEl.load();
+    videoEl.play().catch(function(){});
+  } else if(timeStr && targetDev) {
+    var date = timeStr.slice(0, 10);
+    callApi('/api/recordings/list?name=' + encodeURIComponent(targetDev) + '&date=' + encodeURIComponent(date))
+      .then(function(res){
+        var files = (res && res.files) || [];
+        var targetFile = null;
+        var seekInFile = 0;
+        var evSec = timeToSec(timeStr.slice(11, 19));
+        for(var i = 0; i < files.length; i++){
+          var f = files[i];
+          var sSec = timeToSec(f.startTime);
+          var eSec = timeToSec(f.endTime);
+          if(evSec >= sSec - 2 && evSec <= eSec + 2){
+            targetFile = f;
+            seekInFile = Math.max(0, evSec - sSec);
+            break;
+          }
+        }
+        if(!targetFile && files.length > 0){
+          targetFile = files[0];
+        }
+        if(targetFile){
+          var vUrl = apiUrl('/api/recordings/play?name=' + encodeURIComponent(targetDev)
+            + '&file=' + encodeURIComponent(targetFile.name)
+            + (seekInFile > 0 ? '&t=' + seekInFile.toFixed(1) : ''));
+          videoEl.src = vUrl;
+          videoEl.load();
+          videoEl.play().catch(function(){});
+        } else {
+          toast('未找到该时段的录像文件', 'warn');
+        }
+      })
+      .catch(function(){
+        toast('查询录像文件失败', 'err');
+      });
+  }
+  
+  document.getElementById('replayDrawer').classList.add('is-open');
+}
+
+function closeReplayDrawer(){
+  var el = document.getElementById('replayDrawer');
+  if(!el) return;
+  el.classList.remove('is-open');
+  var videoEl = document.getElementById('drawerVideo');
+  if(videoEl){
+    try { videoEl.pause(); videoEl.src = ''; } catch(e){}
+  }
+}
+
+// AI 每日安全快报卡片渲染器
+function renderAIDigestCard(box, dateStr){
+  if(!box) return;
+  var d = dateStr || new Date().toISOString().slice(0, 10);
+  callApi('/api/ai/digest?date=' + encodeURIComponent(d)).then(function(r){
+    if(!r || !r.ok || !r.digest) return;
+    var dg = r.digest;
+    var sum = dg.summary || '今日监控安防状态平稳，未检测到异常滞留或安全隐患。';
+    box.innerHTML = '<div class="ai-digest-card">'
+      + '<div class="ai-digest-card__head">'
+      +   '<div class="ai-digest-card__title">'
+      +     '<span class="ai-digest-card__icon">' + icon('shield', 18) + '</span>'
+      +     '<span>AI 每日安全快报</span>'
+      +     '<span class="ai-digest-card__date">' + esc(dg.date || d) + '</span>'
+      +   '</div>'
+      +   '<button class="btn btn--sm btn--subtle" id="evDigestRefresh" title="重新生成今日快报">'
+      +     icon('refresh', 13) + '刷新简报'
+      +   '</button>'
+      + '</div>'
+      + '<div class="ai-digest-card__summary">' + esc(sum) + '</div>'
+      + '<div class="ai-digest-card__metrics">'
+      +   '<div class="ai-digest-metric">'
+      +     '<span class="ai-digest-metric__val">' + (dg.vehicleArrivals || 0) + '</span>'
+      +     '<span class="ai-digest-metric__lbl">车辆出入</span>'
+      +   '</div>'
+      +   '<div class="ai-digest-metric">'
+      +     '<span class="ai-digest-metric__val">' + (dg.personVisits || 0) + '</span>'
+      +     '<span class="ai-digest-metric__lbl">人员动态</span>'
+      +   '</div>'
+      +   '<div class="ai-digest-metric">'
+      +     '<span class="ai-digest-metric__val" style="color:' + (dg.suspiciousAlerts ? 'var(--warning,#f59e0b)' : 'inherit') + '">' + (dg.suspiciousAlerts || 0) + '</span>'
+      +     '<span class="ai-digest-metric__lbl">重点关注</span>'
+      +   '</div>'
+      +   '<div class="ai-digest-metric">'
+      +     '<span class="ai-digest-metric__val">' + (dg.packageEvents || 0) + '</span>'
+      +     '<span class="ai-digest-metric__lbl">包裹识别</span>'
+      +   '</div>'
+      + '</div>'
+      + '</div>';
+      
+    var rf = box.querySelector('#evDigestRefresh');
+    if(rf){
+      rf.onclick = function(e){
+        e.stopPropagation();
+        rf.disabled = true;
+        rf.innerHTML = icon('refresh', 13) + '生成中…';
+        callApi('/api/ai/digest/trigger', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({ date: d })
+        }).then(function(){
+          toast('正在重新生成今日安全快报…', 'ok');
+          setTimeout(function(){ renderAIDigestCard(box, d); }, 1500);
+        }).catch(function(e){
+          toast('生成失败：' + e.message, 'err');
+          rf.disabled = false;
+        });
+      };
+    }
+  }).catch(function(){});
+}
+setTimeout(fetchWhitelist, 50);
+
+window.renderAIDigestCard = renderAIDigestCard;
+window.openReplayDrawer = openReplayDrawer;
+window.closeReplayDrawer = closeReplayDrawer;
+window.fetchWhitelist = fetchWhitelist;
+window.isPlateWhitelisted = isPlateWhitelisted;
+
+
 function fmtSize(b){
   if(b<1024) return b+" B";
   if(b<1048576) return (b/1024).toFixed(1)+" KB";
@@ -2917,6 +3166,7 @@ function paintEvents(c){
     + '</div>'
 
     // 筛选栏
+    + '<div id="evDailyDigestBox"></div>'
     + '<div class="ev-filters">'
     +   '<label class="ev-range">' + icon('calendar',15)
     +     '<select class="input" id="evRange">'
@@ -2988,6 +3238,8 @@ function paintEvents(c){
     // 列表
     + '<div class="ev-list" id="evList"></div>'
     + '</div>';
+
+  renderAIDigestCard(document.getElementById('evDailyDigestBox'), evState.from || '');
 
   // ---- 渲染列表 ----
   function paintList(){
@@ -3106,6 +3358,9 @@ function paintEvents(c){
     tags.slice(0, 2).forEach(function(g){
       tagRow += '<span class="ev-tag is-custom">' + esc(g) + '</span>';
     });
+    if(x.aiPlate && isPlateWhitelisted(x.aiPlate)){
+      tagRow += '<span class="ev-tag ev-tag--whitelist">' + icon('shield',11) + '家庭自用车 · 免打扰</span>';
+    }
 
     return '<article class="ev-card2' + (on ? ' is-sel' : '') + '" data-id="' + esc(x.id) + '">'
       + '<div class="ev-card2__img">'
@@ -3113,7 +3368,11 @@ function paintEvents(c){
       +   (x.thumb ? '<img loading="lazy" src="' + apiUrl('/api/events/thumb?f=' + encodeURIComponent(x.thumb)) + '" alt="">'
                   : '<div class="ev-card2__ph">' + icon(t.ic,28) + '</div>')
       +   '<span class="ev-card2__time">' + esc(hm) + '</span>'
-      +   (x.aiPlate ? '<span class="ev-card2__plate">' + esc(x.aiPlate) + '</span>' : '')
+      +   (function(){
+        if(!x.aiPlate) return '';
+        var isWl = isPlateWhitelisted(x.aiPlate);
+        return '<span class="ev-card2__plate' + (isWl ? ' is-whitelist' : '') + '">' + esc(x.aiPlate) + (isWl ? ' · 自用车' : '') + '</span>';
+      })()
       +   (dur ? '<span class="ev-card2__dur">' + esc(dur) + '</span>' : '')
       +   (watch ? '<span class="ev-card2__watch">' + icon('alert',12) + '需关注</span>' : '')
       + '</div>'
@@ -3338,8 +3597,12 @@ function openEventDetail(ev){
     +   '<div class="evd__left">'
     +     '<div class="evd__player">'
     +       '<video id="evdVideo" controls playsinline preload="metadata"></video>'
-    +       '<div class="evd__player-ph" id="evdPh">'
-    +         (ev.thumb ? '<img src="' + apiUrl('/api/events/thumb?f=' + encodeURIComponent(ev.thumb)) + '" alt="">' : icon('play',40))
+    +       '<div class="evd__player-ph" id="evdPh" title="点击立即就地播放">'
+    +         (ev.thumb ? '<img src="' + apiUrl('/api/events/thumb?f=' + encodeURIComponent(ev.thumb)) + '" alt="">' : '')
+    +         '<div class="evd__play-overlay">'
+    +           '<div class="evd__play-btn-circle">' + icon('play', 28) + '</div>'
+    +           '<div class="evd__play-btn-label">点击就地播放</div>'
+    +         '</div>'
     +       '</div>'
     +     '</div>'
     +     '<div class="evd__frames">'
@@ -3384,15 +3647,25 @@ function openEventDetail(ev){
             : '')
 
     +     (ev.aiPlate
-            ? evBlock('car', '车牌',
-                '<div class="evd__plate">'
-                +   '<span class="evd__plate-num">' + esc(ev.aiPlate) + '</span>'
-                +   '<span class="evd__plate-conf">置信度 ' + Math.round((ev.aiPlateConf||0)*100) + '%</span>'
-                + '</div>'
-                + '<div class="evd__kv"><span>来源</span><b>' + esc(ev.aiPlateSrc === 'local' ? '本地 LPR（多帧投票）' : (ev.aiPlateSrc || '—')) + '</b></div>'
-                + ((ev.aiPlateAlt && ev.aiPlateAlt.length)
-                    ? '<div class="evd__kv"><span>其它读数</span><b>' + esc(ev.aiPlateAlt.join('、')) + '（供人工复核）</b></div>'
-                    : ''))
+            ? (function(){
+                var isWl = isPlateWhitelisted(ev.aiPlate);
+                return evBlock('car', '车牌与白名单',
+                  '<div class="evd__plate">'
+                  +   '<span class="evd__plate-num">' + esc(ev.aiPlate) + '</span>'
+                  +   '<span class="evd__plate-conf">置信度 ' + Math.round((ev.aiPlateConf||0)*100) + '%</span>'
+                  +   (isWl
+                        ? '<span class="ev-badge ev-badge--whitelist" style="margin-left:8px;">' + icon('shield',12) + '家庭自用车 · 免打扰</span>'
+                        : '<button class="btn btn--xs btn--primary" id="evdAddPlateWl" style="margin-left:8px;">' + icon('shield',12) + '设为家庭自用车</button>')
+                  +   (isWl
+                        ? '<button class="btn btn--xs btn--subtle" id="evdDelPlateWl" style="margin-left:6px;">移出白名单</button>'
+                        : '')
+                  + '</div>'
+                  + '<div class="evd__kv"><span>识别状态</span><b>' + (isWl ? '命中自用车白名单（已自动静默记录并免打扰）' : '未在白名单中（按普通外部车辆处理）') + '</b></div>'
+                  + '<div class="evd__kv"><span>来源</span><b>' + esc(ev.aiPlateSrc === 'local' ? '本地 LPR（多帧投票）' : (ev.aiPlateSrc || '—')) + '</b></div>'
+                  + ((ev.aiPlateAlt && ev.aiPlateAlt.length)
+                      ? '<div class="evd__kv"><span>其它读数</span><b>' + esc(ev.aiPlateAlt.join('、')) + '（供人工复核）</b></div>'
+                      : ''));
+              })()
             : '')
 
     +     evBlock('device', '设备信息',
@@ -3437,8 +3710,91 @@ function openEventDetail(ev){
       root.id = 'evdMask';
     }
 
+    // 就地即点即播逻辑
+    root._startInlinePlay = function(targetSec){
+      var v = root.querySelector('#evdVideo');
+      var ph = root.querySelector('#evdPh');
+      if(!v) return;
+      if(!ev.recFile){
+        toast('该事件未检测到关联录像文件', 'warn');
+        return;
+      }
+      if(ph) ph.classList.add('is-hidden');
+      var baseOff = (typeof targetSec === 'number' && targetSec >= 0)
+        ? targetSec
+        : Math.max(0, (ev.recOff || 0) - 2);
+      var playUrl = apiUrl('/api/recordings/play?name=' + encodeURIComponent(ev.device || '')
+        + '&file=' + encodeURIComponent(ev.recFile)
+        + (baseOff > 0 ? '&t=' + baseOff.toFixed(1) : ''));
+      if(!v.src || v.src.indexOf(encodeURIComponent(ev.recFile)) < 0){
+        v.src = playUrl;
+        v.load();
+        v.play().catch(function(){});
+      } else {
+        try { v.currentTime = baseOff; v.play().catch(function(){}); } catch(e){}
+      }
+    };
+
+    var phTrigger = root.querySelector('#evdPh');
+    if(phTrigger) phTrigger.onclick = function(){ root._startInlinePlay(); };
+
+    // 车牌白名单设为自用车
+    var addWlBtn = root.querySelector('#evdAddPlateWl');
+    if(addWlBtn){
+      addWlBtn.onclick = function(){
+        addWlBtn.disabled = true;
+        api('/api/ai/whitelist', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            type: 'vehicle',
+            value: ev.aiPlate,
+            name: '家庭自用车',
+            policy: 'silent',
+            note: '用户在事件详情中标记为家庭自用车'
+          })
+        }).then(function(res){
+          toast('已将车牌 [' + ev.aiPlate + '] 加入自用车白名单（将自动静默记录并免打扰）', 'ok');
+          fetchWhitelist().then(function(){
+            closeModal();
+            setTimeout(function(){ openEventDetail(ev); }, 300);
+          });
+        }).catch(function(e){
+          toast('添加失败：' + e.message, 'err');
+          addWlBtn.disabled = false;
+        });
+      };
+    }
+
+    var delWlBtn = root.querySelector('#evdDelPlateWl');
+    if(delWlBtn){
+      delWlBtn.onclick = function(){
+        var it = findWhitelistItem(ev.aiPlate);
+        if(!it){ toast('未找到对应白名单条目', 'err'); return; }
+        delWlBtn.disabled = true;
+        api('/api/ai/whitelist/delete?id=' + encodeURIComponent(it.id), { method: 'POST' })
+          .then(function(){
+            toast('已将车牌 [' + ev.aiPlate + '] 移出白名单', 'ok');
+            fetchWhitelist().then(function(){
+              closeModal();
+              setTimeout(function(){ openEventDetail(ev); }, 300);
+            });
+          }).catch(function(e){
+            toast('删除失败：' + e.message, 'err');
+            delWlBtn.disabled = false;
+          });
+      };
+    }
+
     // 查看回放
-    root.querySelector('#evdPlay').onclick = function(){ closeModal(); gotoReplay(ev.did, ev.time); };
+    root.querySelector('#evdPlay').onclick = function(){
+      try {
+        var evV = root.querySelector('#evdVideo');
+        if(evV){ evV.pause(); evV.src = ''; }
+      } catch(e){}
+      closeModal();
+      gotoReplay(ev.did, ev.time);
+    };
 
     // 标记需关注
     root.querySelector('#evdWatch').onclick = function(){
@@ -3619,8 +3975,30 @@ function loadEventFrames(box, ev, root){
     .then(function(b){
       if(!b){ fallback('关键帧提取失败。'); return; }
       var url = URL.createObjectURL(b);
-      // frame-strip 返回的是横向拼接的条带图，切成 N 片显示
-      box.innerHTML = '<div class="evd__strip"><img src="' + url + '" alt=""></div>';
+      // frame-strip 返回的是横向拼接的条带图，切成 4 片交互式关键帧
+      var dur = ev.duration || 10;
+      var baseOff = ev.recOff || 0;
+      var fHtml = '<div class="evd__frames-list">';
+      for(var fi = 0; fi < 4; fi++){
+        var fSec = Math.max(0, baseOff - 2 + fi * Math.max(1, Math.round(dur / 4)));
+        fHtml += '<div class="evd__frame" data-fsec="' + fSec + '" title="点击在上方就地播放并跳转到此帧 (' + fmtDur(fSec) + ')">'
+          + '<div style="width:100%;aspect-ratio:16/9;overflow:hidden;position:relative;">'
+          +   '<img src="' + url + '" style="position:absolute;width:400%;height:100%;max-width:none;left:-' + (fi * 100) + '%;top:0;object-fit:cover;" alt="">'
+          + '</div>'
+          + '<span class="evd__frame-time">+' + (fi * Math.max(1, Math.round(dur / 4))) + 's</span>'
+          + '<span class="evd__frame-label">帧 ' + (fi + 1) + '</span>'
+          + '</div>';
+      }
+      fHtml += '</div>';
+      box.innerHTML = fHtml;
+      Array.prototype.forEach.call(box.querySelectorAll('.evd__frame'), function(fEl){
+        fEl.onclick = function(){
+          var sec = parseFloat(this.dataset.fsec) || 0;
+          Array.prototype.forEach.call(box.querySelectorAll('.evd__frame'), function(x){ x.classList.remove('is-active'); });
+          fEl.classList.add('is-active');
+          if(typeof root._startInlinePlay === 'function') root._startInlinePlay(sec);
+        };
+      });
     })
     .catch(function(){ fallback('关键帧加载失败。'); });
 }
@@ -3651,11 +4029,8 @@ function renderAI(c){
     api('/api/ai/overview').catch(function(){ return null; }),
     api('/api/ai/status').catch(function(){ return { status:{}, env:{}, models:[] }; }),
     api('/api/ai/config').catch(function(){ return { config:{} }; }),
-    // ⚠️ 必须保留这一项！
-    // 曾经删过它但没改下面的 res[3]，
-    // 导致 res[3] 是 undefined -> 读 .devices 报
-    //   TypeError: Cannot read properties of undefined (reading 'devices')
     api('/api/devices').catch(function(){ return { devices: [] }; }),
+    fetchWhitelist().catch(function(){ return []; }),
   ]).then(function(res){
     aiCache.ov = res[0];
     // 调查 Tab 需要更多事件（概览只给 4 条）
@@ -3790,6 +4165,7 @@ function paintCostFacts(){
 
 // ============ Tab 1：概览 ============
 function aiTabOverview(){
+  setTimeout(function(){ renderAIDigestCard(document.getElementById('aiDailyDigestBox')); }, 50);
   var o = aiCache.ov || { today:{}, process:{}, recent:[] };
   var t = o.today || {};
   var pr = o.process || {};
@@ -4447,8 +4823,8 @@ function renderAIChatBodyHTML(){
               +   '<div style="display:flex;gap:4px;margin-top:4px;">'
               +     '<button class="btn btn--primary btn--sm" style="flex:1;" data-play-clip="1" data-slot="' + slotId + '" data-dev="' + esc(dev) + '" data-file="' + esc(file) + '" data-off="' + off + '">'
               +       icon('play', 12) + '就地播放</button>'
-              +     '<button class="btn btn--sm" title="跳转完整回放" data-ev-did="' + esc(e.did||'') + '" data-ev-time="' + esc(e.time||'') + '">'
-              +       icon('chevron-right', 12) + '</button>'
+              +     '<button class="btn btn--sm" title="抽屉回放预览" data-ev-drawer="1" data-ev-did="' + esc(e.did||'') + '" data-ev-time="' + esc(e.time||'') + '" data-ev-dev="' + esc(dev) + '" data-ev-file="' + esc(file) + '" data-ev-off="' + off + '">'
+              +       icon('film', 12) + ' 抽屉</button>'
               +   '</div>'
               + '</div>'
               + '</div>';
@@ -4478,8 +4854,8 @@ function renderAIChatBodyHTML(){
                 +   '<div class="ai-chat-ev__dev">' + icon('camera', 12) + esc(ev.device || '') + '</div>'
                 +   (ev.note ? '<div style="font-size:var(--text-xs);color:var(--text-secondary);margin-top:2px;">' + esc(ev.note) + '</div>' : '')
                 +   '<div style="display:flex;gap:4px;margin-top:4px;">'
-                +     '<button class="btn btn--sm" style="flex:1;" title="跳转完整回放" data-ev-did="' + esc(ev.did||'') + '" data-ev-time="' + esc(ev.time||'') + '">'
-                +       icon('chevron-right', 12) + '查看回放</button>'
+                +     '<button class="btn btn--sm" style="flex:1;" title="抽屉回放预览" data-ev-drawer="1" data-ev-did="' + esc(ev.did||'') + '" data-ev-time="' + esc(ev.time||'') + '" data-ev-dev="' + esc(ev.device||'') + '" data-ev-file="' + esc(ev.recFile||'') + '" data-ev-off="' + (ev.recOff||0) + '">'
+                +       icon('film', 12) + '抽屉回放</button>'
                 +   '</div>'
                 + '</div>'
                 + '</div>';
@@ -4574,11 +4950,19 @@ function bindAIChatEvents(){
     };
   });
 
+  // 抽屉回放预览点击
+  Array.prototype.forEach.call(c.querySelectorAll('[data-ev-drawer]'), function(el){
+    el.onclick = function(e){
+      e.stopPropagation();
+      openReplayDrawer(el.dataset.evDev || el.dataset.evDid, el.dataset.evFile, parseFloat(el.dataset.evOff)||0, el.dataset.evTime, '事件线索回放', el.dataset.evDid);
+    };
+  });
+
   // 录像回放点击
   Array.prototype.forEach.call(c.querySelectorAll('[data-ev-did]'), function(el){
     el.onclick = function(e){
       e.stopPropagation();
-      gotoReplay(el.dataset.evDid, el.dataset.evTime);
+      openReplayDrawer(el.dataset.evDev || el.dataset.evDid, el.dataset.evFile || '', parseFloat(el.dataset.evOff)||0, el.dataset.evTime, '事件线索回放', el.dataset.evDid);
     };
   });
 
@@ -5230,7 +5614,8 @@ function aiTabSettings(){
     // 与全站其它地方已统一的「中文一句话说明」风格不符（用户反馈 #2）。
     // 改成中文说明，顺带比英文单词更有信息量（与页面副标题同一套做法）。
     +     [['mode','AI 架构与引擎','架构策略与算力配置','cpu'],
-           ['policy','策略与隐私','上云规则与隐私控制','shield'],
+           ['whitelist','白名单与降噪','熟悉目标与免打扰','shield'],
+           ['policy','策略与隐私','上云规则与隐私控制','lock'],
            ['usage','用量与成本','调用量与费用统计','chart']].map(function(x){
             return '<button class="set3__tab' + (aiSetTab === x[0] ? ' is-active' : '') + '" data-aiset="' + x[0] + '">'
               + icon(x[3],17)
@@ -5523,6 +5908,45 @@ function aiTabSettings(){
     + '</div>'
 
     + '</div>'
+    
+    // ===== 白名单与免打扰 =====
+    + '<div class="pnl' + (aiSetTab === 'whitelist' ? ' is-on' : '') + '" data-pnl="whitelist">'
+    +   '<div class="ai-stage">'
+    +     '<div class="ai-stage__lead" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px;">'
+    +       '<div>将家庭自用车牌或熟悉目标添加至白名单。系统将自动执行免打扰策略，静默归档记录，消灭频繁通知骚扰。</div>'
+    +       '<button class="btn btn--primary btn--sm" id="btnWlAddDialog">' + icon('plus', 13) + '添加白名单目标</button>'
+    +     '</div>'
+    +     '<div class="card" style="margin-top:16px;padding:0;overflow:hidden;">'
+    +       '<table class="table" style="width:100%;border-collapse:collapse;">'
+    +         '<thead><tr>'
+    +           '<th style="text-align:left;padding:12px 16px;">目标类型</th>'
+    +           '<th style="text-align:left;padding:12px 16px;">特征 / 车牌</th>'
+    +           '<th style="text-align:left;padding:12px 16px;">目标名称</th>'
+    +           '<th style="text-align:left;padding:12px 16px;">处理策略</th>'
+    +           '<th style="text-align:left;padding:12px 16px;">备注说明</th>'
+    +           '<th style="text-align:right;padding:12px 16px;">操作</th>'
+    +         '</tr></thead>'
+    +         '<tbody>'
+    +           ((window._aiWhitelist && window._aiWhitelist.length) ? window._aiWhitelist.map(function(it){
+                  var polText = (it.policy === 'silent' ? '免打扰/静默记录' : (it.policy === 'vip' ? '重点关注' : '可信任'));
+                  return '<tr style="border-top:1px solid var(--border-subtle);">'
+                    + '<td style="padding:12px 16px;"><span class="chip chip--sm">' + icon(it.type === 'vehicle' ? 'car' : 'user', 12) + (it.type === 'vehicle' ? ' 车辆' : ' 人员') + '</span></td>'
+                    + '<td style="padding:12px 16px;"><b>' + esc(it.value) + '</b></td>'
+                    + '<td style="padding:12px 16px;">' + esc(it.name) + '</td>'
+                    + '<td style="padding:12px 16px;"><span class="ev-badge ev-badge--whitelist">' + icon('shield', 11) + esc(polText) + '</span></td>'
+                    + '<td style="padding:12px 16px;color:var(--text-muted);font-size:var(--text-xs);">' + esc(it.note || '—') + '</td>'
+                    + '<td style="padding:12px 16px;text-align:right;">'
+                    +   '<button class="btn btn--icon btn--sm" data-wl-del="' + esc(it.id) + '" title="删除此白名单">' + icon('trash', 14) + '</button>'
+                    + '</td>'
+                    + '</tr>';
+                }).join('') : '<tr><td colspan="6" style="padding:32px;text-align:center;color:var(--text-muted);">暂无白名单条目</td></tr>')
+    +         '</tbody>'
+    +       '</table>'
+    +     '</div>'
+    +   '</div>'
+    + '</div>'
+
+
     + '<div class="pnl' + (aiSetTab === 'policy' ? ' is-on' : '') + '" data-pnl="policy">'
 
     // ===== 分析策略 + 隐私 =====

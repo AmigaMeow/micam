@@ -82,7 +82,7 @@ if (out.includes('<link rel="stylesheet"')) errors.push('仍有外部 CSS 引用
 console.log('  index.html: ' + (out.length / 1024).toFixed(0) + ' KB, ' + out.split('\n').length + ' 行');
 console.log('  内联 CSS:   ' + (css.length / 1024).toFixed(0) + ' KB');
 if (errors.length) {
-  console.error('  ❌ ' + errors.join('; '));
+  console.error('  [ERR] ' + errors.join('; '));
   process.exit(1);
 }
-console.log('  ✅ 组装校验通过（无外部 CSS 依赖）');
+console.log('  [OK] 组装校验通过（无外部 CSS 依赖）');

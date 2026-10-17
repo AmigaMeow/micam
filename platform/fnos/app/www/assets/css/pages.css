@@ -8517,3 +8517,248 @@
 body.has-mobile-fullscreen {
   overflow: hidden !important;
 }
+
+
+/* ===== 右侧抽屉式回放播放器 (Replay Drawer) ===== */
+.replay-drawer {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  display: flex;
+  justify-content: flex-end;
+  visibility: hidden;
+  opacity: 0;
+  transition: visibility 0.25s, opacity 0.25s;
+  pointer-events: none;
+}
+.replay-drawer.is-open {
+  visibility: visible;
+  opacity: 1;
+  pointer-events: auto;
+}
+.replay-drawer__mask {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(2px);
+  cursor: pointer;
+}
+.replay-drawer__panel {
+  position: relative;
+  width: min(520px, 92vw);
+  height: 100%;
+  background: var(--surface-1, #13171f);
+  border-left: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+  box-shadow: -8px 0 32px rgba(0, 0, 0, 0.4);
+  display: flex;
+  flex-direction: column;
+  transform: translateX(100%);
+  transition: transform 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 1;
+}
+.replay-drawer.is-open .replay-drawer__panel {
+  transform: translateX(0);
+}
+.replay-drawer__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-4, 16px);
+  border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.08));
+}
+.replay-drawer__title-box {
+  min-width: 0;
+  flex: 1;
+}
+.replay-drawer__title {
+  font-size: var(--text-lg, 16px);
+  font-weight: var(--weight-semibold, 600);
+  color: var(--text, #fff);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.replay-drawer__sub {
+  font-size: var(--text-xs, 12px);
+  color: var(--text-muted, #8b949e);
+  margin-top: 4px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.replay-drawer__body {
+  flex: 1;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4, 16px);
+  padding: var(--space-4, 16px);
+}
+.replay-drawer__video-box {
+  position: relative;
+  aspect-ratio: 16/9;
+  background: #000;
+  border-radius: var(--radius-lg, 8px);
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+}
+.replay-drawer__video-box video {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+.replay-drawer__meta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 12px);
+}
+.replay-drawer__tip {
+  font-size: var(--text-sm, 13px);
+  color: var(--text-secondary, #b1bac4);
+  background: var(--surface-2, #181d26);
+  padding: 10px 14px;
+  border-radius: var(--radius-md, 6px);
+  border: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+  line-height: 1.5;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+.replay-drawer__actions {
+  display: flex;
+  gap: var(--space-2, 8px);
+}
+
+/* ===== AI 每日安全快报卡片 (Daily Security Digest) ===== */
+.ai-digest-card {
+  margin-bottom: var(--space-4, 16px);
+  background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(30, 41, 59, 0.45) 100%);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  border-radius: var(--radius-xl, 12px);
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  position: relative;
+  overflow: hidden;
+}
+.ai-digest-card__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.ai-digest-card__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--text-base, 14px);
+  font-weight: var(--weight-semibold, 600);
+  color: var(--text, #fff);
+}
+.ai-digest-card__icon {
+  color: #10b981;
+  display: flex;
+  align-items: center;
+}
+.ai-digest-card__date {
+  font-size: var(--text-xs, 12px);
+  color: var(--text-muted, #8b949e);
+  font-weight: normal;
+  background: rgba(255, 255, 255, 0.05);
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.ai-digest-card__summary {
+  font-size: var(--text-sm, 13px);
+  color: var(--text-secondary, #e2e8f0);
+  line-height: 1.6;
+}
+.ai-digest-card__metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+  gap: 10px;
+  margin-top: 4px;
+}
+.ai-digest-metric {
+  background: rgba(0, 0, 0, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: var(--radius-md, 6px);
+  padding: 8px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.ai-digest-metric__val {
+  font-size: var(--text-xl, 18px);
+  font-weight: var(--weight-bold, 700);
+  color: var(--text, #fff);
+  line-height: 1.2;
+}
+.ai-digest-metric__lbl {
+  font-size: var(--text-xs, 11px);
+  color: var(--text-muted, #8b949e);
+}
+
+/* ===== 白名单徽章与即点即播样式 ===== */
+.ev-badge--whitelist,
+.ev-tag--whitelist {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(16, 185, 129, 0.12) !important;
+  color: #34d399 !important;
+  border: 1px solid rgba(16, 185, 129, 0.3) !important;
+  font-weight: var(--weight-medium, 500);
+}
+.ev-card2__plate.is-whitelist {
+  border-color: #059669;
+  background: #064e3b;
+  color: #a7f3d0;
+}
+.evd__player-ph {
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+.evd__player-ph:hover .evd__play-btn-circle {
+  transform: scale(1.08);
+  background: rgba(16, 185, 129, 0.9);
+}
+.evd__play-btn-circle {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(4px);
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.2s, background 0.2s;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5);
+  margin-bottom: 6px;
+}
+.evd__play-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.25);
+  transition: background 0.2s;
+}
+.evd__player-ph:hover .evd__play-overlay {
+  background: rgba(0, 0, 0, 0.1);
+}
+.evd__play-btn-label {
+  font-size: var(--text-xs, 12px);
+  color: #fff;
+  font-weight: var(--weight-medium, 500);
+  background: rgba(0, 0, 0, 0.6);
+  padding: 2px 10px;
+  border-radius: 999px;
+}
