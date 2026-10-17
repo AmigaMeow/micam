@@ -182,7 +182,7 @@ func (j *miotRecJob) run(ctx context.Context, s *Server, libPath, sidecar, model
 		}()
 
 		_ = cmd.Wait()
-		go s.autoRemuxRawStreams(j.dir)
+		s.triggerAutoRemux(j.dir)
 
 		select {
 		case <-ctx.Done():
@@ -245,7 +245,7 @@ func (s *Server) stopRecordingMiot(did string) bool {
 	miotRecJobsMu.Unlock()
 	if ok {
 		job.stop()
-		go s.autoRemuxRawStreams(job.dir)
+		s.triggerAutoRemux(job.dir)
 		logf("[rec] 官方通道录像已停止 did=%s（共重启 %d 次）", did, job.restarts)
 	}
 	return ok

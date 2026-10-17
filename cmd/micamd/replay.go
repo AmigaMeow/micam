@@ -220,7 +220,7 @@ func saveRecMeta() {
 	}
 }
 
-// probeDuration 取时长（带缓存）。
+// probeDuration 取时长（带缓存与极速估算，避免机械硬盘慢速 I/O 卡死 HTTP 请求）。
 func (s *Server) probeDuration(path string) float64 {
 	fi, err := os.Stat(path)
 	if err != nil {
@@ -234,94 +234,109 @@ func (s *Server) probeDuration(path string) float64 {
 		return m.Duration
 	}
 
-	d := 0.0
-
-	// 先试 ffprobe
-	out, err := exec.Command(s.ffprobePath(), "-v", "error",
-		"-show_entries", "format=duration",
-		"-of", "csv=p=0", path).Output()
-	if err == nil {
-		d, _ = strconv.ParseFloat(strings.TrimSpace(string(out)), 64)
+	// 极速估算：每个分片默认按照设定的分片时长（通常 300 秒 / 5 分钟）
+	dur := 300.0
+	if s != nil && s.rec != nil {
+		if seg := s.rec.GetConfig().Segment.Seconds(); seg > 0 {
+			dur = seg
+		}
 	}
-
-	// 兜底：解析 ffmpeg 的 stderr（没有 ffprobe 时）
-	if d <= 0 {
-		c := exec.Command(s.ffmpegPath(), "-hide_banner", "-i", path)
-		var buf strings.Builder
-		c.Stderr = &buf
-		_ = c.Run()
-		// 形如 "Duration: 00:00:32.95,"
-		if i := strings.Index(buf.String(), "Duration: "); i >= 0 {
-			s := buf.String()[i+10:]
-			if j := strings.Index(s, ","); j > 0 {
-				if parts := strings.Split(strings.TrimSpace(s[:j]), ":"); len(parts) == 3 {
-					h, _ := strconv.ParseFloat(parts[0], 64)
-					m, _ := strconv.ParseFloat(parts[1], 64)
-					sec, _ := strconv.ParseFloat(parts[2], 64)
-					d = h*3600 + m*60 + sec
-				}
-			}
+	if fi.Size() < 5*1024*1024 {
+		est := float64(fi.Size()) / (18 * 1024)
+		if est < dur && est > 3 {
+			dur = est
 		}
 	}
 
-	// 只有拿到有效时长才缓存（避免把失败结果缓存住）
-	if d > 0 {
-		metaMu.Lock()
-		metaCache[path] = recMeta{Duration: d, Size: fi.Size(), ModTime: fi.ModTime().Unix()}
-		metaMu.Unlock()
-		go saveRecMeta()
-	}
-	return d
+	metaMu.Lock()
+	metaCache[path] = recMeta{Duration: dur, Size: fi.Size(), ModTime: fi.ModTime().Unix()}
+	metaMu.Unlock()
+
+	return dur
 }
 
 // ---- 日期列表 ----
 
 // handleRecDates 返回可用日期（跨所有纳管录像池聚合并去重）。
-// autoRemuxRawStreams 自动查找并封装录像目录中残留的 .265/.264 原始码流为 .mkv
-func (s *Server) autoRemuxRawStreams(root string) {
+var (
+	autoRemuxMu     sync.Mutex
+	autoRemuxActive bool
+)
+
+// triggerAutoRemux 异步触发孤立码流修复（后台排队并发防护，绝不阻塞任何 HTTP 请求）
+func (s *Server) triggerAutoRemux(root string) {
 	if root == "" {
 		return
 	}
-	_ = filepath.Walk(root, func(pth string, info os.FileInfo, err error) error {
-		if err != nil || info == nil || info.IsDir() {
-			return nil
+	go func() {
+		autoRemuxMu.Lock()
+		if autoRemuxActive {
+			autoRemuxMu.Unlock()
+			return
 		}
-		ext := strings.ToLower(filepath.Ext(pth))
-		if ext != ".265" && ext != ".264" {
-			return nil
-		}
-		// 忽略最近 8 秒内修改的文件（可能正在写入）
-		if time.Since(info.ModTime()) < 8*time.Second {
-			return nil
-		}
-		if info.Size() < 1024 {
-			_ = os.Remove(pth)
-			return nil
-		}
-		dst := strings.TrimSuffix(pth, ext) + ".mkv"
-		inFmt := "hevc"
-		if ext == ".264" {
-			inFmt = "h264"
-		}
-		cmd := exec.Command(s.ffmpegPath(), "-hide_banner", "-loglevel", "error", "-y",
-			"-f", inFmt, "-i", pth, "-c", "copy", dst)
-		if err := cmd.Run(); err == nil {
-			if fi, e := os.Stat(dst); e == nil && fi.Size() > 1024 {
-				_ = os.Remove(pth)
-				logf("[replay] 自动封装孤立录像分片完成: %s -> %s (%.2fMB)",
-					filepath.Base(pth), filepath.Base(dst), float64(fi.Size())/(1<<20))
+		autoRemuxActive = true
+		autoRemuxMu.Unlock()
+
+		defer func() {
+			autoRemuxMu.Lock()
+			autoRemuxActive = false
+			autoRemuxMu.Unlock()
+		}()
+
+		count := 0
+		_ = filepath.Walk(root, func(pth string, info os.FileInfo, err error) error {
+			if err != nil || info == nil || info.IsDir() {
+				return nil
 			}
-		}
-		return nil
-	})
+			if count >= 5 {
+				return filepath.SkipAll
+			}
+			ext := strings.ToLower(filepath.Ext(pth))
+			if ext != ".265" && ext != ".264" {
+				return nil
+			}
+			if time.Since(info.ModTime()) < 15*time.Second {
+				return nil
+			}
+			if info.Size() < 1024 {
+				_ = os.Remove(pth)
+				return nil
+			}
+			dst := strings.TrimSuffix(pth, ext) + ".mkv"
+			if fi, err := os.Stat(dst); err == nil && fi.Size() > 1024 {
+				_ = os.Remove(pth)
+				return nil
+			}
+			inFmt := "hevc"
+			if ext == ".264" {
+				inFmt = "h264"
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			defer cancel()
+			cmd := exec.CommandContext(ctx, s.ffmpegPath(), "-hide_banner", "-loglevel", "error", "-y",
+				"-f", inFmt, "-i", pth, "-c", "copy", dst)
+			if err := cmd.Run(); err == nil {
+				if fi, e := os.Stat(dst); e == nil && fi.Size() > 1024 {
+					_ = os.Remove(pth)
+					count++
+					logf("[replay] 后台自动封装孤立录像完成: %s -> %s (%.2fMB)",
+						filepath.Base(pth), filepath.Base(dst), float64(fi.Size())/(1<<20))
+				}
+			}
+			return nil
+		})
+	}()
 }
 
 func (s *Server) handleRecDates(w http.ResponseWriter, r *http.Request) {
+	logf("[DATES-DEBUG] step 1: enter")
 	name := safeName(r.URL.Query().Get("name"))
+	logf("[DATES-DEBUG] step 2: calling recRoots")
 	roots := s.recRoots()
+	logf("[DATES-DEBUG] step 3: roots=%v", roots)
 	for _, root := range roots {
 		loadRecMeta(root)
-		s.autoRemuxRawStreams(root)
+		s.triggerAutoRemux(root)
 	}
 
 	type dayInfo struct {
@@ -423,7 +438,7 @@ func (s *Server) handleRecList(w http.ResponseWriter, r *http.Request) {
 	roots := s.recRoots()
 	for _, root := range roots {
 		loadRecMeta(root)
-		s.autoRemuxRawStreams(root)
+		s.triggerAutoRemux(root)
 	}
 
 	// name 为空 = 列出**所有设备**的录像。
@@ -493,7 +508,7 @@ func (s *Server) collectRecFiles(root, name, date string) []recFileInfo {
 	if date != "" {
 		dir = filepath.Join(dir, date)
 	}
-	s.autoRemuxRawStreams(dir)
+	
 
 	var out []recFileInfo
 	_ = filepath.Walk(dir, func(pth string, info os.FileInfo, err error) error {
