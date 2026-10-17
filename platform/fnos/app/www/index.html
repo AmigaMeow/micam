@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <title>MiCam - 智能监控中心</title>
-<meta name="micam-build" content="2026-10-17 06:55:05">
+<meta name="micam-build" content="2026-10-17 07:27:31">
 <!-- 内联 SVG favicon（data URI）：
      浏览器默认会请求 /favicon.ico 并得到 404（控制台报错）。
      这里用 data URI 消除该请求 —— 同时保持「全内联、不联网」的约束。 -->
@@ -14849,6 +14849,24 @@ function evBlock(ic, title, bodyHtml){
 function loadEventFrames(box, ev, root){
   if(!box) return;
 
+  // 尝试从本地已加载切片中动态关联
+  if(!ev.recFile && ev.time && recState.files && recState.files.length){
+    var evSec = timeToSec(ev.time);
+    var evDay = (ev.time || '').slice(0, 10);
+    var matched = recState.files.find(function(f){
+      if(f.date !== evDay && (!f.startTime || f.startTime.indexOf(evDay) !== 0)) return false;
+      if(ev.device && f.dev && f.dev !== ev.device && f.name.indexOf(ev.device) < 0) return false;
+      var fStart = timeToSec(f.startTime);
+      var fDur = f.duration || 300;
+      return evSec >= fStart - 5 && evSec <= fStart + fDur + 10;
+    });
+    if(matched){
+      ev.recFile = matched.name;
+      ev.recOff = Math.max(0, evSec - timeToSec(matched.startTime));
+      if(!ev.device) ev.device = matched.dev;
+    }
+  }
+
   function fallback(msg){
     box.innerHTML = (ev.thumb
       ? '<div class="evd__frame is-active">'
@@ -14861,7 +14879,7 @@ function loadEventFrames(box, ev, root){
   }
 
   if(!ev.recFile){
-    fallback('该事件没有关联录像（录制未开启或已清理）。');
+    fallback('该时段录像未开启或已被清理循环覆盖，已保留关键瞬间快照。');
     return;
   }
 
@@ -16722,7 +16740,7 @@ function aiTabSettings(){
     +       '</div>'
     +       '<div class="cfg-row">'
     +         '<label class="cfg-row__label">' + icon('link',14) + 'API 地址</label>'
-    +         '<div class="cfg-row__control"><input class="input" id="aiProvURL" placeholder="https://api.deepseek.com" value="' + esc(cf.apiBaseUrl || 'https://api.deepseek.com') + '"></div>'
+    +         '<div class="cfg-row__control"><input class="input" id="aiProvURL" placeholder="https://api.deepseek.com" value="' + esc(cf.providerUrl || cf.apiBaseUrl || 'https://api.deepseek.com') + '"></div>'
     +         '<div class="cfg-row__hint">默认官方接口。支持自建 Ollama、vLLM、OneAPI 或第三方兼容服务（如 SiliconFlow）。</div>'
     +       '</div>'
     +       '<div class="cfg-row">'
@@ -17698,10 +17716,12 @@ function bindAI(){
   });
   var ps = document.getElementById('aiProvSave');
   if(ps) ps.onclick = function(){
+    var provUrl = ((document.getElementById('aiProvURL')||{}).value || '').trim();
     var body = {
       providerName: (document.getElementById('aiProv')||{}).value,
       providerModel: (document.getElementById('aiProvModel')||{}).value,
-      apiBaseUrl: (document.getElementById('aiProvURL')||{}).value,
+      apiBaseUrl: provUrl,
+      providerUrl: provUrl,
       apiTimeout: parseInt((document.getElementById('aiTimeout')||{}).value, 10) || 30,
       maxConcurrent: parseInt((document.getElementById('aiConcurrent')||{}).value, 10) || 3,
       dailyBudgetCny: parseFloat((document.getElementById('aiBudget')||{}).value) || 5,
@@ -18988,6 +19008,23 @@ function startLiveMJPEG(did){
   var hint = $("#liveHint");
   if(!box) return;
 
+  var devObj = (cams || []).find(function(x){ return x.did === did; });
+  if(devObj && (devObj.model === 'chuangmi.camera.ipc009' || devObj.protocol === 'tutk')){
+    box.innerHTML = '<div class="player__ph" style="padding:28px 20px;text-align:center;max-width:520px;margin:auto;">'
+      + icon('alert', 44)
+      + '<h3 style="margin:16px 0 8px;font-size:16px;color:var(--text-primary);">TUTK 协议硬件限制提示</h3>'
+      + '<p style="color:var(--text-muted);font-size:13px;line-height:1.6;margin:0 0 16px;">创米 1080p 摄像头（型号 ipc009）底层采用 TUTK P2P 握手协议。目前小米官方闭源 SDK 库 (libmiot_camera_lite) 暂未适配 TUTK 协议。云台控制与设置正常，实时画面建议在米家 App 查看。</p>'
+      + '<div><button class="btn btn--sm" id="btnRetryTutk">' + icon('refresh', 13) + ' 尝试重试</button></div>'
+      + '</div>';
+    var retryBtn = box.querySelector('#btnRetryTutk');
+    if(retryBtn){
+      retryBtn.onclick = function(){ devObj.protocol = 'retry'; startLiveMJPEG(did); };
+    }
+    if(st) st.textContent = '协议限制';
+    if(hint) hint.textContent = '该型号采用 TUTK 协议，官方 SDK 暂未支持直连';
+    return;
+  }
+
   if(st) st.textContent = "连接中";
   if(hint) hint.textContent = "正在建立实时视频流…";
 
@@ -19614,7 +19651,7 @@ function paintFiles(c){
     list = list.filter(function(f){ return f.dev === recState.dev || f.name.indexOf(recState.dev) >= 0 || (f.device && f.device === recState.dev); });
   }
   if(recState.date){
-    list = list.filter(function(f){ return f.date === recState.date; });
+    list = list.filter(function(f){ return f.date === recState.date || (f.startTime && f.startTime.indexOf(recState.date) === 0); });
   }
   if(!list.length){
     box.innerHTML = empty('film','这天没有录像','换个日期，或在「存储」页检查录像设置','');
@@ -26696,7 +26733,7 @@ function paintTimeline24(c){
   var curDate = recState.date || (recState.dates.length ? recState.dates[0].date : localDate());
   var list = (recState.files || []).filter(function(f){
     return (!recState.dev || f.dev === recState.dev || f.name.indexOf(recState.dev) >= 0 || (f.device && f.device === recState.dev)) &&
-           (f.date === curDate);
+           (f.date === curDate || (f.startTime && f.startTime.indexOf(curDate) === 0));
   });
 
   // 1. 整理时间跨度并合并相连/重叠片段
