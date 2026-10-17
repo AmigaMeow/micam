@@ -8293,9 +8293,18 @@ function bindReplay(c){
         if(v.paused){ v.play().catch(function(){}); } else { v.pause(); }
       };
     }
-    // 记忆播放位置
-    v.addEventListener('pause', function(){ if(recState.file) savePos(recState.file, v.currentTime); });
-    window.addEventListener('beforeunload', function(){ if(recState.file && v) savePos(recState.file, v.currentTime); });
+    // 记忆播放位置（增加切换保护，严禁把上一个视频的播放位置窜写给新视频）
+    v.addEventListener('pause', function(){
+      if(window._isSwitchingRecFile) return;
+      if(recState.file && v && v.currentTime > 3 && isFinite(v.duration) && v.currentTime < v.duration - 2){
+        savePos(recState.file, v.currentTime);
+      }
+    });
+    window.addEventListener('beforeunload', function(){
+      if(recState.file && v && v.currentTime > 3 && isFinite(v.duration) && v.currentTime < v.duration - 2){
+        savePos(recState.file, v.currentTime);
+      }
+    });
   }
 
   var rsw = document.getElementById('recScrubWrap');
@@ -8514,12 +8523,6 @@ function playRecFile(target, seekSec){
     window._recWatchdogTimer = null;
   }
 
-  recState.file = f.name;
-  if(f.dev) recState.activeDev = f.dev;
-  if(f.date) recState.date = f.date;
-  currentRecFile = f.name;
-  currentRecName = f.name;
-
   var devName = f.dev || recState.dev || '';
   var dateStr = f.date || recState.date || '';
   var targetKey = devName + '/' + dateStr + '/' + f.name;
@@ -8528,47 +8531,44 @@ function playRecFile(target, seekSec){
 
   updateRecBadge(f);
 
-  var isSame = (window._currentRecKey === targetKey && v.src && v.src.indexOf(encodeURIComponent(f.name)) >= 0);
-
-  if(isSame){
-    if(doSeek){
-      if(isStaticMP4Cache(v, f.duration)){
-        setRecLoading(true, '正在定位画面…');
-        var onSeekDone = function(){
-          setRecLoading(false);
-          v.removeEventListener('seeked', onSeekDone);
-          v.play().catch(function(){});
-          updateRecPlayBtn();
-        };
-        v.addEventListener('seeked', onSeekDone);
-        window._currentStreamOffset = 0;
-        try { v.currentTime = Math.min(seekSec, Math.max(0, (v.duration || f.duration) - 0.2)); } catch(e){}
-        updateTimeline24Needle();
-        setTimeout(function(){ setRecLoading(false); }, 600);
-        v.play().catch(function(){});
-        return;
-      }
-    } else {
-      if(v.readyState >= 2){
-        v.play().catch(function(){});
-        setRecLoading(false);
-        updateRecPlayBtn();
-        return;
-      }
-    }
-  }
-
-  v.pause();
-  window._currentRecKey = targetKey;
-
-  setRecLoading(true, '正在载入画面…');
-  updateTimeline24Needle();
-
   var playUrl = f.url;
   if(doSeek && seekSec > 0){
     playUrl += '&t=' + encodeURIComponent(seekSec.toFixed(1));
   }
   var targetSrc = apiUrl(playUrl);
+  var targetAbsUrl = '';
+  try { targetAbsUrl = new URL(targetSrc, location.href).href; } catch(e){ targetAbsUrl = targetSrc; }
+
+  var isSameFile = (window._currentRecKey === targetKey);
+  var isSameSrc = (v.src === targetAbsUrl);
+
+  recState.file = f.name;
+  if(f.dev) recState.activeDev = f.dev;
+  if(f.date) recState.date = f.date;
+  currentRecFile = f.name;
+  currentRecName = f.name;
+  window._currentRecKey = targetKey;
+
+  // 1. 如果是当前已就绪的同一个视频：
+  if(isSameFile && isSameSrc && v.readyState >= 2){
+    if(doSeek && isStaticMP4Cache(v, f.duration)){
+      window._currentStreamOffset = 0;
+      try { v.currentTime = Math.min(seekSec, Math.max(0, (v.duration || f.duration) - 0.2)); } catch(e){}
+    } else if(doSeek && seekSec === 0){
+      try { v.currentTime = 0; } catch(e){}
+    }
+    v.play().catch(function(){});
+    setRecLoading(false);
+    updateRecPlayBtn();
+    updateTimeline24Needle();
+    return;
+  }
+
+  // 2. 切换到新视频（或重新加载已停止的连接）
+  window._isSwitchingRecFile = true;
+  v.pause();
+  setRecLoading(true, '正在载入画面…');
+  updateTimeline24Needle();
 
   function startDirectPlay(){
     var readyHandled = false;
@@ -8583,6 +8583,7 @@ function playRecFile(target, seekSec){
       updateRecPlayBtn();
       v.removeEventListener('canplay', onPlayReady);
       v.removeEventListener('playing', onPlayReady);
+      v.removeEventListener('seeked', onPlayReady);
       v.removeEventListener('loadeddata', onPlayReady);
     }
     v.addEventListener('canplay', onPlayReady);
@@ -8622,11 +8623,9 @@ function playRecFile(target, seekSec){
     var bmM = document.getElementById('btnMute');
     if(bmM) bmM.classList.add('is-active');
 
-    var targetAbsUrl = '';
-    try { targetAbsUrl = new URL(targetSrc, location.href).href; } catch(e){ targetAbsUrl = targetSrc; }
-    if(v.src !== targetAbsUrl){
-      v.src = targetSrc;
-    }
+    v.src = targetSrc;
+    v.load();
+    window._isSwitchingRecFile = false;
 
     if(doSeek && seekSec > 0){
       var seekDone = false;
@@ -8666,12 +8665,7 @@ function playRecFile(target, seekSec){
         setRecLoading(false);
         updateRecPlayBtn();
       }
-    }).catch(function(){
-      if(thisLoadSeq === recLoadSeq){
-        setRecLoading(false);
-        updateRecPlayBtn();
-      }
-    });
+    }).catch(function(){});
 
     var onRealFrame = function(){
       if(thisLoadSeq === recLoadSeq && (v.videoWidth > 0 || v.currentTime > 0)){
@@ -8706,7 +8700,7 @@ function playRecFile(target, seekSec){
         }
         clearInterval(playWatchdog);
       }
-    }, 6000);
+    }, 4000);
   }
 
   startDirectPlay();
@@ -8767,11 +8761,11 @@ function savePos(f, t){
 }
 function restorePos(f, v){
   try {
+    if(window._isSwitchingRecFile) return;
     var t = parseInt(localStorage.getItem(posKey(f)) || '0', 10);
-    // 关键保护：仅在有限时长静态缓存且 t 在当前已缓冲范围内时才恢复位置，严禁对刚起播的实时分片流越界赋值 currentTime
-    if(t > 3 && v && isFinite(v.duration) && v.seekable && v.seekable.length > 0 && t <= v.seekable.end(0)){
+    // 关键保护：仅在有限时长静态缓存且 t 在有效播放区间内时才恢复位置，绝不越界寻道至片尾导致卡死
+    if(t > 3 && v && isFinite(v.duration) && v.duration > 3 && v.seekable && v.seekable.length > 0 && t <= v.seekable.end(0) - 2){
       v.currentTime = t;
-      toast('已跳转到上次位置 ' + fmtDur(t), 'ok');
     }
   } catch(e){}
 }
@@ -15265,8 +15259,62 @@ function paintTimeline24(c){
       var cls = EV_MAP[e.type] || 'pb-t24__ev--motion';
       var timeStr = (e.time || '').slice(11, 19);
       var tip = timeStr + ' ' + (e.device || '') + (e.aiCls ? ' · ' + e.aiCls : '');
-      return '<div class="pb-t24__ev ' + cls + '" style="left:' + pct.toFixed(3) + '%" title="' + esc(tip) + '"></div>';
+      return '<div class="pb-t24__ev ' + cls + '" data-time="' + esc(e.time || '') + '" data-dev="' + esc(e.device || '') + '" style="left:' + pct.toFixed(3) + '%" title="' + esc(tip) + '"></div>';
     }).join('');
+
+    evBox.onclick = function(e){
+      var evDot = e.target.closest('.pb-t24__ev');
+      if(!evDot) return;
+      e.stopPropagation();
+      e.preventDefault();
+      var evTime = evDot.dataset.time;
+      var evDev = evDot.dataset.dev;
+      if(!evTime) return;
+      var evSec = timeToSec(evTime);
+      var match = null;
+      var off = 0;
+      for(var i = 0; i < list.length; i++){
+        var f = list[i];
+        if(evDev && f.dev && f.dev !== evDev) continue;
+        var s = timeToSec(f.startTime);
+        var dur = Math.round(f.duration || 0);
+        if(evSec >= s && evSec <= s + dur){
+          match = f;
+          off = evSec - s;
+          break;
+        }
+        if(evSec < s && s - evSec <= 30){
+          match = f;
+          off = 0;
+          break;
+        }
+      }
+      if(!match && list.length){
+        var minD = 86400;
+        for(var j = 0; j < list.length; j++){
+          var item = list[j];
+          if(evDev && item.dev && item.dev !== evDev) continue;
+          var isec = timeToSec(item.startTime);
+          if(isec >= evSec && (isec - evSec) < minD){
+            minD = isec - evSec;
+            match = item;
+            off = 0;
+          }
+        }
+      }
+      if(match){
+        recState.file = match.name;
+        highlightActiveFile(match.name, match.dev);
+        playRecFile(match, off);
+        var needleSec = timeToSec(match.startTime) + off;
+        var needle = document.getElementById('pbT24Needle');
+        var needleTag = document.getElementById('pbT24NeedleTag');
+        var curVal = document.getElementById('pbCurTimeVal');
+        if(needle) needle.style.left = ((needleSec / 86400) * 100).toFixed(3) + '%';
+        if(needleTag) needleTag.textContent = secToHms(needleSec);
+        if(curVal) curVal.textContent = secToHms(needleSec);
+      }
+    };
   }
 
   // 4. 事件标记带缓存（跨天查询 7 天数据在内存中瞬时命中）
@@ -15317,7 +15365,7 @@ function paintTimeline24(c){
 
       if(!commit) return;
 
-      // 查找落在范围内的录像
+      // 查找落在范围内的录像（增加 15s 前置容差，点击事件标记或边缘不报错）
       var matched = null;
       var seekOffset = 0;
       var curDev = (curRecFileObj() || {}).dev || '';
@@ -15329,6 +15377,12 @@ function paintTimeline24(c){
           if(!matched || (curDev && f.dev === curDev)){
             matched = f;
             seekOffset = sec - s;
+            if(f.dev === curDev) break;
+          }
+        } else if(sec < s && (s - sec) <= 15){
+          if(!matched || (curDev && f.dev === curDev)){
+            matched = f;
+            seekOffset = 0;
             if(f.dev === curDev) break;
           }
         }
