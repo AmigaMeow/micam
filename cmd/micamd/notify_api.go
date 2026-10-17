@@ -249,6 +249,18 @@ func (s *Server) dispatchAINotify(e *event.Event, res *aiAnalysis) {
 
 	// 2. 车辆与车牌事件
 	if e.Type == "vehicle" || res.Plate != "" {
+		plateToCheck := res.Plate
+		if plateToCheck == "" {
+			plateToCheck = e.AIPlate
+		}
+		if gWhitelistStore != nil && plateToCheck != "" {
+			if wl := gWhitelistStore.MatchPlate(plateToCheck); wl != nil {
+				if wl.Policy == "silent" {
+					logf("[notify] 车辆 [%s] 命中自用白名单 (%s)，已执行免打扰策略，抑制推送通知", plateToCheck, wl.Name)
+					return
+				}
+			}
+		}
 		pTitle := "车辆动态: " + title
 		if res.Plate != "" {
 			pTitle = "发现车辆 [" + res.Plate + "]: " + title

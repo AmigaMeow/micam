@@ -539,13 +539,18 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		list = only
 	}
 
-	// 附上用户标记（书签/需关注/标签）—— 前端一次拿到，避免 N+1
+	// 附上用户标记（书签/需关注/标签）与自用白名单
 	marks := s.marks.list()
+	var wl []*WhitelistItem
+	if gWhitelistStore != nil {
+		wl = gWhitelistStore.List()
+	}
 
 	writeJSON(w, 200, map[string]any{
-		"events": list,
-		"today":  s.eventStore.CountToday(),
-		"marks":  marks,
+		"events":    list,
+		"today":     s.eventStore.CountToday(),
+		"marks":     marks,
+		"whitelist": wl,
 	})
 }
 

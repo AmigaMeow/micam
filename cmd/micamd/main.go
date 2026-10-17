@@ -140,6 +140,7 @@ func main() {
 	srv.tokens = newTokenStore(*dataDir)
 	srv.reqlog = newReqLogStore(*dataDir)
 	initPersonStore(*dataDir)
+	initWhitelistStore(*dataDir)
 
 	// 初始化录像模块
 	recDir := cfg.RecordDir
@@ -637,6 +638,8 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/ai/jobs", s.handleAIJobs)
 	mux.HandleFunc("/api/ai/digest", s.handleAIDigest)
 	mux.HandleFunc("/api/ai/digest/trigger", s.handleAIDigestTrigger)
+	mux.HandleFunc("/api/ai/whitelist", s.handleAIWhitelist)
+	mux.HandleFunc("/api/ai/whitelist/delete", s.handleAIWhitelistDelete)
 
 	// 播放
 	mux.HandleFunc("/api/live/source-status", s.handleSourceStatus)
