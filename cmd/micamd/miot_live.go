@@ -17,6 +17,7 @@ package main
 //   GET /api/miot/cameras                    官方通道可见的摄像头
 
 import (
+	"strings"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -195,13 +196,20 @@ func (s *Server) handleMiotLive(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	// sidecar 日志转进插件日志（便于诊断 401 之类）
+	// sidecar 日志转进插件日志（便于诊断 401 之类与 TUTK 限制）
 	go func() {
 		buf := make([]byte, 2048)
 		for {
 			n, e := stderr.Read(buf)
 			if n > 0 {
-				logf("[miot] %s", string(buf[:n]))
+				msg := string(buf[:n])
+				logf("[miot] %s", msg)
+				if strings.Contains(msg, "Can't support TUTK vendor") || strings.Contains(msg, "miss_client_vendor") {
+					tutkDevicesMu.Lock()
+					tutkDevices[did] = true
+					tutkDevicesMu.Unlock()
+					logf("[miot] 设备 %s (model=%s) 采用 TUTK P2P 协议，官方闭源组件无法直连", did, dev.Model)
+				}
 			}
 			if e != nil {
 				return

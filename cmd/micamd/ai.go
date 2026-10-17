@@ -453,6 +453,45 @@ func (a *aiClient) Start(cfg aiConfig) error {
 	return a.startLocked(cfg)
 }
 
+// resolveModelPath 解析模型文件路径，支持省略 .onnx 后缀与 v11/11 别名容错
+func resolveModelPath(modelDir, modelName string) (string, error) {
+	clean := strings.TrimSpace(modelName)
+	clean = strings.TrimSuffix(clean, ".onnx")
+	if clean == "" {
+		clean = "yolov8n"
+	}
+
+	var candidates []string
+	candidates = append(candidates, clean+".onnx")
+
+	if strings.Contains(clean, "v11") {
+		candidates = append(candidates, strings.ReplaceAll(clean, "v11", "11")+".onnx")
+	} else if strings.Contains(clean, "11") {
+		candidates = append(candidates, strings.ReplaceAll(clean, "11", "v11")+".onnx")
+	}
+	if clean == "yolov8n" {
+		candidates = append(candidates, "yolo8n.onnx")
+	} else if clean == "yolo8n" {
+		candidates = append(candidates, "yolov8n.onnx")
+	}
+
+	for _, c := range candidates {
+		p := filepath.Join(modelDir, c)
+		if fi, err := os.Stat(p); err == nil && fi.Size() > 1024 {
+			return p, nil
+		}
+	}
+
+	for _, c := range candidates {
+		partPath := filepath.Join(modelDir, c+".part")
+		if fi, err := os.Stat(partPath); err == nil && fi.Size() > 0 {
+			return "", fmt.Errorf("模型正在下载中（%.1fMB），请稍候下载完成后再启动", float64(fi.Size())/(1<<20))
+		}
+	}
+
+	return "", fmt.Errorf("模型文件不存在：%s.onnx（请在「识别模型」设置中点击下载，或放入 /vol1/@appdata/micam/models/）", clean)
+}
+
 func (a *aiClient) startLocked(cfg aiConfig) error {
 	a.cfg = cfg
 
@@ -463,12 +502,21 @@ func (a *aiClient) startLocked(cfg aiConfig) error {
 	}
 	a.cfg.Enabled = true
 
-	model := filepath.Join(a.modelDir, cfg.Model+".onnx")
-	if _, err := os.Stat(model); err != nil {
-		a.status = "unavailable"
-		a.lastErr = fmt.Sprintf("模型文件不存在：%s（请在设置里下载）", model)
-		return fmt.Errorf("%s", a.lastErr)
+	// 纯云端/私有大模型模式（cloud）不强制依赖本地 YOLO 进程
+	if cfg.Mode == "cloud" {
+		a.status = "ready"
+		a.lastErr = ""
+		logf("[ai] 当前为纯大模型模式，无需启动本地 YOLO 推理进程")
+		return nil
 	}
+
+	modelPath, err := resolveModelPath(a.modelDir, cfg.Model)
+	if err != nil {
+		a.status = "unavailable"
+		a.lastErr = err.Error()
+		return err
+	}
+	actualModel := strings.TrimSuffix(filepath.Base(modelPath), ".onnx")
 
 	pythonExe := "/usr/bin/python3"
 	pythonPath := cfg.PythonPath
@@ -487,7 +535,7 @@ func (a *aiClient) startLocked(cfg aiConfig) error {
 		threads = 4
 	}
 
-	cmd := exec.Command(pythonExe, a.scriptPath, cfg.Model, a.modelDir)
+	cmd := exec.Command(pythonExe, a.scriptPath, actualModel, a.modelDir)
 	cmd.Env = append(os.Environ(),
 		"PYTHONPATH="+pythonPath,
 		fmt.Sprintf("MICAM_MODEL_DIR=%s", a.modelDir),

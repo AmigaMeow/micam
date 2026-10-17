@@ -135,6 +135,11 @@ func (j *miotRecJob) run(ctx context.Context, s *Server, libPath, sidecar, model
 		}
 
 		startAt := time.Now()
+		curDir := filepath.Join(s.rec.GetConfig().Dir, sanitizeName(j.name),
+			startAt.Format("2006-01-02"))
+		_ = os.MkdirAll(curDir, 0o755)
+		j.dir = curDir
+
 		recChannels := "1"
 		if stream.HasSecondLens(model) {
 			recChannels = "2"
@@ -150,7 +155,7 @@ func (j *miotRecJob) run(ctx context.Context, s *Server, libPath, sidecar, model
 			"--channels", recChannels,
 			"--quality", j.quality,
 			"--segment", fmt.Sprint(j.segment),
-			"--out", j.dir,
+			"--out", curDir,
 			"--ffmpeg", s.ffmpegPath(),
 		)
 		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}

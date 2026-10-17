@@ -96,7 +96,7 @@ func GenerateDailyDigest(events []*event.Event, date string) *AIDailyDigest {
 					foundCluster := false
 					for _, existingKey := range clusterOrder {
 						c := clusters[existingKey]
-						if !c.isWhitelist && isPlateFuzzyMatch(norm, c.canonicalPlate) {
+						if !c.isWhitelist && isPlateFuzzyMatch(norm, existingKey) {
 							c.count++
 							foundCluster = true
 							break
@@ -104,12 +104,12 @@ func GenerateDailyDigest(events []*event.Event, date string) *AIDailyDigest {
 					}
 					if !foundCluster {
 						clusters[norm] = &vehicleCluster{
-							canonicalPlate: norm,
+							canonicalPlate: plate,
 							isWhitelist:    false,
 							count:          1,
 						}
 						clusterOrder = append(clusterOrder, norm)
-						digest.KeyEvents = append(digest.KeyEvents, fmt.Sprintf("%s 访客车辆 [%s] 驶入停放", timeStr, norm))
+						digest.KeyEvents = append(digest.KeyEvents, fmt.Sprintf("%s 访客车辆 [%s] 驶入停放", timeStr, plate))
 					}
 				}
 			} else {

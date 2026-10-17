@@ -49,9 +49,10 @@ func (s *Server) handleAIProviderTest(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	if tmpKey != "" {
+		baseURL := normalizeProviderURL(cfg.ProviderURL)
 		if c == nil {
 			c = &aiProviderClient{
-				baseURL:   strings.TrimRight(cfg.ProviderURL, "/"),
+				baseURL:   baseURL,
 				apiKey:    tmpKey,
 				model:     cfg.ProviderModel,
 				timeout:   60 * time.Second,
@@ -59,7 +60,7 @@ func (s *Server) handleAIProviderTest(w http.ResponseWriter, r *http.Request) {
 			}
 		} else {
 			c.apiKey = tmpKey
-			c.baseURL = strings.TrimRight(cfg.ProviderURL, "/")
+			c.baseURL = baseURL
 			c.model = cfg.ProviderModel
 		}
 	}

@@ -301,13 +301,25 @@ def main():
     #   再删掉 .265。这是官方 Miloco 的做法（它也是落文件）。
     seg = {"n": 0, "t0": time.time(), "fh": None, "path": None, "codec": None}
     outdir = args.out
-    if args.segment > 0:
-        os.makedirs(outdir, exist_ok=True)
+
+    def get_seg_dir(now):
+        cur_date = time.strftime("%Y-%m-%d", time.localtime(now))
+        base = args.out
+        if base == "-":
+            return base
+        parts = os.path.split(os.path.normpath(base))
+        if len(parts[1]) == 10 and parts[1].count("-") == 2:
+            d = os.path.join(parts[0], cur_date)
+        else:
+            d = os.path.join(base, cur_date)
+        os.makedirs(d, exist_ok=True)
+        return d
 
     def seg_open(now):
+        d = get_seg_dir(now)
         ts = time.strftime("%Y%m%d_%H%M%S", time.localtime(now))
         ext = "264" if seg.get("codec") == 4 else "265"
-        seg["path"] = os.path.join(outdir, "%s_%d.%s" % (ts, seg["n"], ext))
+        seg["path"] = os.path.join(d, "%s_%d.%s" % (ts, seg["n"], ext))
         seg["fh"] = open(seg["path"], "wb")
         seg["n"] += 1
         seg["t0"] = now

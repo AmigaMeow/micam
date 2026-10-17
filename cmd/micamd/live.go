@@ -729,12 +729,18 @@ func (s *Server) handleSourceStatus(w http.ResponseWriter, r *http.Request) {
 		HasSource bool   `json:"hasSource"`
 		AgeMin    int    `json:"ageMinutes"`
 		Cooldown  int    `json:"cooldownMinutes"`
+		Protocol  string `json:"protocol,omitempty"`
+		Error     string `json:"error,omitempty"`
 	}
 	var out []devStatus
 	for _, d := range s.store.Devices() {
 		st := devStatus{
 			Did:  d.Did,
 			Name: d.Name,
+		}
+		if isTUTKDevice(d.Did, d.Model) {
+			st.Protocol = "tutk"
+			st.Error = "TUTK协议限制：创米 1080p 摄像头 (ipc009) 采用 TUTK P2P 协议，官方闭源 SDK 库暂未支持该协议握手。"
 		}
 		if _, ok := s.store.Source(d.Did); ok {
 			st.HasSource = true

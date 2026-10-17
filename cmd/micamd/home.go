@@ -11,6 +11,7 @@ package main
 // 两路就约 130% CPU。帧差法几乎零成本（图已在内存）。
 
 import (
+	"math"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -516,6 +517,82 @@ func (s *Server) handleDevHide(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, 200, map[string]any{"ok": true, "did": req.Did, "hidden": req.Hidden})
 }
 
+// findEventRecording 根据设备名和时间定位录像文件与秒级偏移
+func (s *Server) findEventRecording(devName, did, eventTime string) (string, float64) {
+	if eventTime == "" {
+		return "", 0
+	}
+	t, err := time.ParseInLocation("2006-01-02 15:04:05", eventTime, time.Local)
+	if err != nil {
+		if t2, err2 := time.Parse(time.RFC3339, eventTime); err2 == nil {
+			t = t2.In(time.Local)
+		} else {
+			return "", 0
+		}
+	}
+
+	dateStr := t.Format("2006-01-02")
+	roots := s.recRoots()
+
+	names := []string{devName}
+	if did != "" {
+		for _, c := range s.allCameras() {
+			if c.Did == did && c.Name != "" && c.Name != devName {
+				names = append(names, c.Name)
+			}
+		}
+		names = append(names, did)
+	}
+
+	type matchCandidate struct {
+		file    string
+		offset  float64
+		diffSec float64
+	}
+	var best *matchCandidate
+
+	for _, n := range names {
+		if n == "" {
+			continue
+		}
+		for _, root := range roots {
+			files := s.collectRecFiles(root, n, dateStr)
+			for _, f := range files {
+				fStart, err := time.ParseInLocation("2006-01-02 15:04:05", f.StartTime, time.Local)
+				if err != nil {
+					continue
+				}
+				dur := f.Duration
+				if dur <= 0 {
+					dur = 300
+				}
+				offset := t.Sub(fStart).Seconds()
+				if offset >= -5 && offset <= dur+10 {
+					realOff := offset
+					if realOff < 0 {
+						realOff = 0
+					}
+					return f.Name, realOff
+				}
+
+				diff := math.Abs(offset)
+				if diff < 300 && (best == nil || diff < best.diffSec) {
+					best = &matchCandidate{
+						file:    f.Name,
+						offset:  math.Max(0, offset),
+						diffSec: diff,
+					}
+				}
+			}
+		}
+	}
+
+	if best != nil {
+		return best.file, best.offset
+	}
+	return "", 0
+}
+
 // handleEvents 查询事件。
 func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	days, _ := strconv.Atoi(r.URL.Query().Get("days"))
@@ -527,6 +604,17 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		Limit: limit,
 	}
 	list := s.eventStore.Query(q)
+
+	// 动态关联录像片段（修复未显式绑定 recFile 的实时告警事件）
+	for i := range list {
+		if list[i].RecFile == "" && list[i].Time != "" {
+			f, off := s.findEventRecording(list[i].Device, list[i].Did, list[i].Time)
+			if f != "" {
+				list[i].RecFile = f
+				list[i].RecOff = off
+			}
+		}
+	}
 
 	// 车牌过滤（阶段 2 B：按车牌检索）
 	if plate := strings.ToUpper(strings.TrimSpace(r.URL.Query().Get("plate"))); plate != "" {

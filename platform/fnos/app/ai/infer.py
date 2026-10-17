@@ -84,8 +84,8 @@ def log(msg):
 
 class Detector:
     def __init__(self, model_name, threads=4):
-        self.model_name = model_name
-        self.path = os.path.join(MODEL_DIR, model_name + ".onnx")
+        self.model_name = os.path.splitext(model_name)[0]
+        self.path = self._resolve_path(self.model_name)
         self.threads = threads
         self.session = None
         self.input_name = None
@@ -94,6 +94,20 @@ class Detector:
         self.num_classes = 80
         self.class_names = list(COCO_CLASSES)
         self.load()
+
+    def _resolve_path(self, name):
+        candidates = [name + ".onnx"]
+        if "v11" in name:
+            candidates.append(name.replace("v11", "11") + ".onnx")
+        elif "11" in name:
+            candidates.append(name.replace("11", "v11") + ".onnx")
+        if name == "yolov8n":
+            candidates.append("yolo8n.onnx")
+        for c in candidates:
+            p = os.path.join(MODEL_DIR, c)
+            if os.path.exists(p):
+                return p
+        return os.path.join(MODEL_DIR, name + ".onnx")
 
     def load(self):
         import onnxruntime as ort

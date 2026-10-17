@@ -18,6 +18,7 @@ package main
 // （浏览器行为不可控），必须在服务端强制。
 
 import (
+	"strings"
 	"context"
 	"sync"
 	"time"
@@ -28,7 +29,18 @@ var (
 	miotStreamCtx = map[string]context.CancelFunc{} // did -> 取消函数
 	miotStreamWG  = map[string]chan struct{}{}      // did -> 流退出信号
 	miotStreamEnd = map[string]time.Time{}          // did -> 上一条流结束时刻
+	tutkDevicesMu sync.RWMutex
+	tutkDevices   = map[string]bool{}
 )
+
+func isTUTKDevice(did, model string) bool {
+	if strings.Contains(strings.ToLower(model), "ipc009") {
+		return true
+	}
+	tutkDevicesMu.RLock()
+	defer tutkDevicesMu.RUnlock()
+	return tutkDevices[did]
+}
 
 // streamCooldown 两条流之间的最小间隔。
 //

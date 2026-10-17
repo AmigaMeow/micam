@@ -18,6 +18,7 @@ package main
 //   先转码（带进度），转完给下载链接，体验更好。
 
 import (
+	"math"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -548,6 +549,21 @@ func (s *Server) handleEventClip(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 如果没有记录具体的 recFile，从录像目录寻找匹配日期的录像文件
+	if recFile == "" {
+		if ev != nil {
+			if f, off := s.findEventRecording(devName, ev.Did, ev.Time); f != "" {
+				recFile = f
+				if startSec <= 0 && off > 0 {
+					startSec = math.Max(0, off-req.PreSec)
+					dur := float64(ev.Duration)
+					if dur <= 0 {
+						dur = 20
+					}
+					endSec = off + dur + req.PostSec
+				}
+			}
+		}
+	}
 	if recFile == "" {
 		dir := filepath.Join(s.recRoot(), devName, date)
 		entries, _ := os.ReadDir(dir)

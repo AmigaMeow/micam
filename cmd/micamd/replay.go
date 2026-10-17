@@ -301,9 +301,79 @@ func (s *Server) probeDuration(path string) float64 {
 
 // handleRecDates 返回可用日期（跨所有纳管录像池聚合并去重）。
 var (
-	autoRemuxMu     sync.Mutex
-	autoRemuxActive bool
+	autoRemuxMu       sync.Mutex
+	autoRemuxActive   bool
+	autoMigrateMu     sync.Mutex
+	autoMigrateActive bool
 )
+
+// triggerAutoMigrate 异步扫描并自动将跨日期错位的录像文件迁移至正确日期目录
+func (s *Server) triggerAutoMigrate(root string) {
+	if root == "" {
+		return
+	}
+	go func() {
+		autoMigrateMu.Lock()
+		if autoMigrateActive {
+			autoMigrateMu.Unlock()
+			return
+		}
+		autoMigrateActive = true
+		autoMigrateMu.Unlock()
+
+		defer func() {
+			autoMigrateMu.Lock()
+			autoMigrateActive = false
+			autoMigrateMu.Unlock()
+		}()
+
+		devEntries, err := os.ReadDir(root)
+		if err != nil {
+			return
+		}
+		for _, devEnt := range devEntries {
+			if !devEnt.IsDir() || strings.HasPrefix(devEnt.Name(), ".") || strings.HasPrefix(devEnt.Name(), "@") {
+				continue
+			}
+			devPath := filepath.Join(root, devEnt.Name())
+			dateEntries, err := os.ReadDir(devPath)
+			if err != nil {
+				continue
+			}
+			for _, dateEnt := range dateEntries {
+				if !dateEnt.IsDir() || strings.HasPrefix(dateEnt.Name(), ".") {
+					continue
+				}
+				curDateDir := dateEnt.Name()
+				datePath := filepath.Join(devPath, curDateDir)
+				files, err := os.ReadDir(datePath)
+				if err != nil {
+					continue
+				}
+				for _, f := range files {
+					if f.IsDir() || !strings.HasSuffix(f.Name(), ".mkv") {
+						continue
+					}
+					base := strings.TrimSuffix(f.Name(), ".mkv")
+					if len(base) >= 8 {
+						if t, err := time.ParseInLocation("20060102", base[:8], time.Local); err == nil {
+							actualDate := t.Format("2006-01-02")
+							if actualDate != curDateDir {
+								targetDir := filepath.Join(devPath, actualDate)
+								_ = os.MkdirAll(targetDir, 0o755)
+								srcPath := filepath.Join(datePath, f.Name())
+								dstPath := filepath.Join(targetDir, f.Name())
+								if err := os.Rename(srcPath, dstPath); err == nil {
+									logf("[replay] 自动修正错位录像: %s/%s/%s -> %s", devEnt.Name(), curDateDir, f.Name(), actualDate)
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+	}()
+}
 
 // triggerAutoRemux 异步触发孤立码流修复（后台排队并发防护，绝不阻塞任何 HTTP 请求）
 func (s *Server) triggerAutoRemux(root string) {
@@ -382,6 +452,7 @@ func (s *Server) handleRecDates(w http.ResponseWriter, r *http.Request) {
 	for _, root := range roots {
 		loadRecMeta(root)
 		s.triggerAutoRemux(root)
+		s.triggerAutoMigrate(root)
 	}
 
 	type dayInfo struct {
@@ -425,14 +496,24 @@ func (s *Server) handleRecDates(w http.ResponseWriter, r *http.Request) {
 					if f.IsDir() || !strings.HasSuffix(f.Name(), ".mkv") {
 						continue
 					}
-					fKey := date + "/" + f.Name()
+					clipDate := date
+					base := strings.TrimSuffix(f.Name(), ".mkv")
+					if len(base) >= 8 {
+						if t, err := time.ParseInLocation("20060102", base[:8], time.Local); err == nil {
+							clipDate = t.Format("2006-01-02")
+						}
+					}
+					if agg[clipDate] == nil {
+						agg[clipDate] = &dayInfo{Date: clipDate}
+					}
+					fKey := clipDate + "/" + f.Name()
 					if seenFiles[fKey] {
 						continue
 					}
 					seenFiles[fKey] = true
-					agg[date].Count++
+					agg[clipDate].Count++
 					if info, err := f.Info(); err == nil {
-						agg[date].SizeMB += float64(info.Size()) / (1 << 20)
+						agg[clipDate].SizeMB += float64(info.Size()) / (1 << 20)
 					}
 				}
 			}
@@ -549,14 +630,17 @@ func (s *Server) handleRecList(w http.ResponseWriter, r *http.Request) {
 
 // collectRecFiles 收集某设备（可带日期）下的录像文件。
 func (s *Server) collectRecFiles(root, name, date string) []recFileInfo {
-	dir := filepath.Join(root, name)
+	devDir := filepath.Join(root, name)
+	walkTarget := devDir
 	if date != "" {
-		dir = filepath.Join(dir, date)
+		dateDir := filepath.Join(devDir, date)
+		if fi, err := os.Stat(dateDir); err == nil && fi.IsDir() {
+			walkTarget = dateDir
+		}
 	}
-	
 
 	var out []recFileInfo
-	_ = filepath.Walk(dir, func(pth string, info os.FileInfo, err error) error {
+	_ = filepath.Walk(walkTarget, func(pth string, info os.FileInfo, err error) error {
 		if err != nil || info == nil || info.IsDir() {
 			return nil
 		}
@@ -573,6 +657,12 @@ func (s *Server) collectRecFiles(root, name, date string) []recFileInfo {
 		parts := strings.Split(rel, string(filepath.Separator))
 		st := info.ModTime().Format("2006-01-02 15:04:05")
 		base := strings.TrimSuffix(info.Name(), ".mkv")
+		fileDate := ""
+		if len(base) >= 8 {
+			if t, err := time.ParseInLocation("20060102", base[:8], time.Local); err == nil {
+				fileDate = t.Format("2006-01-02")
+			}
+		}
 		if len(base) >= 15 {
 			if t, err := time.ParseInLocation("20060102_150405", base[:15], time.Local); err == nil {
 				st = t.Format("2006-01-02 15:04:05")
@@ -585,8 +675,13 @@ func (s *Server) collectRecFiles(root, name, date string) []recFileInfo {
 			StartTime: st,
 			Dev:       name,
 		}
-		if len(parts) >= 2 {
+		if fileDate != "" {
+			fi.Date = fileDate
+		} else if len(parts) >= 2 {
 			fi.Date = parts[len(parts)-2]
+		}
+		if date != "" && fi.Date != date {
+			return nil
 		}
 		q := "name=" + urlEncode(name) + "&file=" + urlEncode(fi.Name) + "&date=" + urlEncode(fi.Date)
 		fi.URL = "/api/recordings/play?" + q

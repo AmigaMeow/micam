@@ -101,12 +101,21 @@ func isLocalBaseURL(url string) bool {
 		strings.Contains(u, ":5000") || strings.Contains(u, ":8080")
 }
 
+// normalizeProviderURL 规范化 Provider API 地址，自动纠正局域网 Ollama 缺失 /v1 的情况
+func normalizeProviderURL(url string) string {
+	u := strings.TrimRight(strings.TrimSpace(url), "/")
+	if u == "" {
+		return "https://api.deepseek.com/v1"
+	}
+	if isLocalBaseURL(u) && !strings.HasSuffix(u, "/v1") {
+		u = u + "/v1"
+	}
+	return u
+}
+
 // providerFromConfig 按当前配置构造客户端（未配置返回 nil）
 func providerFromConfig(cfg aiConfig) *aiProviderClient {
-	url := strings.TrimRight(strings.TrimSpace(cfg.ProviderURL), "/")
-	if url == "" {
-		url = "https://api.deepseek.com/v1"
-	}
+	url := normalizeProviderURL(cfg.ProviderURL)
 	key := loadProviderKey()
 	if strings.TrimSpace(key) == "" {
 		if isLocalBaseURL(url) {

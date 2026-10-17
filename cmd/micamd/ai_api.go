@@ -240,7 +240,9 @@ func (s *Server) handleAIConfig(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, map[string]any{
 			"config":        cfg,
 			"hasKey":        hasKey,
-			"providerReady": hasKey,
+			"providerReady": hasKey || isLocalBaseURL(cfg.ProviderURL),
+			"providerUrl":   cfg.ProviderURL,
+			"apiBaseUrl":    cfg.ProviderURL,
 			"status":        s.ai.Status(),
 		})
 		return
@@ -277,7 +279,7 @@ func (s *Server) handleAIConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 重启推理进程以应用新配置
-	if neu.Enabled {
+	if neu.Enabled && neu.Mode != "cloud" {
 		if err := s.ai.Start(neu); err != nil {
 			writeJSON(w, 200, map[string]any{
 				"ok":     true,
@@ -431,7 +433,15 @@ func downloadModel(name, dst string) error {
 			"https://ghfast.top/https://github.com/AmigaMeow/micam/releases/download/v0.41.9/yolo11n.onnx",
 			"https://github.com/AmigaMeow/micam/releases/download/v0.41.9/yolo11n.onnx",
 		},
+		"yolo11n": {
+			"https://ghfast.top/https://github.com/AmigaMeow/micam/releases/download/v0.41.9/yolo11n.onnx",
+			"https://github.com/AmigaMeow/micam/releases/download/v0.41.9/yolo11n.onnx",
+		},
 		"yolov11s": {
+			"https://hf-mirror.com/Ultralytics/assets/resolve/main/yolo11s.onnx",
+			"https://github.com/ultralytics/assets/releases/download/v8.3.0/yolo11s.onnx",
+		},
+		"yolo11s": {
 			"https://hf-mirror.com/Ultralytics/assets/resolve/main/yolo11s.onnx",
 			"https://github.com/ultralytics/assets/releases/download/v8.3.0/yolo11s.onnx",
 		},
