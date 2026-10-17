@@ -8303,9 +8303,8 @@ function startLiveMJPEG(did){
   }, 100);
 
   stream.onload = function(){
-    // 若尚未出真实画面却已触发 load，说明 HTTP 流被服务端异常结束（例如对端占线或首帧超时）
-    if(!frameRevealed){
-      scheduleReconnect("正在等待摄像头空闲…");
+    if(stream && stream.naturalWidth > 0 && stream.naturalHeight > 0){
+      revealLiveStream();
     }
   };
 
