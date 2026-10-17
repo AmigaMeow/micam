@@ -1501,6 +1501,7 @@
   box-sizing: border-box !important;
   overflow: hidden !important;
   background: #070a10;
+  color-scheme: dark !important;
 }
 
 /* 顶部一体化紧凑操作栏：44px极简毛玻璃质感 */
@@ -1549,24 +1550,81 @@
   flex: 1;
   min-width: 0;
 }
-.grid-bar__mid .segmented {
-  display: inline-flex;
+.grid-bar__mid {
+  display: flex;
   align-items: center;
-  flex-wrap: nowrap;
-  gap: 2px;
+  justify-content: center;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
-.segmented__btn--text,
-.grid-bar__mid .segmented__btn,
-#gridLayoutSwitch .segmented__btn {
-  width: auto !important;
-  min-width: 38px !important;
-  white-space: nowrap !important;
+.grid-bar__mid::-webkit-scrollbar {
+  display: none;
+}
+
+/* 监控墙专用布局分段器（完全脱离通用的 .segmented，深色微光防溢出防折行） */
+.grid-layout-ctrl {
+  display: inline-flex !important;
+  align-items: center !important;
+  background: rgba(0, 0, 0, 0.45) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-radius: 8px !important;
+  padding: 2px !important;
+  gap: 2px !important;
+  flex-shrink: 0 !important;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+.grid-layout-btn {
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
-  padding: 0 10px !important;
+  gap: 5px !important;
+  height: 26px !important;
+  padding: 0 8px !important;
+  border-radius: 6px !important;
+  border: none !important;
+  background: transparent !important;
+  color: rgba(255, 255, 255, 0.65) !important;
   font-size: 12px !important;
-  height: 28px !important;
+  font-weight: 500 !important;
+  cursor: pointer !important;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+  width: auto !important;
+  min-width: max-content !important;
+  box-sizing: border-box !important;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  user-select: none !important;
+  line-height: 1 !important;
+}
+
+.grid-layout-btn svg {
+  display: inline-block !important;
+  vertical-align: middle !important;
+  flex-shrink: 0 !important;
+  opacity: 0.75 !important;
+  transition: all 0.15s ease !important;
+}
+
+.grid-layout-btn:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: #ffffff !important;
+}
+.grid-layout-btn:hover svg {
+  opacity: 1 !important;
+}
+
+.grid-layout-btn.is-active {
+  background: rgba(255, 255, 255, 0.18) !important;
+  color: #ffffff !important;
+  font-weight: 600 !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35) !important;
+}
+.grid-layout-btn.is-active svg {
+  color: #60a5fa !important;
+  opacity: 1 !important;
 }
 .grid-bar__right {
   display: inline-flex;

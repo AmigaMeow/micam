@@ -14501,6 +14501,32 @@ function toggleGridHeatmap(tile, did, name){
     .catch(function(e){ toast('热力图加载失败：' + e.message, 'err'); });
 }
 
+function gridIcon(type){
+  var s = 'width="13" height="13" viewBox="0 0 16 16" fill="currentColor" class="grid-layout-svg" aria-hidden="true"';
+  if(type === 'auto'){
+    return '<svg ' + s + '><rect x="1.5" y="1.5" width="5.5" height="5.5" rx="1.2" opacity="0.95"/><rect x="9" y="1.5" width="5.5" height="5.5" rx="1.2" opacity="0.95"/><rect x="1.5" y="9" width="5.5" height="5.5" rx="1.2" opacity="0.95"/><rect x="9" y="9" width="5.5" height="5.5" rx="1.2" opacity="0.95"/></svg>';
+  }
+  if(type === 1){
+    return '<svg ' + s + ' fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="2" width="12" height="12" rx="1.5"/></svg>';
+  }
+  if(type === 2){
+    return '<svg ' + s + ' fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1.5" y="2" width="13" height="12" rx="1.5"/><line x1="8" y1="2" x2="8" y2="14"/></svg>';
+  }
+  if(type === 4){
+    return '<svg ' + s + ' fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1.5" y="1.5" width="13" height="13" rx="1.5"/><line x1="8" y1="1.5" x2="8" y2="14.5"/><line x1="1.5" y1="8" x2="14.5" y2="8"/></svg>';
+  }
+  if(type === 6){
+    return '<svg ' + s + ' fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.5" y="1.5" width="13" height="13" rx="1.5"/><line x1="6" y1="1.5" x2="6" y2="14.5"/><line x1="10.5" y1="1.5" x2="10.5" y2="14.5"/><line x1="1.5" y1="8" x2="14.5" y2="8"/></svg>';
+  }
+  if(type === 9){
+    return '<svg ' + s + ' fill="none" stroke="currentColor" stroke-width="1.2"><rect x="1.5" y="1.5" width="13" height="13" rx="1.5"/><line x1="5.8" y1="1.5" x2="5.8" y2="14.5"/><line x1="10.2" y1="1.5" x2="10.2" y2="14.5"/><line x1="1.5" y1="5.8" x2="14.5" y2="5.8"/><line x1="1.5" y1="10.2" x2="14.5" y2="10.2"/></svg>';
+  }
+  if(type === 16){
+    return '<svg ' + s + ' fill="none" stroke="currentColor" stroke-width="1"><rect x="1.5" y="1.5" width="13" height="13" rx="1.5"/><line x1="4.8" y1="1.5" x2="4.8" y2="14.5"/><line x1="8" y1="1.5" x2="8" y2="14.5"/><line x1="11.2" y1="1.5" x2="11.2" y2="14.5"/><line x1="1.5" y1="4.8" x2="14.5" y2="4.8"/><line x1="1.5" y1="8" x2="14.5" y2="8"/><line x1="1.5" y1="11.2" x2="14.5" y2="11.2"/></svg>';
+  }
+  return '';
+}
+
 function renderGrid(c){
   c.innerHTML = '<div class="page__inner page__inner--grid">' + loading('正在接入摄像头画面…') + '</div>';
 
@@ -14640,10 +14666,19 @@ function renderGrid(c){
       +   '</div>'
 
       +   '<div class="grid-bar__mid">'
-      +     '<div class="segmented" id="gridLayoutSwitch">'
-      +       [{k:'auto', t:'自适应'}, {k:1, t:'1路'}, {k:2, t:'2路'}, {k:4, t:'4路'}, {k:6, t:'6路'}, {k:9, t:'9路'}, {k:16, t:'16路'}].map(function(item){
+      +     '<div class="grid-layout-ctrl" id="gridLayoutSwitch">'
+      +       [{k:'auto', t:'自适应', tip:'智能自适应 (按机位自动最佳排版)'},
+               {k:1, t:'1路', tip:'单画面 (大屏聚焦)'},
+               {k:2, t:'2路', tip:'双画面 (左右并排)'},
+               {k:4, t:'4路', tip:'四分屏 (2×2网格)'},
+               {k:6, t:'6路', tip:'六分屏 (3×2网格)'},
+               {k:9, t:'9路', tip:'九分屏 (3×3网格)'},
+               {k:16, t:'16路', tip:'十六分屏 (4×4网格)'}].map(function(item){
                 var active = (gridLayout === item.k || (gridLayout === 'auto' && item.k === 'auto'));
-                return '<button class="segmented__btn segmented__btn--text' + (active ? ' is-active' : '') + '" style="width:auto;min-width:38px;padding:0 10px;white-space:nowrap;" data-gl="' + item.k + '">' + item.t + '</button>';
+                return '<button class="grid-layout-btn' + (active ? ' is-active' : '') + '" data-gl="' + item.k + '" title="' + item.tip + '">'
+                  + gridIcon(item.k)
+                  + '<span>' + item.t + '</span>'
+                  + '</button>';
               }).join('')
       +     '</div>'
       +   '</div>'

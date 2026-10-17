@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <title>MiCam - 智能监控中心</title>
-<meta name="micam-build" content="2026-10-17 02:40:20">
+<meta name="micam-build" content="2026-10-17 02:51:19">
 <!-- 内联 SVG favicon（data URI）：
      浏览器默认会请求 /favicon.ico 并得到 404（控制台报错）。
      这里用 data URI 消除该请求 —— 同时保持「全内联、不联网」的约束。 -->
@@ -3257,6 +3257,7 @@ input[type="checkbox"]:not(.switch input) { width: 16px; height: 16px; flex: 0 0
   box-sizing: border-box !important;
   overflow: hidden !important;
   background: #070a10;
+  color-scheme: dark !important;
 }
 
 /* 顶部一体化紧凑操作栏：44px极简毛玻璃质感 */
@@ -3305,24 +3306,81 @@ input[type="checkbox"]:not(.switch input) { width: 16px; height: 16px; flex: 0 0
   flex: 1;
   min-width: 0;
 }
-.grid-bar__mid .segmented {
-  display: inline-flex;
+.grid-bar__mid {
+  display: flex;
   align-items: center;
-  flex-wrap: nowrap;
-  gap: 2px;
+  justify-content: center;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
 }
-.segmented__btn--text,
-.grid-bar__mid .segmented__btn,
-#gridLayoutSwitch .segmented__btn {
-  width: auto !important;
-  min-width: 38px !important;
-  white-space: nowrap !important;
+.grid-bar__mid::-webkit-scrollbar {
+  display: none;
+}
+
+/* 监控墙专用布局分段器（完全脱离通用的 .segmented，深色微光防溢出防折行） */
+.grid-layout-ctrl {
+  display: inline-flex !important;
+  align-items: center !important;
+  background: rgba(0, 0, 0, 0.45) !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  border-radius: 8px !important;
+  padding: 2px !important;
+  gap: 2px !important;
+  flex-shrink: 0 !important;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4);
+}
+
+.grid-layout-btn {
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
-  padding: 0 10px !important;
+  gap: 5px !important;
+  height: 26px !important;
+  padding: 0 8px !important;
+  border-radius: 6px !important;
+  border: none !important;
+  background: transparent !important;
+  color: rgba(255, 255, 255, 0.65) !important;
   font-size: 12px !important;
-  height: 28px !important;
+  font-weight: 500 !important;
+  cursor: pointer !important;
+  white-space: nowrap !important;
+  flex-shrink: 0 !important;
+  width: auto !important;
+  min-width: max-content !important;
+  box-sizing: border-box !important;
+  transition: all 0.15s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  user-select: none !important;
+  line-height: 1 !important;
+}
+
+.grid-layout-btn svg {
+  display: inline-block !important;
+  vertical-align: middle !important;
+  flex-shrink: 0 !important;
+  opacity: 0.75 !important;
+  transition: all 0.15s ease !important;
+}
+
+.grid-layout-btn:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: #ffffff !important;
+}
+.grid-layout-btn:hover svg {
+  opacity: 1 !important;
+}
+
+.grid-layout-btn.is-active {
+  background: rgba(255, 255, 255, 0.18) !important;
+  color: #ffffff !important;
+  font-weight: 600 !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35) !important;
+}
+.grid-layout-btn.is-active svg {
+  color: #60a5fa !important;
+  opacity: 1 !important;
 }
 .grid-bar__right {
   display: inline-flex;
@@ -24984,6 +25042,32 @@ function toggleGridHeatmap(tile, did, name){
     .catch(function(e){ toast('热力图加载失败：' + e.message, 'err'); });
 }
 
+function gridIcon(type){
+  var s = 'width="13" height="13" viewBox="0 0 16 16" fill="currentColor" class="grid-layout-svg" aria-hidden="true"';
+  if(type === 'auto'){
+    return '<svg ' + s + '><rect x="1.5" y="1.5" width="5.5" height="5.5" rx="1.2" opacity="0.95"/><rect x="9" y="1.5" width="5.5" height="5.5" rx="1.2" opacity="0.95"/><rect x="1.5" y="9" width="5.5" height="5.5" rx="1.2" opacity="0.95"/><rect x="9" y="9" width="5.5" height="5.5" rx="1.2" opacity="0.95"/></svg>';
+  }
+  if(type === 1){
+    return '<svg ' + s + ' fill="none" stroke="currentColor" stroke-width="1.8"><rect x="2" y="2" width="12" height="12" rx="1.5"/></svg>';
+  }
+  if(type === 2){
+    return '<svg ' + s + ' fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1.5" y="2" width="13" height="12" rx="1.5"/><line x1="8" y1="2" x2="8" y2="14"/></svg>';
+  }
+  if(type === 4){
+    return '<svg ' + s + ' fill="none" stroke="currentColor" stroke-width="1.5"><rect x="1.5" y="1.5" width="13" height="13" rx="1.5"/><line x1="8" y1="1.5" x2="8" y2="14.5"/><line x1="1.5" y1="8" x2="14.5" y2="8"/></svg>';
+  }
+  if(type === 6){
+    return '<svg ' + s + ' fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.5" y="1.5" width="13" height="13" rx="1.5"/><line x1="6" y1="1.5" x2="6" y2="14.5"/><line x1="10.5" y1="1.5" x2="10.5" y2="14.5"/><line x1="1.5" y1="8" x2="14.5" y2="8"/></svg>';
+  }
+  if(type === 9){
+    return '<svg ' + s + ' fill="none" stroke="currentColor" stroke-width="1.2"><rect x="1.5" y="1.5" width="13" height="13" rx="1.5"/><line x1="5.8" y1="1.5" x2="5.8" y2="14.5"/><line x1="10.2" y1="1.5" x2="10.2" y2="14.5"/><line x1="1.5" y1="5.8" x2="14.5" y2="5.8"/><line x1="1.5" y1="10.2" x2="14.5" y2="10.2"/></svg>';
+  }
+  if(type === 16){
+    return '<svg ' + s + ' fill="none" stroke="currentColor" stroke-width="1"><rect x="1.5" y="1.5" width="13" height="13" rx="1.5"/><line x1="4.8" y1="1.5" x2="4.8" y2="14.5"/><line x1="8" y1="1.5" x2="8" y2="14.5"/><line x1="11.2" y1="1.5" x2="11.2" y2="14.5"/><line x1="1.5" y1="4.8" x2="14.5" y2="4.8"/><line x1="1.5" y1="8" x2="14.5" y2="8"/><line x1="1.5" y1="11.2" x2="14.5" y2="11.2"/></svg>';
+  }
+  return '';
+}
+
 function renderGrid(c){
   c.innerHTML = '<div class="page__inner page__inner--grid">' + loading('正在接入摄像头画面…') + '</div>';
 
@@ -25123,10 +25207,19 @@ function renderGrid(c){
       +   '</div>'
 
       +   '<div class="grid-bar__mid">'
-      +     '<div class="segmented" id="gridLayoutSwitch">'
-      +       [{k:'auto', t:'自适应'}, {k:1, t:'1路'}, {k:2, t:'2路'}, {k:4, t:'4路'}, {k:6, t:'6路'}, {k:9, t:'9路'}, {k:16, t:'16路'}].map(function(item){
+      +     '<div class="grid-layout-ctrl" id="gridLayoutSwitch">'
+      +       [{k:'auto', t:'自适应', tip:'智能自适应 (按机位自动最佳排版)'},
+               {k:1, t:'1路', tip:'单画面 (大屏聚焦)'},
+               {k:2, t:'2路', tip:'双画面 (左右并排)'},
+               {k:4, t:'4路', tip:'四分屏 (2×2网格)'},
+               {k:6, t:'6路', tip:'六分屏 (3×2网格)'},
+               {k:9, t:'9路', tip:'九分屏 (3×3网格)'},
+               {k:16, t:'16路', tip:'十六分屏 (4×4网格)'}].map(function(item){
                 var active = (gridLayout === item.k || (gridLayout === 'auto' && item.k === 'auto'));
-                return '<button class="segmented__btn segmented__btn--text' + (active ? ' is-active' : '') + '" style="width:auto;min-width:38px;padding:0 10px;white-space:nowrap;" data-gl="' + item.k + '">' + item.t + '</button>';
+                return '<button class="grid-layout-btn' + (active ? ' is-active' : '') + '" data-gl="' + item.k + '" title="' + item.tip + '">'
+                  + gridIcon(item.k)
+                  + '<span>' + item.t + '</span>'
+                  + '</button>';
               }).join('')
       +     '</div>'
       +   '</div>'
