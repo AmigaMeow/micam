@@ -294,6 +294,9 @@ func (s *Server) handleCredStatus(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	silenceLeft := s.throttleSilenceLeft()
+	if _, ok := miotBound(); ok {
+		silenceLeft = 0 // 官方通道不受传统凭据限流影响
+	}
 	summary := map[string]any{
 		"total":       len(out),
 		"ready":       len(out) - limited,

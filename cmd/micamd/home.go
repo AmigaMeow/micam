@@ -755,6 +755,9 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 	}
 
 	silenceLeft := s.throttleSilenceLeft()
+	if _, ok := miotBound(); ok {
+		silenceLeft = 0 // 官方通道不受传统凭据限流影响
+	}
 	silenceMin := int(silenceLeft.Minutes())
 
 	writeJSON(w, 200, map[string]any{

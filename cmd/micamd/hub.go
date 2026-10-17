@@ -882,8 +882,8 @@ func dropCamConn(did string) bool {
 //
 //	上限 24 小时。
 const (
-	throttleSilenceBase = 12 * time.Hour
-	throttleSilenceMax  = 24 * time.Hour
+	throttleSilenceBase = 15 * time.Minute
+	throttleSilenceMax  = 2 * time.Hour
 )
 
 var (
@@ -1017,7 +1017,7 @@ func (s *Server) throttleSilenceLeft() time.Duration {
 func (s *Server) ResetThrottleSilence() {
 	throttleMu.Lock()
 	throttleSilenceT = time.Time{}
-	// 不清 Count —— 保留退避级别（用户手动试失败多次说明确实被限）
-	saveThrottleState(time.Time{}, throttleSilenceN)
+	throttleSilenceN = 0
+	saveThrottleState(time.Time{}, 0)
 	throttleMu.Unlock()
 }
