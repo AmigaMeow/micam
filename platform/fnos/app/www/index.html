@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <title>MiCam - 智能监控中心</title>
-<meta name="micam-build" content="2026-10-17 10:48:03">
+<meta name="micam-build" content="2026-10-17 11:07:54">
 <!-- 内联 SVG favicon（data URI）：
      浏览器默认会请求 /favicon.ico 并得到 404（控制台报错）。
      这里用 data URI 消除该请求 —— 同时保持「全内联、不联网」的约束。 -->
@@ -19049,23 +19049,12 @@ function checkMiotBound(cb){
 
 // liveStreamURL 按当前通道返回实时流地址。
 function liveStreamURL(did, fps, w, lens){
-  if(miotBound){
-    // ⚠️ 画质档位（官方库：LOW=1 / HIGH=3）。
-    //
-    // 这是【最关键】的参数 —— 不传的话库默认 LOW，
-    // 即使 w=0 也只能拿到 640x360 的低码率流（用户实测"2K 很模糊"）。
-    //   w=0    -> HIGH，得到 2560x1440 原画
-    //   w=1280 -> HIGH，ffmpeg 缩到 1280x720
-    //   w=640  -> LOW，省带宽（设备端就降码率）
-    var q = (w === 640) ? 1 : 3;
-    return apiUrl('/api/miot/live?did=' + encodeURIComponent(did)
-      + '&fps=' + (fps || 12) + '&w=' + (w === undefined ? 1280 : w)
-      + '&q=' + q
-      + '&channel=' + ((lens || 1) >= 2 ? 2 : 1));
-  }
-  return apiUrl('/api/live/mjpeg?did=' + encodeURIComponent(did)
-    + '&fps=' + (fps || 12) + '&w=' + (w || 640)
-    + '&t=' + Date.now() + (typeof lensParam === 'function' ? lensParam() : ''));
+  // 官方直连通道为绝对首选（彻底免疫小米云端 miss_get_vendor 限流，支持 HEVC 与双摄切换）
+  var q = (w === 640) ? 1 : 3;
+  return apiUrl('/api/miot/live?did=' + encodeURIComponent(did)
+    + '&fps=' + (fps || 15) + '&w=' + (w === undefined ? 1280 : w)
+    + '&q=' + q
+    + '&channel=' + ((lens || 1) >= 2 ? 2 : 1));
 }
 
 // MJPEG 播放（兼容模式）
@@ -19106,7 +19095,7 @@ function startLiveMJPEG(did){
   box.innerHTML = ""
     + "<div class=\"player__stage\" style=\"position:relative;width:100%;height:100%;overflow:hidden;background:#000;\">"
     +   "<img id=\"livePoster\" class=\"live-poster\" src=\"" + posterUrl + "\" alt=\"\" style=\"position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;transition:opacity .35s ease-out;z-index:1;\">"
-    +   "<img id=\"liveStreamImg\" class=\"live-stream-img\" src=\"" + streamUrl + "\" alt=\"\" style=\"position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;opacity:1;z-index:2;\">"
+    +   "<img id=\"liveStreamImg\" class=\"live-stream-img\" src=\"" + streamUrl + "\" alt=\"\" style=\"position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;opacity:0;transition:opacity .25s ease-in;z-index:2;\">"
     +   "<div id=\"liveConnecting\" class=\"live-connecting-pill\" style=\"position:absolute;top:16px;right:16px;z-index:5;display:inline-flex;align-items:center;gap:8px;padding:6px 14px;background:rgba(15,23,42,.85);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.15);border-radius:20px;color:#fff;font-size:12px;box-shadow:0 4px 16px rgba(0,0,0,.4);transition:all .3s ease;pointer-events:none;\">"
     +     "<span class=\"spinner-sm\" style=\"width:12px;height:12px;border:2px solid rgba(255,255,255,.25);border-top-color:#1890ff;border-radius:50%;display:inline-block;animation:spin 1s linear infinite;flex-shrink:0;\"></span>"
     +     "<span id=\"liveConnectingText\">正在建立实时连线…</span>"
@@ -19178,13 +19167,18 @@ function startLiveMJPEG(did){
     }, delay);
   }
 
-  // 启动 800ms 后或首帧事件触发即自动淡出提示，显示流画面
+  // 真实帧检测：自然宽高或首帧加载触发
   var streamStart = Date.now();
   var checkTimer = setInterval(function(){
-    if(Date.now() - streamStart >= 800 || (stream && stream.naturalWidth > 0)){
+    if(stream && stream.naturalWidth > 0){
       revealLiveStream();
+    } else {
+      var elapsed = Date.now() - streamStart;
+      if(elapsed > 7000 && pillText && pillText.textContent === "正在建立实时连线…"){
+        pillText.textContent = "正在唤醒码流，请稍候…";
+      }
     }
-  }, 200);
+  }, 100);
 
   stream.onload = function(){
     revealLiveStream();
@@ -19194,13 +19188,13 @@ function startLiveMJPEG(did){
     scheduleReconnect("连接中断，重连中…");
   };
 
-  // 10秒连接保护看门狗：如果 10 秒内仍未出帧，主动发起一次重连
+  // 25秒连接保护看门狗：避免在摄像头正常建连期间频繁误重连打断码流
   if(liveTimer) clearTimeout(liveTimer);
   liveTimer = setTimeout(function(){
     if(!frameRevealed){
       scheduleReconnect("首帧等待超时，自动重连…");
     }
-  }, 10000);
+  }, 25000);
 }
 
 function stopLive(){
