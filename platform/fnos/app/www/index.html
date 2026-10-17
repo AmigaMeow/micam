@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <title>MiCam - 智能监控中心</title>
-<meta name="micam-build" content="2026-10-17 11:10:17">
+<meta name="micam-build" content="2026-10-17 11:23:37">
 <!-- 内联 SVG favicon（data URI）：
      浏览器默认会请求 /favicon.ico 并得到 404（控制台报错）。
      这里用 data URI 消除该请求 —— 同时保持「全内联、不联网」的约束。 -->
@@ -15871,11 +15871,17 @@ function bindAIChatEvents(){
 
   if(input){
     input.onkeydown = function(e){
-      if(e.key === 'Enter') handleAIChatSend();
+      if(e.key === 'Enter') {
+        e.preventDefault();
+        handleAIChatSend();
+      }
     };
     input.focus();
   }
-  if(send) send.onclick = handleAIChatSend;
+  if(send) send.onclick = function(e){
+    if(e && e.preventDefault) e.preventDefault();
+    handleAIChatSend();
+  };
   if(clear) clear.onclick = function(){
     aiChatHistory = [];
     try { sessionStorage.removeItem('micam.ai.chatHistory'); } catch(e){}
@@ -16002,10 +16008,13 @@ function loadAIChatSession(){
 
 function handleAIChatSend(customQ){
   var input = document.getElementById('aiChatInput');
-  var q = (customQ || (input ? input.value : '')).trim();
+  var sendBtn = document.getElementById('aiChatSend');
+  var queryStr = (typeof customQ === 'string' && customQ) ? customQ : (input ? input.value : '');
+  var q = String(queryStr || '').trim();
   if(!q) return;
 
   if(input) input.value = '';
+  if(sendBtn) sendBtn.disabled = true;
 
   // 添加用户消息和 AI 加载消息
   aiChatHistory.push({ role: 'user', content: q, time: new Date().toTimeString().slice(0,5) });

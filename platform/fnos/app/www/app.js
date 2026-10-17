@@ -4979,11 +4979,17 @@ function bindAIChatEvents(){
 
   if(input){
     input.onkeydown = function(e){
-      if(e.key === 'Enter') handleAIChatSend();
+      if(e.key === 'Enter') {
+        e.preventDefault();
+        handleAIChatSend();
+      }
     };
     input.focus();
   }
-  if(send) send.onclick = handleAIChatSend;
+  if(send) send.onclick = function(e){
+    if(e && e.preventDefault) e.preventDefault();
+    handleAIChatSend();
+  };
   if(clear) clear.onclick = function(){
     aiChatHistory = [];
     try { sessionStorage.removeItem('micam.ai.chatHistory'); } catch(e){}
@@ -5110,10 +5116,13 @@ function loadAIChatSession(){
 
 function handleAIChatSend(customQ){
   var input = document.getElementById('aiChatInput');
-  var q = (customQ || (input ? input.value : '')).trim();
+  var sendBtn = document.getElementById('aiChatSend');
+  var queryStr = (typeof customQ === 'string' && customQ) ? customQ : (input ? input.value : '');
+  var q = String(queryStr || '').trim();
   if(!q) return;
 
   if(input) input.value = '';
+  if(sendBtn) sendBtn.disabled = true;
 
   // 添加用户消息和 AI 加载消息
   aiChatHistory.push({ role: 'user', content: q, time: new Date().toTimeString().slice(0,5) });
