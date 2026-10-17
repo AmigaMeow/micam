@@ -8168,7 +8168,9 @@ function bindReplay(c){
     calBox.onclick = function(e){
       var b = e.target.closest('[data-date]');
       if(!b) return;
-      recState.date = b.dataset.date;
+      var clickedDate = b.dataset.date;
+      if(!clickedDate) return;
+      recState.date = clickedDate;
       paintCalendar(c);
       paintFiles(c);
       paintTimeline24(c);
@@ -8182,6 +8184,20 @@ function bindReplay(c){
         paintTimeline(c);
         playRecFile(df[0], 0);
         updateTimeline24Needle();
+      } else {
+        var anyDf = (recState.files || []).filter(function(x){ return x.date === recState.date; });
+        if(anyDf.length){
+          recState.dev = anyDf[0].dev || '';
+          var devSel = document.getElementById('recDev');
+          if(devSel) devSel.value = recState.dev;
+          paintFiles(c);
+          paintTimeline24(c);
+          recState.file = anyDf[0].name;
+          highlightActiveFile(recState.file, anyDf[0].dev);
+          paintTimeline(c);
+          playRecFile(anyDf[0], 0);
+          updateTimeline24Needle();
+        }
       }
     };
   }
@@ -8493,6 +8509,10 @@ function playRecFile(target, seekSec){
     clearTimeout(recCachePollTimer);
     recCachePollTimer = null;
   }
+  if(window._recWatchdogTimer){
+    clearTimeout(window._recWatchdogTimer);
+    window._recWatchdogTimer = null;
+  }
 
   recState.file = f.name;
   if(f.dev) recState.activeDev = f.dev;
@@ -8522,30 +8542,28 @@ function playRecFile(target, seekSec){
         };
         v.addEventListener('seeked', onSeekDone);
         window._currentStreamOffset = 0;
-        try { v.currentTime = Math.min(seekSec, v.duration - 0.2); } catch(e){}
+        try { v.currentTime = Math.min(seekSec, Math.max(0, (v.duration || f.duration) - 0.2)); } catch(e){}
         updateTimeline24Needle();
         setTimeout(function(){ setRecLoading(false); }, 600);
         v.play().catch(function(){});
         return;
       }
-      // 非完整静态缓存（实时分片流）：不能就地截断返回，必须继续往下向服务端发起带 &t= 偏移的新连接！
     } else {
-      // 关键自愈：如果用户点击当前正在选中的片段，且当前画面正在正常渲染播放，才直接返回；
-      // 若处于黑屏 (videoWidth===0)、未就绪 (readyState < 2) 或异常卡死，跳出 isSame 重新触发完整加载起播！
-      if(v.videoWidth > 0 && v.readyState >= 3 && !v.paused && v.currentTime > 0){
+      if(v.readyState >= 2){
+        v.play().catch(function(){});
+        setRecLoading(false);
+        updateRecPlayBtn();
         return;
       }
     }
   }
 
-  // 关键修复 1：立即暂停旧视频，彻底终结旧视频进度继续污染时间轴
   v.pause();
   window._currentRecKey = targetKey;
 
   setRecLoading(true, '正在载入画面…');
   updateTimeline24Needle();
 
-  // 构建播放 URL：若需跳转，向后端传递 t= 参数支持服务端毫秒级关键帧寻址
   var playUrl = f.url;
   if(doSeek && seekSec > 0){
     playUrl += '&t=' + encodeURIComponent(seekSec.toFixed(1));
@@ -8553,14 +8571,14 @@ function playRecFile(target, seekSec){
   var targetSrc = apiUrl(playUrl);
 
   function startDirectPlay(){
-    if(recCachePollTimer){
-      clearTimeout(recCachePollTimer);
-      recCachePollTimer = null;
-    }
     var readyHandled = false;
     function onPlayReady(){
       if(thisLoadSeq !== recLoadSeq || readyHandled) return;
       readyHandled = true;
+      if(window._recWatchdogTimer){
+        clearTimeout(window._recWatchdogTimer);
+        window._recWatchdogTimer = null;
+      }
       setRecLoading(false);
       updateRecPlayBtn();
       v.removeEventListener('canplay', onPlayReady);
@@ -8576,33 +8594,34 @@ function playRecFile(target, seekSec){
     v.onerror = function(){
       if(thisLoadSeq !== recLoadSeq) return;
       var err = v.error;
-      // 关键拦截：用户主动跳转、切换片段或浏览器中止请求 (MEDIA_ERR_ABORTED = 1 / code 20)，绝不重试也不遮罩！
       if(!v.src || !err || err.code === 1 || err.code === 20 || (err.message && err.message.indexOf('abort') >= 0)){
         return;
       }
       console.warn('[recordings] 播放遇到微小抖动 (code=' + err.code + ')，正在自愈连接…', err);
       playRetries++;
 
-      if(playRetries <= 1){
+      if(playRetries <= 2){
         setRecLoading(true, '正在缓冲画面…');
         recCachePollTimer = setTimeout(function(){
           if(thisLoadSeq === recLoadSeq){
+            var retryUrl = targetSrc;
+            if(err.code === 4 && retryUrl.indexOf('nocache=1') < 0){
+              retryUrl += (retryUrl.indexOf('?') >= 0 ? '&' : '?') + 'nocache=1';
+            }
+            v.src = retryUrl;
             v.load();
             v.play().catch(function(){});
           }
-        }, 1000);
+        }, 800);
       } else {
-        // 多次自愈未果：平滑移除遮罩，保留播放界面，绝不抛出阻塞性报错或卡死转圈
         setRecLoading(false);
       }
     };
 
-    // 默认静音以确保浏览器自动起播政策放行
     v.muted = true;
     var bmM = document.getElementById('btnMute');
     if(bmM) bmM.classList.add('is-active');
 
-    // 关键修复 2：立即切换播放源到目标片段（转换为完整绝对 URL 进行精确比较，防止相对路径与完整路径因字符比较不一致造成误重置连接）！
     var targetAbsUrl = '';
     try { targetAbsUrl = new URL(targetSrc, location.href).href; } catch(e){ targetAbsUrl = targetSrc; }
     if(v.src !== targetAbsUrl){
@@ -8613,15 +8632,12 @@ function playRecFile(target, seekSec){
       var seekDone = false;
       function applySeek(){
         if(seekDone) return;
-        // 关键保护：仅在就绪元数据确实属于当前目标片段时应用
         if(v.src && v.src.indexOf(encodeURIComponent(f.name)) < 0) return;
         try {
-          // 仅在视频具备有限总时长（即本地静态 MP4 缓存）时应用前端 currentTime 寻址。
-          // 静态缓存 MP4 具有完整 duration（与元数据 f.duration 一致）。
           if(isStaticMP4Cache(v, f.duration)){
             seekDone = true;
             window._currentStreamOffset = 0;
-            try { v.currentTime = Math.min(seekSec, v.duration - 0.2); } catch(e){}
+            try { v.currentTime = Math.min(seekSec, Math.max(0, (v.duration || f.duration) - 0.2)); } catch(e){}
             var onSeeked = function(){
               v.removeEventListener('seeked', onSeeked);
               v.play().catch(function(){});
@@ -8631,7 +8647,6 @@ function playRecFile(target, seekSec){
             v.addEventListener('seeked', onSeeked);
             v.play().catch(function(){});
           } else {
-            // 实时分片流：服务端已带 -ss 偏移，首帧即目标时间
             seekDone = true;
             v.play().catch(function(){});
           }
@@ -8659,7 +8674,7 @@ function playRecFile(target, seekSec){
     });
 
     var onRealFrame = function(){
-      if(thisLoadSeq === recLoadSeq){
+      if(thisLoadSeq === recLoadSeq && (v.videoWidth > 0 || v.currentTime > 0)){
         setRecLoading(false);
         updateRecPlayBtn();
       }
@@ -8667,7 +8682,6 @@ function playRecFile(target, seekSec){
     v.addEventListener('playing', onRealFrame);
     v.addEventListener('timeupdate', onRealFrame);
 
-    // 强力看门狗：只有在视频确实进入就绪状态且解码出首帧画面尺寸 (videoWidth > 0) 后才移除遮罩层，杜绝黑屏无提示
     var playWatchdog = setInterval(function(){
       if(thisLoadSeq !== recLoadSeq){
         clearInterval(playWatchdog);
@@ -8679,28 +8693,28 @@ function playRecFile(target, seekSec){
         clearInterval(playWatchdog);
       }
     }, 200);
-    // 超时保底自愈：4.5秒后若依然黑屏无画面，主动触发 load 和起播重试
-    setTimeout(function(){
+
+    window._recWatchdogTimer = setTimeout(function(){
       if(thisLoadSeq === recLoadSeq){
-        if(v && (v.videoWidth === 0 || v.readyState < 2)){
-          console.warn('[recordings] 检测到首帧渲染超时，正在自动激活起播自愈…');
+        if(v && v.networkState !== 2 && (v.videoWidth === 0 || v.readyState < 2)){
+          console.warn('[recordings] 检测到首帧渲染超时且未在下载，正在激活起播自愈…');
           v.load();
           v.play().catch(function(){});
         }
-        setRecLoading(false);
+        if(v && v.videoWidth > 0 && v.readyState >= 2){
+          setRecLoading(false);
+        }
         clearInterval(playWatchdog);
       }
-    }, 4500);
+    }, 6000);
   }
 
-  // 关键修复 3：直接起播！
   startDirectPlay();
 
   var statusUrl = '/api/recordings/cache-status?name=' + encodeURIComponent(devName)
     + '&file=' + encodeURIComponent(f.name)
     + '&date=' + encodeURIComponent(dateStr);
 
-  // 关键增强：主动轮询 cache-status 并实现无缝静默升格 (Seamless Promotion to Static MP4)
   var pollAttempts = 0;
   function pollCachePromotion(){
     if(thisLoadSeq !== recLoadSeq) return;
@@ -8708,41 +8722,19 @@ function playRecFile(target, seekSec){
     api(statusUrl).then(function(res){
       if(thisLoadSeq !== recLoadSeq) return;
       if(res && res.cached){
-        var curT = v.currentTime || 0;
-        var wasPaused = v.paused;
-        if(v.videoWidth === 0 || v.readyState < 3 || !isStaticMP4Cache(v, f.duration)){
-          console.log('[recordings] 静态高清 MP4 缓存已就绪，正在无缝升级播放链路…', f.name);
-          var onPromo = function(){
-            v.removeEventListener('loadedmetadata', onPromo);
-            v.removeEventListener('canplay', onPromo);
-            try {
-              if(curT > 0.3 && isFinite(v.duration) && curT < v.duration) v.currentTime = curT;
-            } catch(e){}
-            if(!wasPaused) v.play().catch(function(){});
-            setRecLoading(false);
-            updateRecPlayBtn();
-          };
-          v.addEventListener('loadedmetadata', onPromo);
-          v.addEventListener('canplay', onPromo);
-          v.src = targetSrc;
-          v.load();
-          v.play().catch(function(){});
-        }
         return;
       }
-      if(pollAttempts < 25){
-        recCachePollTimer = setTimeout(pollCachePromotion, 1200);
+      if(pollAttempts < 20){
+        recCachePollTimer = setTimeout(pollCachePromotion, 1500);
       }
     }).catch(function(){
-      if(thisLoadSeq === recLoadSeq && pollAttempts < 12){
-        recCachePollTimer = setTimeout(pollCachePromotion, 1500);
+      if(thisLoadSeq === recLoadSeq && pollAttempts < 8){
+        recCachePollTimer = setTimeout(pollCachePromotion, 2000);
       }
     });
   }
   pollCachePromotion();
 
-  // 预测式智能预热（Smart Read-Ahead）：提前预热下一个片段
-  // 当用户在播放片段 N 时，自动触发片段 N+1 的转码缓存，保证连续播放/切换时 100% 命中 SSD 静态缓存（70ms 瞬开）
   try {
     var curList = (recState.files || []).filter(function(x){
       return (!recState.dev || x.dev === recState.dev || (x.device && x.device === recState.dev)) &&
