@@ -52,17 +52,18 @@ jobs:
 
       # ---- 以下只在打 tag 时执行 ----
 
-      - name: 编译飞牛版本
+      - name: 组装与构建飞牛安装包（amd64 + arm64 双架构）
         if: startsWith(github.ref, 'refs/tags/v')
         run: |
-          CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build \
-            -trimpath -ldflags="-s -w" \
-            -o platform/fnos/app/server/micamd ./cmd/micamd
+          bash build/build-fnos.sh amd64
+          bash build/build-fnos.sh arm64
+          ls -lh dist/*.fpk
 
       - name: 发布 Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v3
         with:
+          files: dist/*.fpk
           generate_release_notes: true
           fail_on_unmatched_files: false
         env:

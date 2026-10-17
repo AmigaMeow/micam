@@ -262,7 +262,7 @@ func (s *Server) handleCleanupPreview(w http.ResponseWriter, r *http.Request) {
 					mb := float64(info.Size()) / (1 << 20)
 
 					if cleanAll || info.ModTime().Before(deadline) {
-						if protectAI && aiFiles[fe.Name()] {
+						if protectAI && (aiFiles[fe.Name()] || isFileProtected(filepath.Join(dateDir, fe.Name()), s)) {
 							protectedAICount++
 							protectedAIMB += mb
 							continue
@@ -439,13 +439,68 @@ func (s *Server) checkStorageOnce() {
 	}
 }
 
+// isFileProtected 判断录像文件是否受分级归档保护（L1 级用户收藏锁定 / L2 级 AI 关键事件片段保护）
 func isFileProtected(path string, s *Server) bool {
-	if s == nil || s.marks == nil {
+	if s == nil {
 		return false
 	}
 	base := filepath.Base(path)
-	m := s.marks.get(base)
-	return m.Bookmark || m.Watch
+
+	// 1. 直接以文件名命名的标记（兼容直接对文件标记的场景）
+	if s.marks != nil {
+		m := s.marks.get(base)
+		if m.Bookmark || m.Watch {
+			return true
+		}
+	}
+
+	// 2. 检查录像分片是否对应高价值事件或被用户标记收藏/关注的事件
+	if s.eventStore != nil {
+		cleanBase := strings.TrimSuffix(strings.TrimSuffix(base, ".mkv"), ".mp4")
+		var fileTime time.Time
+		if len(cleanBase) >= 15 {
+			if t, err := time.ParseInLocation("20060102_150405", cleanBase[:15], time.Local); err == nil {
+				fileTime = t
+			}
+		}
+
+		// 查询最近 60 天内的重点事件（L1 收藏/关注，L2 人员/车辆/包裹）
+		evs := s.eventStore.Query(event.Query{Days: 60, Limit: 1000})
+		for _, e := range evs {
+			// A. 事件记录中明确关联了该录像切片文件
+			if e.RecFile == base {
+				if s.marks != nil {
+					m := s.marks.get(e.ID)
+					if m.Bookmark || m.Watch {
+						return true // L1 级：用户收藏或重点关注，绝对免疫轮替清理
+					}
+				}
+				if e.Type == "person" || e.Type == "vehicle" || e.Type == "package" {
+					return true // L2 级：高价值 AI 动态事件片段，防删保护
+				}
+			}
+
+			// B. 录像时间窗口匹配（分片通常 5-15 分钟）
+			if !fileTime.IsZero() && e.Time != "" {
+				evTime, err := time.ParseInLocation("2006-01-02 15:04:05", e.Time, time.Local)
+				if err == nil {
+					if evTime.After(fileTime.Add(-1*time.Minute)) && evTime.Before(fileTime.Add(15*time.Minute)) {
+						if s.marks != nil {
+							m := s.marks.get(e.ID)
+							if m.Bookmark || m.Watch {
+								return true // L1 级：时段内含重点标记事件
+							}
+						}
+						if e.Type == "person" || e.Type == "vehicle" || e.Type == "package" {
+							return true // L2 级：时段内含高价值目标事件
+						}
+					}
+				}
+			}
+		}
+	}
+
+	return false
 }
 
 func cleanupToTargetSize(recDir string, targetBytes int64, protectAI bool, s *Server) (int, int64, error) {
