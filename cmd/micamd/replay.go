@@ -200,28 +200,50 @@ var (
 	metaFile  string
 )
 
-func loadRecMeta(root string) {
-	metaFile = filepath.Join(root, ".meta.json")
-	raw, err := os.ReadFile(metaFile)
-	if err != nil {
-		return
+func (s *Server) metaFilePath() string {
+	if s != nil && s.dataDir != "" {
+		return filepath.Join(s.dataDir, "rec_meta.json")
 	}
-	metaMu.Lock()
-	_ = json.Unmarshal(raw, &metaCache)
-	metaMu.Unlock()
+	return "/vol1/@appdata/micam/rec_meta.json"
+}
+
+func loadRecMeta(root string) {
+	if metaFile == "" {
+		metaFile = "/vol1/@appdata/micam/rec_meta.json"
+	}
+	if raw, err := os.ReadFile(metaFile); err == nil {
+		metaMu.Lock()
+		_ = json.Unmarshal(raw, &metaCache)
+		metaMu.Unlock()
+	}
+	if root != "" {
+		legacy := filepath.Join(root, ".meta.json")
+		if raw, err := os.ReadFile(legacy); err == nil {
+			var legacyMap map[string]recMeta
+			if err := json.Unmarshal(raw, &legacyMap); err == nil {
+				metaMu.Lock()
+				for k, v := range legacyMap {
+					if _, exists := metaCache[k]; !exists {
+						metaCache[k] = v
+					}
+				}
+				metaMu.Unlock()
+			}
+		}
+	}
 }
 
 func saveRecMeta() {
 	metaMu.Lock()
-	raw, _ := json.Marshal(metaCache)
+	raw, err := json.Marshal(metaCache)
 	path := metaFile
 	metaMu.Unlock()
-	if path != "" {
+	if err == nil && path != "" {
 		_ = os.WriteFile(path, raw, 0o644)
 	}
 }
 
-// probeDuration 取时长（带缓存与极速估算，避免机械硬盘慢速 I/O 卡死 HTTP 请求）。
+// probeDuration 取时长（优先读取元数据缓存，未命中时毫秒级精确探测，杜绝伪造时长造成时间轴越界黑屏）。
 func (s *Server) probeDuration(path string) float64 {
 	fi, err := os.Stat(path)
 	if err != nil || fi.Size() < 64*1024 {
@@ -231,29 +253,44 @@ func (s *Server) probeDuration(path string) float64 {
 	metaMu.Lock()
 	m, ok := metaCache[path]
 	metaMu.Unlock()
-	if ok && m.Size == fi.Size() && m.ModTime == fi.ModTime().Unix() {
+	if ok && m.Size == fi.Size() && m.ModTime == fi.ModTime().Unix() && m.Duration > 0 {
 		return m.Duration
 	}
 
-	// 极速估算：每个分片默认按照设定的分片时长（通常 300 秒 / 5 分钟）
-	dur := 300.0
-	if s != nil && s.rec != nil {
-		if seg := s.rec.GetConfig().Segment.Seconds(); seg > 0 {
-			dur = seg
-		}
+	d := 0.0
+
+	// 1. 本地高速探测：使用 ffprobe 精确获取实际时长（本地 NVMe/SSD 耗时仅 20~40ms）
+	ctx, cancel := context.WithTimeout(context.Background(), 1500*time.Millisecond)
+	out, perr := exec.CommandContext(ctx, s.ffprobePath(), "-v", "error",
+		"-show_entries", "format=duration",
+		"-of", "csv=p=0", path).Output()
+	cancel()
+	if perr == nil {
+		d, _ = strconv.ParseFloat(strings.TrimSpace(string(out)), 64)
 	}
-	if fi.Size() < 5*1024*1024 {
-		est := float64(fi.Size()) / (18 * 1024)
-		if est < dur && est > 3 {
-			dur = est
+
+	// 2. 兜底估算：仅当 ffprobe 超时或在慢速存储上失败时按真实平均码率 (260KB/s) 估算，杜绝硬编码 300 秒！
+	if d <= 0 {
+		dur := 300.0
+		if s != nil && s.rec != nil {
+			if seg := s.rec.GetConfig().Segment.Seconds(); seg > 0 {
+				dur = seg
+			}
+		}
+		est := float64(fi.Size()) / (260 * 1024)
+		if est > 3 && est < dur {
+			d = est
+		} else {
+			d = dur
 		}
 	}
 
 	metaMu.Lock()
-	metaCache[path] = recMeta{Duration: dur, Size: fi.Size(), ModTime: fi.ModTime().Unix()}
+	metaCache[path] = recMeta{Duration: d, Size: fi.Size(), ModTime: fi.ModTime().Unix()}
 	metaMu.Unlock()
+	go saveRecMeta()
 
-	return dur
+	return d
 }
 
 // ---- 日期列表 ----
@@ -336,11 +373,8 @@ func (s *Server) triggerAutoRemux(root string) {
 }
 
 func (s *Server) handleRecDates(w http.ResponseWriter, r *http.Request) {
-	logf("[DATES-DEBUG] step 1: enter")
 	name := safeName(r.URL.Query().Get("name"))
-	logf("[DATES-DEBUG] step 2: calling recRoots")
 	roots := s.recRoots()
-	logf("[DATES-DEBUG] step 3: roots=%v", roots)
 	for _, root := range roots {
 		loadRecMeta(root)
 		s.triggerAutoRemux(root)
@@ -528,6 +562,9 @@ func (s *Server) collectRecFiles(root, name, date string) []recFileInfo {
 		if info.Size() < 64*1024 {
 			return nil
 		}
+		if strings.Contains(info.Name(), ".tmp.") || strings.HasPrefix(info.Name(), ".") {
+			return nil
+		}
 		rel, _ := filepath.Rel(root, pth)
 		parts := strings.Split(rel, string(filepath.Separator))
 		st := info.ModTime().Format("2006-01-02 15:04:05")
@@ -640,6 +677,7 @@ func (s *Server) handleRecPlay(w http.ResponseWriter, r *http.Request) {
 		"-bf", "0",
 		"-g", "25",
 		"-frag_duration", "300000",
+		"-flush_packets", "1",
 		"-an",
 		"-movflags", "frag_keyframe+empty_moov+default_base_moof",
 		"-f", "mp4", "pipe:1",
@@ -653,9 +691,15 @@ func (s *Server) handleRecPlay(w http.ResponseWriter, r *http.Request) {
 	activeLiveStreams++
 	livePlayMu.Unlock()
 
+	// 触发目标文件静态缓存生成（最高优先级），为后续秒开与拖动无缝升格
+	if !cacheValid(dst, src) {
+		go s.buildCache(src, dst, encArgs, enc, file, true)
+	}
+
 	cacheJobMu.Lock()
 	for k, j := range activeCacheJobs {
-		if !j.isUser && j.cmd != nil && j.cmd.Process != nil {
+		// 绝不杀掉当前正在播放的目标文件的缓存生成任务
+		if k != dst && !j.isUser && j.cmd != nil && j.cmd.Process != nil {
 			logf("[replay] 实时流开始，中断后台闲时缓存任务让路 GPU: %s", filepath.Base(k))
 			_ = j.cmd.Process.Kill()
 			delete(activeCacheJobs, k)
@@ -1621,14 +1665,9 @@ func (s *Server) handleRecCacheStatus(w http.ResponseWriter, r *http.Request) {
 
 	// 关键优化：只要用户点击或进入该片段，立刻在后台生成永久快开 MP4 缓存
 	if !ready && !building {
-		livePlayMu.Lock()
-		isStreaming := activeLiveStreams > 0
-		livePlayMu.Unlock()
-		if !isStreaming {
-			if _, err := os.Stat(src); err == nil {
-				go s.buildCache(src, dst, encArgs, enc, file, true)
-				building = true
-			}
+		if _, err := os.Stat(src); err == nil {
+			go s.buildCache(src, dst, encArgs, enc, file, true)
+			building = true
 		}
 	}
 

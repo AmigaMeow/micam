@@ -1,5 +1,5 @@
 appname               = micam
-version               = 0.41.12
+version               = 0.41.13
 display_name          = MiCam (非官方社区版)
 desc                  = 专为飞牛 NAS 打造的智能家居摄像头本地监控桥接套件（非官方开源社区适配）。支持扫码登录、实时低延迟预览、24小时本地连续录像、时间轴回放、云台控制、AI智能识别与离线存储备份。
 platform              = x86
