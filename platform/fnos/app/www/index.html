@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <title>MiCam - 智能监控中心</title>
-<meta name="micam-build" content="2026-10-17 23:51:48">
+<meta name="micam-build" content="2026-10-18 00:46:38">
 <!-- 内联 SVG favicon（data URI）：
      浏览器默认会请求 /favicon.ico 并得到 404（控制台报错）。
      这里用 data URI 消除该请求 —— 同时保持「全内联、不联网」的约束。 -->
@@ -12030,6 +12030,8 @@ var lastRenderedPage = null;
 
 function render(){
   syncRouteToUrl();
+  if(page !== "live") stopLive();
+  if(page !== "grid") stopGrid();
   var c = $("#content");
   if(c && page !== lastRenderedPage){
     lastRenderedPage = page;
@@ -13052,8 +13054,16 @@ function timeToSec(tStr){
 
 // gotoReplay 跳到回放页并定位到指定设备/时刻
 function gotoReplay(did, time){
+  stopLive();
+  stopGrid();
   page = 'recordings';
   if(did){
+    if(did !== currentDid || (recState && recState.targetDid !== did)){
+      if(recState){
+        recState.files = [];
+        recState.file = null;
+      }
+    }
     currentDid = did;
     recState.targetDid = did;
     var d = (devices || []).filter(function(x){ return x.did === did; })[0];
@@ -13086,6 +13096,8 @@ function setPageTitle(t){
 }
 
 function gotoLive(did){
+  stopLive();
+  stopGrid();
   page = "live";
   currentDid = did;
   setPageTitle("实时预览");
@@ -19094,8 +19106,8 @@ function checkMiotBound(cb){
     miotChecked = true;
     try { localStorage.setItem('micam.miotBound', miotBound ? '1' : '0'); } catch(e) {}
     console.log('[miot] 官方通道授权: ' + miotBound + '（变化: ' + (was !== miotBound) + '）');
-    // 状态变化就重渲染，让流切到官方通道
-    if(was !== miotBound && typeof render === 'function'){
+    // 状态变化就重渲染，让流切到官方通道（若在实时预览页则不重刷，避免打断正在握手的通道）
+    if(was !== miotBound && typeof render === 'function' && page !== 'live'){
       try { render(); } catch(e) {}
     }
     if(cb) cb();
@@ -19119,23 +19131,9 @@ function startLiveMJPEG(did){
   var hint = $("#liveHint");
   if(!box) return;
 
-  var devList = (typeof devices !== 'undefined' && devices) ? devices : ((typeof cams !== 'undefined' && cams) ? cams : []);
+    var devList = (typeof devices !== 'undefined' && devices) ? devices : ((typeof cams !== 'undefined' && cams) ? cams : []);
   var devObj = devList.find(function(x){ return x.did === did; });
-  if(devObj && (devObj.model === 'chuangmi.camera.ipc009' || devObj.protocol === 'tutk')){
-    box.innerHTML = '<div class="player__ph" style="padding:28px 20px;text-align:center;max-width:520px;margin:auto;">'
-      + icon('alert', 44)
-      + '<h3 style="margin:16px 0 8px;font-size:16px;color:var(--text-primary);">TUTK 协议硬件限制提示</h3>'
-      + '<p style="color:var(--text-muted);font-size:13px;line-height:1.6;margin:0 0 16px;">创米 1080p 摄像头（型号 ipc009）底层采用 TUTK P2P 握手协议。目前小米官方闭源 SDK 库 (libmiot_camera_lite) 暂未适配 TUTK 协议。云台控制与设置正常，实时画面建议在米家 App 查看。</p>'
-      + '<div><button class="btn btn--sm" id="btnRetryTutk">' + icon('refresh', 13) + ' 尝试重试</button></div>'
-      + '</div>';
-    var retryBtn = box.querySelector('#btnRetryTutk');
-    if(retryBtn){
-      retryBtn.onclick = function(){ devObj.protocol = 'retry'; startLiveMJPEG(did); };
-    }
-    if(st) st.textContent = '协议限制';
-    if(hint) hint.textContent = '该型号采用 TUTK 协议，官方 SDK 暂未支持直连';
-    return;
-  }
+  var isTutk = devObj && (devObj.model === 'chuangmi.camera.ipc009' || devObj.protocol === 'tutk');
 
   if(st) st.textContent = "连接中";
   if(hint) hint.textContent = "正在建立实时视频流…";
@@ -19150,7 +19148,7 @@ function startLiveMJPEG(did){
   box.innerHTML = ""
     + "<div class=\"player__stage\" style=\"position:relative;width:100%;height:100%;overflow:hidden;background:#000;\">"
     +   "<img id=\"livePoster\" class=\"live-poster\" src=\"" + posterUrl + "\" alt=\"\" style=\"position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;transition:opacity .35s ease-out;z-index:1;\">"
-    +   "<img id=\"liveStreamImg\" class=\"live-stream-img\" src=\"" + streamUrl + "\" alt=\"\" style=\"position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;opacity:0;transition:opacity .25s ease-in;z-index:2;\">"
+    +   "<img id=\"liveStreamImg\" class=\"live-stream-img\" src=\"" + streamUrl + "\" alt=\"\" style=\"position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;opacity:1;transition:opacity .25s ease-in;z-index:2;\">"
     +   "<div id=\"liveConnecting\" class=\"live-connecting-pill\" style=\"position:absolute;top:16px;right:16px;z-index:5;display:inline-flex;align-items:center;gap:8px;padding:6px 14px;background:rgba(15,23,42,.85);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.15);border-radius:20px;color:#fff;font-size:12px;box-shadow:0 4px 16px rgba(0,0,0,.4);transition:all .3s ease;pointer-events:none;\">"
     +     "<span class=\"spinner-sm\" style=\"width:12px;height:12px;border:2px solid rgba(255,255,255,.25);border-top-color:#1890ff;border-radius:50%;display:inline-block;animation:spin 1s linear infinite;flex-shrink:0;\"></span>"
     +     "<span id=\"liveConnectingText\">正在建立实时连线…</span>"
@@ -19174,9 +19172,14 @@ function startLiveMJPEG(did){
   var maxRetries = 10;
   var reconnectTimer = null;
 
+  var safetyTimer = setTimeout(function(){
+    revealLiveStream();
+  }, 2500);
+
   function revealLiveStream(){
     if(frameRevealed) return;
     frameRevealed = true;
+    if(safetyTimer) { clearTimeout(safetyTimer); safetyTimer = null; }
     if(checkTimer) { clearInterval(checkTimer); checkTimer = null; }
     if(reconnectTimer) { clearTimeout(reconnectTimer); reconnectTimer = null; }
     if(liveTimer) { clearTimeout(liveTimer); liveTimer = null; }
@@ -19187,7 +19190,7 @@ function startLiveMJPEG(did){
     }
     if(pill) {
       pill.style.opacity = "0";
-      setTimeout(function(){ if(pill) pill.remove(); }, 350);
+      setTimeout(function(){ if(pill && pill.parentNode) pill.remove(); }, 350);
     }
     if(st) st.textContent = "播放中";
     if(hint) hint.textContent = "";
@@ -19447,6 +19450,11 @@ function doRenderRecordingsUI(c, cfg){
   var dayFiles = recState.date
     ? files.filter(function(f){ return f.date === recState.date; })
     : files;
+
+  if(dayFiles.length === 0 && files.length > 0){
+    recState.date = files[0].date;
+    dayFiles = files.filter(function(f){ return f.date === recState.date; });
+  }
 
   if(recState.targetTime && dayFiles.length){
     var tSec = timeToSec(recState.targetTime);
@@ -26157,7 +26165,16 @@ function gotoLiveByName(name){
 }
 
 function gotoRecordingsByName(name){
+  stopLive();
+  stopGrid();
   page = 'recordings';
+  if(typeof recState !== 'undefined'){
+    if(recState.dev !== name){
+      recState.files = [];
+      recState.file = null;
+    }
+    recState.dev = name;
+  }
   if(typeof recDevice !== 'undefined'){ recDevice = name; }
   renderMenu();
   render();
