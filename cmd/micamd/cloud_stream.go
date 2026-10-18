@@ -50,8 +50,7 @@ func IsTutkCamera(did, model string) bool {
 	case "chuangmi.camera.ipc009",
 		"chuangmi.camera.ipc019",
 		"chuangmi.camera.ipc013",
-		"chuangmi.camera.019a01",
-		"chuangmi.camera.029a02":
+		"chuangmi.camera.019a01":
 		return true
 	}
 	return xiaomi.IsLegacyModel(model)

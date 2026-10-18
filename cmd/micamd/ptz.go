@@ -245,6 +245,7 @@ func (p *ptzSession) sendExtra(op int, extra map[string]any) (*ptzResp, error) {
 	if err != nil {
 		return nil, fmt.Errorf("加密失败: %w", err)
 	}
+	_ = p.conn.SetDeadline(time.Now().Add(8 * time.Second))
 	if err := p.conn.WriteCommand(ptzCmdEncoded, enc); err != nil {
 		return nil, fmt.Errorf("发送失败: %w", err)
 	}
@@ -275,7 +276,7 @@ func (p *ptzSession) sendExtra(op int, extra map[string]any) (*ptzResp, error) {
 	select {
 	case res := <-ch:
 		return res.r, res.err
-	case <-time.After(5 * time.Second):
+	case <-time.After(8 * time.Second):
 		return nil, fmt.Errorf("等待响应超时")
 	}
 }
@@ -512,6 +513,8 @@ func isPTZRetryable(err error) bool {
 		"broken pipe",
 		"connection refused", // 端口瞬时被预览占用拒绝
 		"reset by peer",
+		"等待响应超时",
+		"超时",
 	} {
 		if strings.Contains(m, k) {
 			return true

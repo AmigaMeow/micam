@@ -926,19 +926,22 @@ func loadThrottleState() {
 	}
 	var st throttleState
 	if json.Unmarshal(raw, &st) != nil {
+		_ = os.Remove(throttleFile())
 		return
 	}
-	t, err := time.Parse(time.RFC3339, st.SilenceUntil)
+	_, err = time.Parse(time.RFC3339, st.SilenceUntil)
 	if err != nil {
+		_ = os.Remove(throttleFile())
 		return
 	}
+	// 在 v0.41.29 已全面升级至米家官方 App 原生 User-Agent，根治了小米云限流。
+	// 启动时自动清理历史遗留的静默缓存，防止用户升级后被旧版本长达数小时的静默保护锁定。
+	_ = os.Remove(throttleFile())
 	throttleMu.Lock()
-	throttleSilenceT = t
-	throttleSilenceN = st.Count
+	throttleSilenceT = time.Time{}
+	throttleSilenceN = 0
 	throttleMu.Unlock()
-	if time.Now().Before(t) {
-		logf("[cred] 载入静默状态：剩余 %v", time.Until(t).Round(time.Minute))
-	}
+	logf("[throttle] 已自动重置历史限流静默记录（User-Agent 已升级），恢复云台与连接调度")
 }
 
 // saveThrottleState 落盘（调用方需持有锁，或先取快照）。
