@@ -8885,3 +8885,23 @@ body.has-mobile-fullscreen {
 .table-wrap::-webkit-scrollbar-thumb:hover {
   background: var(--border);
 }
+
+/* 云台禁用与固定镜头提示 */
+.ptz-pad.is-disabled {
+  opacity: 0.35;
+  pointer-events: none;
+}
+.ptz-fixed-banner {
+  margin: 8px 6px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  font-size: 12px;
+  color: var(--text-dim);
+  text-align: center;
+  line-height: 1.4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}

@@ -7161,6 +7161,27 @@ function curDevLenses(){
   return (d && d.lenses) || 1;
 }
 
+// curDevHasPTZ 当前选中设备（及选中的镜头）是否支持物理云台
+function curDevHasPTZ(){
+  var d = devices.filter(function(x){ return x.did === currentDid; })[0];
+  if(!d) return false;
+  // 双摄副摄（镜头2）为固定广角镜头，仅主摄（镜头1）具备物理云台
+  if(curDevLenses() >= 2 && currentLens === 2){
+    return false;
+  }
+  if(typeof d.hasPTZ === 'boolean'){
+    return d.hasPTZ;
+  }
+  // 保底：若后端未返回 hasPTZ，按已知型号特征安全识别
+  var m = (d.model || '').toLowerCase();
+  if(m.indexOf('060a02') >= 0 || m.indexOf('029a02') >= 0 || m.indexOf('ipc009') >= 0 ||
+     m.indexOf('cateye') >= 0 || m.indexOf('doorbell') >= 0 || m.indexOf('feeder') >= 0 ||
+     m.indexOf('card') >= 0 || m.indexOf('battery') >= 0){
+    return false;
+  }
+  return true;
+}
+
 // lensParam 生成镜头查询参数（第一镜头省略，保持 URL 简洁）
 function lensParam(){
   return currentLens >= 2 ? "&channel=" + currentLens : "";
@@ -7329,6 +7350,7 @@ function renderLive(c){
     var cname = (curDev() && (curDev().alias || curDev().name)) || '';
     var cen = (curDev() && curDev().aliasEn) || '';
     var dual = curDevLenses() >= 2;
+    var hasPTZ = curDevHasPTZ();
 
     c.innerHTML = '<div class="page__inner page__inner--wide">'
 
@@ -7402,15 +7424,18 @@ function renderLive(c){
       +         '<div class="ptz-float__title">云台控制<span>PTZ</span></div>'
       +         '<button type="button" class="ptz-float__close" id="ptzClose" title="收起云台">' + icon('x',14) + '</button>'
       +       '</div>'
-      +       '<div class="ptz-pad">'
-      +         '<button class="ptz-pad__btn ptz-pad__btn--up"    data-ptz="3" data-dir="up"    title="上">' + icon('chevron-up',16) + '</button>'
-      +         '<button class="ptz-pad__btn ptz-pad__btn--left"  data-ptz="2" data-dir="left"  title="左">' + icon('chevron-left',16) + '</button>'
-      +         '<button class="ptz-pad__btn ptz-pad__btn--center" id="ptzHome" title="查询云台位置"><span class="ptz-pad__dot"></span></button>'
-      +         '<button class="ptz-pad__btn ptz-pad__btn--right" data-ptz="1" data-dir="right" title="右">' + icon('chevron-right',16) + '</button>'
-      +         '<button class="ptz-pad__btn ptz-pad__btn--down"  data-ptz="4" data-dir="down"  title="下">' + icon('chevron-down',16) + '</button>'
+      +       '<div class="ptz-fixed-banner" id="ptzFixedBanner" style="' + (hasPTZ ? 'display:none;' : '') + '">'
+      +         icon('info',13) + '<span>当前镜头为固定视角，未配备物理云台电机</span>'
       +       '</div>'
-      +       '<div class="ptz-float__info" id="ptzInfo">—</div>'
-      +       '<div class="ptz-flip-bar" style="display:flex;justify-content:center;gap:12px;margin-top:6px;font-size:12px;">'
+      +       '<div class="ptz-pad' + (hasPTZ ? '' : ' is-disabled') + '" id="ptzPad">'
+      +         '<button class="ptz-pad__btn ptz-pad__btn--up"    data-ptz="3" data-dir="up"    title="上"' + (hasPTZ?'':' disabled') + '>' + icon('chevron-up',16) + '</button>'
+      +         '<button class="ptz-pad__btn ptz-pad__btn--left"  data-ptz="2" data-dir="left"  title="左"' + (hasPTZ?'':' disabled') + '>' + icon('chevron-left',16) + '</button>'
+      +         '<button class="ptz-pad__btn ptz-pad__btn--center" id="ptzHome" title="查询云台位置"' + (hasPTZ?'':' disabled') + '><span class="ptz-pad__dot"></span></button>'
+      +         '<button class="ptz-pad__btn ptz-pad__btn--right" data-ptz="1" data-dir="right" title="右"' + (hasPTZ?'':' disabled') + '>' + icon('chevron-right',16) + '</button>'
+      +         '<button class="ptz-pad__btn ptz-pad__btn--down"  data-ptz="4" data-dir="down"  title="下"' + (hasPTZ?'':' disabled') + '>' + icon('chevron-down',16) + '</button>'
+      +       '</div>'
+      +       '<div class="ptz-float__info" id="ptzInfo">' + (hasPTZ ? '—' : '固定镜头（无云台）') + '</div>'
+      +       '<div class="ptz-flip-bar" id="ptzFlipBar" style="' + (hasPTZ ? 'display:flex;' : 'display:none;') + 'justify-content:center;gap:12px;margin-top:6px;font-size:12px;">'
       +         '<label style="cursor:pointer;display:flex;align-items:center;gap:4px;"><input type="checkbox" id="flipPan"><span>左右反向</span></label>'
       +         '<label style="cursor:pointer;display:flex;align-items:center;gap:4px;"><input type="checkbox" id="flipTilt"><span>上下反向</span></label>'
       +       '</div>'
@@ -7446,7 +7471,7 @@ function renderLive(c){
       // 用竖线把「设置类」（画质/镜头/比例 下拉）与「显示类」（画中画/全屏 按钮）
       // 分开（用户反馈：工具栏控件太多太密，看不出分组）
       +         '<span class="pbar-sep" aria-hidden="true"></span>'
-      +         '<button class="pbar-btn" id="btnPtzToggle" title="展开/收起云台">' + icon('move',15) + '<span>云台</span></button>'
+      +         '<button class="pbar-btn' + (hasPTZ ? '' : ' is-disabled') + '" id="btnPtzToggle" title="' + (hasPTZ ? '展开/收起云台' : '该镜头为固定视角（无物理云台）') + '"' + (hasPTZ ? '' : ' style="opacity:0.45;cursor:not-allowed;"') + '>' + icon('move',15) + '<span>' + (hasPTZ ? '云台' : '固定镜头') + '</span></button>'
       +         '<button class="pbar-btn" id="btnTheater" title="切换宽屏模式">' + icon('monitor',15) + '<span>宽屏</span></button>'
       +         '<button class="pbar-btn" id="btnPip" title="画中画">' + icon('picture-in-picture',15) + '<span>画中画</span></button>'
       +         '<button class="pbar-btn" id="btnFull" title="全屏">' + icon('maximize',15) + '<span>全屏</span></button>'
@@ -7521,6 +7546,7 @@ function renderLive(c){
           x.classList.toggle('is-active', parseInt(x.dataset.lens, 10) === currentLens);
         });
         console.log('[micam] 切换到镜头 ' + currentLens);
+        refreshPTZUI();
         // 清面板，避免显示上一个镜头的分辨率
         var ir = document.getElementById('iiRes');
         if(ir) ir.textContent = '—';
@@ -7540,6 +7566,7 @@ function renderLive(c){
           x.classList.toggle('is-active', parseInt(x.dataset.lens, 10) === currentLens);
         });
         console.log('[micam] 切换到镜头 ' + currentLens);
+        refreshPTZUI();
         var ir = document.getElementById('iiRes');
         if(ir) ir.textContent = '—';
         lastLiveRes = '';
@@ -8391,6 +8418,10 @@ function stopGrid(){
 function ptzStatus(){
   var info = $("#ptzInfo");
   if(!currentDid) return;
+  if(!curDevHasPTZ()){
+    if(info) info.textContent = "云台：固定镜头（无云台）";
+    return;
+  }
   if(info) info.textContent = "云台：查询中…";
 
   var timeoutId = setTimeout(function(){
@@ -8443,6 +8474,12 @@ var ptzBusy = false;
 var ptzQueued = [];       // 待发送的方向键
 
 function ptzMove(op, dir){
+  if(!curDevHasPTZ()){
+    toast('当前设备为固定视角摄像机，未配备物理云台', 'warn');
+    var info = $("#ptzInfo");
+    if(info) info.textContent = "云台：固定镜头（无云台）";
+    return;
+  }
   if(op === 5){
     console.error("[ptz] 严禁发送 operation 5 (硬件巡航/校准)");
     return;
@@ -8477,7 +8514,7 @@ function ptzFlush(){
 
   api("/api/ptz/move", {
     method:"POST", headers:{"Content-Type":"application/json"},
-    body: JSON.stringify({did: currentDid, operation: op})
+    body: JSON.stringify({did: currentDid, operation: op, lens: currentLens})
   }).then(function(r){
     clearTimeout(timeoutId);
     ptzBusy = false;
