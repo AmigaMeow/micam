@@ -251,7 +251,7 @@ func NewSession() *Session {
 	return &Session{
 		client:    &http.Client{Timeout: 30 * time.Second},
 		deviceID:  did,
-		userAgent: "Mozilla/5.0 (Linux; Android 10; MI 9) AppleWebKit/537.36 Chrome/120 Mobile Safari/537.36",
+		userAgent: "APP/com.xiaomi.smarthome APPV/10.0.0 (Linux; U; Android 14; zh_CN; 23116PN5BC; Build/UKQ1.230804.001)",
 	}
 }
 
