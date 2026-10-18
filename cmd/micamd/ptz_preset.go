@@ -142,6 +142,10 @@ func (s *Server) handlePTZPreset(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 400, "槽位最多 9 个")
 		return
 	}
+	if dev, err := s.ensureDevice(req.Did); err == nil && !IsPTZCapable(dev.Model) {
+		writeErr(w, 400, "该设备型号为固定视角摄像机，未配备物理云台")
+		return
+	}
 
 	// 读当前位置
 	pos, err := s.ptzReadPosition(req.Did)
@@ -175,6 +179,10 @@ func (s *Server) handlePTZGoto(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if dev, err := s.ensureDevice(req.Did); err == nil && !IsPTZCapable(dev.Model) {
+		writeErr(w, 400, "该设备型号为固定视角摄像机，未配备物理云台")
+		return
+	}
 	p, ok := s.presets.get(req.Did, req.Slot)
 	if !ok {
 		writeErr(w, 404, "该槽位没有保存过位置")

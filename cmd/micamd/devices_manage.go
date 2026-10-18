@@ -78,7 +78,7 @@ func (s *Server) handleDevicesCloud(w http.ResponseWriter, r *http.Request) {
 			out = append(out, map[string]any{
 				"did": d.Did, "name": d.Name, "model": d.Model,
 				"isOnline": d.IsOnline, "shared": d.Shared,
-				"accountId": d.AccountID, "lenses": d.Lenses,
+				"accountId": d.AccountID, "lenses": d.Lenses, "hasPTZ": IsPTZCapable(d.Model),
 				"managed": s.meta.IsManaged(d.Did),
 				"alias":   m.Alias,
 			})
@@ -113,7 +113,7 @@ func (s *Server) handleDevicesCloud(w http.ResponseWriter, r *http.Request) {
 			all = append(all, map[string]any{
 				"did": d.Did, "name": d.Name, "model": d.Model,
 				"isOnline": d.IsOnline, "shared": d.Shared,
-				"accountId": d.AccountID, "lenses": d.Lenses,
+				"accountId": d.AccountID, "lenses": d.Lenses, "hasPTZ": IsPTZCapable(d.Model),
 				"managed": s.meta.IsManaged(d.Did),
 				"alias":   m.Alias,
 			})
@@ -129,7 +129,7 @@ func (s *Server) handleDevicesCloud(w http.ResponseWriter, r *http.Request) {
 				all = append(all, map[string]any{
 					"did": d.Did, "name": d.Name, "model": d.Model,
 					"isOnline": d.IsOnline, "shared": false,
-					"accountId": d.AccountID, "lenses": 1,
+					"accountId": d.AccountID, "lenses": 1, "hasPTZ": IsPTZCapable(d.Model),
 					"managed": s.meta.IsManaged(d.Did),
 					"alias":   m.Alias,
 				})

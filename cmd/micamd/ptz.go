@@ -27,6 +27,96 @@ import (
 	"github.com/micam/micam/internal/xiaomi"
 )
 
+// IsPTZCapable 判断摄像机型号是否配备物理云台电机。
+//
+// 硬件能力边界与安全防护（Issue #14/#15）：
+// 1. 固定视角摄像机（小白卡片机/青春版、室外固定枪机、电池版相机、门铃、猫眼）物理上没有电机。
+//    若向其发送 CS2 P2P 电机指令 (0x112)，不仅无法转动，还会导致低端机型唯一的 P2P 连接槽位被挂起，
+//    造成米家 App 报错 36（设备超过最大同时连接数量）。
+// 2. 只有带物理电机的机型（CW300、CW400、CW500、070a02、C200-C700等）才支持云台。
+func IsPTZCapable(model string) bool {
+	m := strings.ToLower(model)
+	if m == "" {
+		return false
+	}
+
+	// 1. 明确无物理电机的型号黑名单
+	switch m {
+	case "chuangmi.camera.060a02", // 小白智能摄像机卡片机 / 青春版
+		"chuangmi.camera.029a02",  // 小白智能摄像机卡片版 1080P
+		"chuangmi.camera.021a04",  // 小白智能摄像机电池版
+		"chuangmi.camera.026c02",  // 小白室外摄像机电池版
+		"chuangmi.camera.046c01",  // 小白室外摄像机电池版 EC3
+		"chuangmi.camera.049g01",  // 小白智能摄像机卡片机
+		"chuangmi.camera.051a01",  // 小白智能摄像机室内卡片版
+		"chuangmi.camera.069a01",  // 小白室外枪机 CW400枪机/EC4
+		"chuangmi.camera.ipc009",  // 小白大众版 1080P
+		"chuangmi.camera.ipc019",  // 小白大众版 1080P
+		"chuangmi.camera.ipc020",
+		"xiaomi.camera.c100",      // 小白/小米智能摄像机标准版 2K
+		"xiaomi.camera.c101",
+		"xiaomi.camera.c102",
+		"xiaomi.camera.mcv01",
+		"xiaomi.camera.mcv02",
+		"xiaomi.camera.mcv03",
+		"xiaomi.camera.mcv04",
+		"xiaomi.camera.mcv05",
+		"xiaomi.camera.mcv06",
+		"xiaomi.camera.mcv07":
+		return false
+	}
+
+	// 2. 类型特征过滤：非摄像机类（猫眼、门铃、喂食器）或带 card/battery
+	if strings.Contains(m, ".cateye.") ||
+		strings.Contains(m, ".doorbell.") ||
+		strings.Contains(m, ".feeder.") ||
+		strings.Contains(m, "card") ||
+		strings.Contains(m, "battery") {
+		return false
+	}
+
+	// 3. 明确配备物理云台的型号或系列
+	// CW 系列户外球机 / 枪球一体机
+	if strings.Contains(m, "cw300") ||
+		strings.Contains(m, "cw400") ||
+		strings.Contains(m, "cw500") ||
+		strings.Contains(m, "hlmax") || // CW500 双摄版
+		strings.Contains(m, "moc001") { // CW300
+		return true
+	}
+
+	// C 系列室内云台机
+	for _, p := range []string{"c200", "c300", "c400", "c500", "c700"} {
+		if strings.Contains(m, p) {
+			return true
+		}
+	}
+
+	// 创米云台机系列
+	switch m {
+	case "chuangmi.camera.070a02", // 小白智能摄像机云台版
+		"chuangmi.camera.021a02",
+		"chuangmi.camera.025a01",
+		"chuangmi.camera.030a01",
+		"chuangmi.camera.036a01",
+		"chuangmi.camera.040a01",
+		"chuangmi.camera.045a01",
+		"chuangmi.camera.055a01",
+		"chuangmi.camera.071a01",
+		"chuangmi.camera.072a01",
+		"chuangmi.camera.ipc013",
+		"chuangmi.camera.ipc022":
+		return true
+	}
+
+	if strings.Contains(m, "ptz") {
+		return true
+	}
+
+	return false
+}
+
+
 const (
 	ptzCmdAuthReq = 0x100
 	ptzCmdMotor   = 0x112
@@ -80,7 +170,7 @@ type ptzCached struct {
 	closed   bool
 }
 
-const ptzCacheIdle = 30 * time.Second
+const ptzCacheIdle = 8 * time.Second
 
 // ptzSend 发送命令，**任何错误都自动丢弃连接**。
 //
@@ -135,7 +225,7 @@ func (s *Server) acquirePTZ(dev *xiaomi.Device) (*ptzSession, error) {
 
 // reapPTZ 空闲超时后关闭这条连接。
 func (s *Server) reapPTZ(did string, sess *ptzSession) {
-	t := time.NewTicker(5 * time.Second)
+	t := time.NewTicker(1 * time.Second)
 	defer t.Stop()
 	for range t.C {
 		ptzCacheMu.Lock()
@@ -191,9 +281,14 @@ func (s *Server) openPTZ(dev *xiaomi.Device) (*ptzSession, error) {
 	// 花掉 1~2 秒，中途被抢就只剩 EOF。放宽到 10 秒，配合上层重试。
 	_ = conn.SetDeadline(time.Now().Add(10 * time.Second))
 
+	closeConn := func() {
+		_, _ = conn.Write([]byte{0xF1, 0xF1, 0, 0})
+		_ = conn.Close()
+	}
+
 	key, err := crypto.CalcSharedKey(q.Get("device_public"), q.Get("client_private"))
 	if err != nil {
-		conn.Close()
+		closeConn()
 		return nil, fmt.Errorf("计算密钥失败: %w", err)
 	}
 
@@ -201,21 +296,27 @@ func (s *Server) openPTZ(dev *xiaomi.Device) (*ptzSession, error) {
 	auth := fmt.Sprintf("{\"public_key\":\"%s\",\"sign\":\"%s\",\"uuid\":\"\",\"support_encrypt\":0}",
 		q.Get("client_public"), q.Get("sign"))
 	if err := conn.WriteCommand(ptzCmdAuthReq, []byte(auth)); err != nil {
-		conn.Close()
+		closeConn()
 		return nil, fmt.Errorf("认证发送失败: %w", err)
 	}
 	if _, _, err := conn.ReadCommand(); err != nil {
-		conn.Close()
+		closeConn()
 		return nil, fmt.Errorf("认证响应失败: %w", err)
 	}
 
 	return &ptzSession{conn: conn, key: key}, nil
 }
 
-// Close 关闭会话。
+// Close 关闭会话并优雅释放固件连接槽位。
 func (p *ptzSession) Close() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
 	if p.conn != nil {
-		p.conn.Close()
+		// 发送 CS2 msgClose (0xF1, 0xF1, 0x00, 0x00) 优雅断开通知固件
+		// 避免摄像头固件因等待心跳超时挂起会话槽位，引发米家 App 报错 36（设备超过最大同时连接数量）
+		_, _ = p.conn.Write([]byte{0xF1, 0xF1, 0, 0})
+		_ = p.conn.Close()
+		p.conn = nil
 	}
 }
 
@@ -289,6 +390,18 @@ func (s *Server) handlePTZStatus(w http.ResponseWriter, r *http.Request) {
 	did := r.URL.Query().Get("did")
 	if did == "" {
 		writeErr(w, 400, "缺少 did")
+		return
+	}
+	if dev, err := s.ensureDevice(did); err == nil && !IsPTZCapable(dev.Model) {
+		writeJSON(w, 200, map[string]any{
+			"ok":      true,
+			"ret":     0,
+			"hasPTZ":  false,
+			"isFixed": true,
+			"hasPos":  false,
+			"source":  "fixed",
+			"msg":     "固定视角摄像机，未配备物理云台",
+		})
 		return
 	}
 	// ===== 优先用 miIO 读位置（2026-10-13 实测修正）=====
@@ -367,13 +480,12 @@ func (s *Server) handlePTZMove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		Did       string `json:"did"`
-		Operation int    `json:"operation"`
-		// 绝对定位（operation=13）用的目标坐标；其他 operation 忽略
-		Angle     *int `json:"angle"`
-		Elevation *int `json:"elevation"`
-		// raw 原样透传（协议探测用，任何键值对）
-		Raw map[string]any `json:"raw"`
+		Did       string         `json:"did"`
+		Operation int            `json:"operation"`
+		Lens      int            `json:"lens"`
+		Angle     *int           `json:"angle"`
+		Elevation *int           `json:"elevation"`
+		Raw       map[string]any `json:"raw"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeErr(w, 400, "参数错误")
@@ -398,21 +510,32 @@ func (s *Server) handlePTZMove(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// 1. 物理云台能力检查：固定视角摄像机直接拦截，绝不向摄像头建立无效 CS2 连接
+	if !IsPTZCapable(dev.Model) {
+		writeErr(w, 400, "该设备型号（"+dev.Model+"）为固定视角摄像机，未配备物理云台电机")
+		return
+	}
+
+	// 2. 双摄机型副摄检查（CW500 镜头2为固定广角，镜头1为可旋转球机）
+	if dev.Model == "isa.camera.hlmax" && req.Lens == 2 {
+		writeErr(w, 400, "CW500 副摄（镜头2）为固定广角镜头，仅主摄（镜头1）配备物理云台")
+		return
+	}
+
 	// 云台专用锁（不阻塞视频流）
 	ptzMu.Lock()
 	defer ptzMu.Unlock()
 
 	var sess *ptzSession
-	for attempt := 1; attempt <= 3; attempt++ {
-		sess, err = s.openPTZ(dev)
+	for attempt := 1; attempt <= 2; attempt++ {
+		sess, err = s.acquirePTZ(dev)
 		if err == nil {
 			break
 		}
 		if isThrottleError(err) || s.throttleSilenced() {
-			// 限流保护快速失败，严禁反复重试导致小米风控滑动窗口无法清零
 			break
 		}
-		if attempt < 3 && isPTZRetryable(err) {
+		if attempt < 2 && isPTZRetryable(err) {
 			dropPTZ(dev.Did)
 			time.Sleep(time.Duration(attempt*300) * time.Millisecond)
 			logf("[ptz] %s 建连重试第 %d 次: %v", dev.Did, attempt, err)
@@ -424,7 +547,6 @@ func (s *Server) handlePTZMove(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 502, err.Error())
 		return
 	}
-	defer sess.Close()
 
 	extra := map[string]any{}
 	if req.Angle != nil {
@@ -461,23 +583,32 @@ func (s *Server) handlePTZMove(w http.ResponseWriter, r *http.Request) {
 	} else {
 		logf("[ptz] <<< MOVE RESP did=%s op=%d err=%v", req.Did, req.Operation, err)
 	}
-	for attempt := 1; err != nil && attempt <= 2; attempt++ {
-		if !isPTZRetryable(err) {
-			break
-		}
+	if err != nil && isPTZRetryable(err) {
 		dropPTZ(dev.Did)
-		time.Sleep(time.Duration(attempt*400) * time.Millisecond)
-		logf("[ptz] %s 第 %d 次重试（上次: %v）", dev.Did, attempt, err)
-		sess2, err2 := s.openPTZ(dev)
-		if err2 != nil {
-			err = err2
-			continue
+		time.Sleep(300 * time.Millisecond)
+		logf("[ptz] %s 发送失败，尝试重建连接重发: %v", dev.Did, err)
+		if sess2, err2 := s.openPTZ(dev); err2 == nil {
+			resp2, err2 := sess2.sendExtra(req.Operation, extra)
+			if err2 == nil {
+				err = nil
+				resp = resp2
+				ptzCacheMu.Lock()
+				ptzCache[dev.Did] = &ptzCached{sess: sess2, lastUsed: time.Now()}
+				ptzCacheMu.Unlock()
+				go s.reapPTZ(dev.Did, sess2)
+			} else {
+				sess2.Close()
+			}
 		}
-		sess = sess2
-		resp, err = sess.sendExtra(req.Operation, extra)
 	}
 	if err != nil {
-		dropPTZ(dev.Did) // 连接可能已坏，丢掉让下次重建
+		dropPTZ(dev.Did)
+		if isThrottleError(err) {
+			s.markThrottled()
+			left := s.throttleSilenceLeft()
+			writeErr(w, 429, fmt.Sprintf("云台方向控制需小米云下发动态P2P凭据，当前账号处于小米云限流冷却期 (throttle deny)。系统已自动进入静默保护（约剩余 %v），冷却后将自动恢复连线，视频与录像不受影响", left.Round(time.Minute)))
+			return
+		}
 		writeErr(w, 504, err.Error())
 		return
 	}

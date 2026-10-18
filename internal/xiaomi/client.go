@@ -147,6 +147,8 @@ type Device struct {
 	AccountID string `json:"accountId,omitempty"`
 	// Lenses 镜头数量（1=单摄，2=双摄；不来自小米云 API，由我们判断）
 	Lenses int `json:"lenses,omitempty"`
+	// HasPTZ 是否配备物理云台（由型号特征推导）
+	HasPTZ bool `json:"hasPTZ"`
 	// 以下字段不来自小米 API，由我们填充
 	Alias        string `json:"alias,omitempty"`        // 中文别名
 	AliasEn      string `json:"aliasEn,omitempty"`      // 英文名

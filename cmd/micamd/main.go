@@ -908,7 +908,7 @@ func (s *Server) handleDevices(w http.ResponseWriter, r *http.Request) {
 			// 一部分原因就在这里。
 			out = append(out, map[string]any{
 				"did": d.Did, "name": d.Name, "isOnline": d.IsOnline,
-				"shared": d.Shared, "lenses": stream.LensCount(d.Model),
+				"shared": d.Shared, "lenses": stream.LensCount(d.Model), "hasPTZ": IsPTZCapable(d.Model),
 				"accountId": d.AccountID,
 				"model":     d.Model, "localIp": d.LocalIP,
 			})
@@ -964,6 +964,7 @@ func (s *Server) handleDevices(w http.ResponseWriter, r *http.Request) {
 			//
 			// 所以 CW500 确实是「枪球一体机」= 两个物理镜头。
 			d.Lenses = stream.LensCount(d.Model)
+			d.HasPTZ = IsPTZCapable(d.Model)
 			if d.Lenses >= 2 {
 				d.SecondLensClaimed = true
 			}
