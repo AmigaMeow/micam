@@ -9,8 +9,8 @@ STAGE="$DIST/stage"
 VERSION="$(grep -E '^version' "$PLATFORM/manifest" | cut -d= -f2 | tr -d ' ')"
 ARCH="${1:-amd64}"
 case "$ARCH" in
-  amd64|x86_64) TARGET_ARCH="amd64"; PLATFORM_TAG="x86" ;;
-  arm64|aarch64) TARGET_ARCH="arm64"; PLATFORM_TAG="arm64" ;;
+  amd64|x86_64) TARGET_ARCH="amd64"; PLATFORM_TAG="x86"; ARCH_TAG="x86_64" ;;
+  arm64|aarch64) TARGET_ARCH="arm64"; PLATFORM_TAG="arm"; ARCH_TAG="aarch64 arm64" ;;
   *) echo "不支持的目标架构: $ARCH (支持: amd64, arm64)"; exit 1 ;;
 esac
 
@@ -67,6 +67,11 @@ rm -rf "$APP_DIR"
 echo "==> 组装 fpk 根层级元数据与生命周期脚本"
 cp "$PLATFORM/manifest" "$STAGE/"
 sed -i "s/^platform *=.*/platform              = $PLATFORM_TAG/" "$STAGE/manifest"
+if grep -q "^arch *=" "$STAGE/manifest"; then
+  sed -i "s/^arch *=.*/arch                  = $ARCH_TAG/" "$STAGE/manifest"
+else
+  sed -i "/^platform *=.*/a arch                  = $ARCH_TAG" "$STAGE/manifest"
+fi
 cp -r "$PLATFORM/config" "$STAGE/"
 cp -r "$PLATFORM/cmd" "$STAGE/"
 cp "$PLATFORM/ICON.PNG" "$STAGE/"
