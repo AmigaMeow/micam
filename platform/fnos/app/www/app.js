@@ -8505,7 +8505,7 @@ function ptzFlush(){
     if(info){
       var msg = (e && e.message) ? e.message : "请求失败";
       if(msg.indexOf("限流") !== -1 || msg.indexOf("静默") !== -1 || msg.indexOf("超时") !== -1){
-        info.innerHTML = "云台：失败（" + esc(msg) + "） <a href="javascript:;" id="ptzRetryBtn" style="color:var(--accent);text-decoration:underline;margin-left:4px;">立即重试</a>";
+        info.innerHTML = "云台：失败（" + esc(msg) + "） <a href='javascript:;' id='ptzRetryBtn' style='color:var(--accent);text-decoration:underline;margin-left:4px;'>立即重试</a>";
         var btn = document.getElementById("ptzRetryBtn");
         if(btn){
           btn.onclick = function(ev){
