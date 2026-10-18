@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <title>MiCam - 智能监控中心</title>
-<meta name="micam-build" content="2026-10-18 03:29:37">
+<meta name="micam-build" content="2026-10-18 08:45:31">
 <!-- 内联 SVG favicon（data URI）：
      浏览器默认会请求 /favicon.ico 并得到 404（控制台报错）。
      这里用 data URI 消除该请求 —— 同时保持「全内联、不联网」的约束。 -->
@@ -7659,7 +7659,7 @@ input[type="checkbox"]:not(.switch input) { width: 16px; height: 16px; flex: 0 0
 
 /* 页面内面板：左侧导航切换（设置页同款骨架；账号 / 存储页复用） */
 .pnl { display: none; }
-.pnl.is-on { display: block; }
+.pnl.is-on { display: block; width: 100%; min-width: 0; box-sizing: border-box; }
 
 /* 账号页：账号卡片内的设备清单 */
 .acct-dev { display:flex; align-items:center; gap: var(--space-3); margin-top: var(--space-3); padding-top: var(--space-3); border-top:1px solid var(--border-subtle); }
@@ -17074,7 +17074,6 @@ function aiTabSettings(){
     +     '</div>'
     +   '</div>'
     + '</div>'
-    + '</div>'
     + '<div class="pnl' + (aiSetTab === 'policy' ? ' is-on' : '') + '" data-pnl="policy">'
 
     // ===== 分析策略 + 隐私 =====
@@ -17197,6 +17196,7 @@ function aiTabSettings(){
     +   '<div class="ai-usage-wrap" id="aiUsageWrap">' + loading('读取中…') + '</div>'
     + '</div>'
     +   '</div>'
+    + '</div>'
     + '</div>';
 }
 
@@ -19411,7 +19411,26 @@ function ptzFlush(){
   }).catch(function(e){
     clearTimeout(timeoutId);
     ptzBusy = false;
-    if(info) info.textContent = "云台：失败（" + e.message + "）";
+    if(info){
+      var msg = (e && e.message) ? e.message : "请求失败";
+      if(msg.indexOf("限流") !== -1 || msg.indexOf("静默") !== -1 || msg.indexOf("超时") !== -1){
+        info.innerHTML = "云台：失败（" + esc(msg) + "） <a href="javascript:;" id="ptzRetryBtn" style="color:var(--accent);text-decoration:underline;margin-left:4px;">立即重试</a>";
+        var btn = document.getElementById("ptzRetryBtn");
+        if(btn){
+          btn.onclick = function(ev){
+            ev.stopPropagation();
+            info.textContent = "云台：正在重置限流并重新申请凭据…";
+            api("/api/live/renew?did=" + encodeURIComponent(currentDid), {method: "POST"}).then(function(){
+              info.textContent = "云台：已恢复连线，请重新点击方向键";
+            }).catch(function(err){
+              info.textContent = "云台：恢复失败（" + (err.message || err) + "）";
+            });
+          };
+        }
+      } else {
+        info.textContent = "云台：失败（" + msg + "）";
+      }
+    }
     ptzFlush();
   });
 }

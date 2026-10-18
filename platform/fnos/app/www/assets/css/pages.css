@@ -5903,7 +5903,7 @@
 
 /* 页面内面板：左侧导航切换（设置页同款骨架；账号 / 存储页复用） */
 .pnl { display: none; }
-.pnl.is-on { display: block; }
+.pnl.is-on { display: block; width: 100%; min-width: 0; box-sizing: border-box; }
 
 /* 账号页：账号卡片内的设备清单 */
 .acct-dev { display:flex; align-items:center; gap: var(--space-3); margin-top: var(--space-3); padding-top: var(--space-3); border-top:1px solid var(--border-subtle); }

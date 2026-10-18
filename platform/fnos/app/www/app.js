@@ -6165,7 +6165,6 @@ function aiTabSettings(){
     +     '</div>'
     +   '</div>'
     + '</div>'
-    + '</div>'
     + '<div class="pnl' + (aiSetTab === 'policy' ? ' is-on' : '') + '" data-pnl="policy">'
 
     // ===== 分析策略 + 隐私 =====
@@ -6288,6 +6287,7 @@ function aiTabSettings(){
     +   '<div class="ai-usage-wrap" id="aiUsageWrap">' + loading('读取中…') + '</div>'
     + '</div>'
     +   '</div>'
+    + '</div>'
     + '</div>';
 }
 
@@ -8502,7 +8502,26 @@ function ptzFlush(){
   }).catch(function(e){
     clearTimeout(timeoutId);
     ptzBusy = false;
-    if(info) info.textContent = "云台：失败（" + e.message + "）";
+    if(info){
+      var msg = (e && e.message) ? e.message : "请求失败";
+      if(msg.indexOf("限流") !== -1 || msg.indexOf("静默") !== -1 || msg.indexOf("超时") !== -1){
+        info.innerHTML = "云台：失败（" + esc(msg) + "） <a href="javascript:;" id="ptzRetryBtn" style="color:var(--accent);text-decoration:underline;margin-left:4px;">立即重试</a>";
+        var btn = document.getElementById("ptzRetryBtn");
+        if(btn){
+          btn.onclick = function(ev){
+            ev.stopPropagation();
+            info.textContent = "云台：正在重置限流并重新申请凭据…";
+            api("/api/live/renew?did=" + encodeURIComponent(currentDid), {method: "POST"}).then(function(){
+              info.textContent = "云台：已恢复连线，请重新点击方向键";
+            }).catch(function(err){
+              info.textContent = "云台：恢复失败（" + (err.message || err) + "）";
+            });
+          };
+        }
+      } else {
+        info.textContent = "云台：失败（" + msg + "）";
+      }
+    }
     ptzFlush();
   });
 }
