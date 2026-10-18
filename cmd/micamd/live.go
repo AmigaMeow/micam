@@ -64,26 +64,39 @@ func (s *Server) resolveSource(dev *xiaomi.Device) (string, error) {
 		return v, nil
 	}
 	// 兜底：直接读磁盘上的 sources.json。
-	//
-	// ⚠️ 实测发现 store 的内存 sources 有时为空（磁盘文件明明有效），
-	// 原因未完全定位。与其卡在云端限流上，不如直接从磁盘兜底。
 	if v, ok := readSourceFromDisk(dataDirPath, dev.Did); ok {
 		logf("[ptz] %s 从磁盘兜底读到凭据", dev.Did)
 		s.store.SaveSource(dev.Did, v)
 		return v, nil
 	}
+
+	// 严防限流风控踩踏：若已处于限流静默期，绝不再打云端，避免无限重置小米滑动窗口
+	if s.throttleSilenced() {
+		left := s.throttleSilenceLeft()
+		return "", fmt.Errorf("云台方向控制需小米云下发动态P2P凭据，当前账号处于限流冷却静默保护期（约剩余 %v），系统已开启防封保护，冷却结束后将自动恢复连线，视频与录像不受影响", left.Round(time.Minute))
+	}
+	if !s.canRefresh(dev.Did) {
+		left := s.RefreshCooldownLeft(dev.Did)
+		return "", fmt.Errorf("云台凭据正在冷却中（约剩余 %v），请稍后再试", left.Round(time.Minute))
+	}
+
 	logf("[ptz] %s 无凭据缓存（内存 did: %v），去云端申请", dev.Did, s.store.SourceDids())
 	sessions := s.store.AllSessions()
 	if len(sessions) == 0 {
 		return "", fmt.Errorf("未登录小米账号")
 	}
+	s.markRefresh(dev.Did)
 	src, err := stream.BuildSource(sessions[0], dev, "cn")
 	if err != nil {
-		if strings.Contains(err.Error(), "throttle") {
-			return "", fmt.Errorf("云台方向控制需小米云下发动态P2P凭据，当前账号处于小米云限流冷却期 (throttle deny)。冷却后将自动恢复连线，视频与录像不受影响")
+		s.markRefreshResult(dev.Did, false)
+		if isThrottleError(err) {
+			s.markThrottled()
+			left := s.throttleSilenceLeft()
+			return "", fmt.Errorf("云台方向控制需小米云下发动态P2P凭据，当前账号处于小米云限流冷却期 (throttle deny)。系统已自动进入静默保护（约剩余 %v），冷却后将自动恢复连线，视频与录像不受影响", left.Round(time.Minute))
 		}
 		return "", fmt.Errorf("向小米云申请凭据失败: %w", err)
 	}
+	s.markRefreshResult(dev.Did, true)
 	s.store.SaveSource(dev.Did, src)
 	return src, nil
 }
@@ -132,6 +145,42 @@ func (s *Server) ensureDevice(did string) (*xiaomi.Device, error) {
 //
 // 返回的 cleanup 必须调用（建议 defer），否则连接不会释放。
 func (s *Server) runFFmpeg(ctx context.Context, dev *xiaomi.Device, lens int, args []string) (*exec.Cmd, io.ReadCloser, *bytes.Buffer, func(), error) {
+	if IsTutkCamera(dev.Did, dev.Model) {
+		hlsURL, err := s.fetchCloudHLSStream(dev.Did)
+		if err != nil {
+			return nil, nil, nil, nil, err
+		}
+		var cleanArgs []string
+		for i := 0; i < len(args); i++ {
+			if args[i] == "-f" && i+1 < len(args) && args[i+1] == "mpegts" {
+				i++
+				continue
+			}
+			if args[i] == "-i" && i+1 < len(args) && (args[i+1] == "pipe:0" || args[i+1] == "-") {
+				i++
+				continue
+			}
+			cleanArgs = append(cleanArgs, args[i])
+		}
+		finalArgs := append([]string{"-re", "-i", hlsURL}, cleanArgs...)
+		cmd := exec.CommandContext(ctx, s.ffmpegPath(), finalArgs...)
+		stdout, err := cmd.StdoutPipe()
+		if err != nil {
+			return nil, nil, nil, nil, err
+		}
+		errBuf := &bytes.Buffer{}
+		cmd.Stderr = errBuf
+		if err := cmd.Start(); err != nil {
+			return nil, nil, nil, nil, err
+		}
+		cleanup := func() {
+			if cmd.Process != nil {
+				_ = cmd.Process.Kill()
+			}
+		}
+		return cmd, stdout, errBuf, cleanup, nil
+	}
+
 	if dev.Model == "generic.camera.rtsp" || strings.HasPrefix(dev.Did, "rtsp_") {
 		src, err := s.resolveSource(dev)
 		if err != nil {

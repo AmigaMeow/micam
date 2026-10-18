@@ -407,6 +407,10 @@ func (s *Server) handlePTZMove(w http.ResponseWriter, r *http.Request) {
 		if err == nil {
 			break
 		}
+		if isThrottleError(err) || s.throttleSilenced() {
+			// 限流保护快速失败，严禁反复重试导致小米风控滑动窗口无法清零
+			break
+		}
 		if attempt < 3 && isPTZRetryable(err) {
 			dropPTZ(dev.Did)
 			time.Sleep(time.Duration(attempt*300) * time.Millisecond)

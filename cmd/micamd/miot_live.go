@@ -97,33 +97,40 @@ func (s *Server) handleMiotLive(w http.ResponseWriter, r *http.Request) {
 	if w0 == "" {
 		w0 = "1280"
 	}
-	// 摄像头原生约 17-18 fps。原来默认 8 太保守（画面不够流畅），
-	// 实测 ffmpeg 转 MJPEG 在 2K 下只占 3% CPU，提到 15 无压力。
 	fps := r.URL.Query().Get("fps")
 	if fps == "" {
 		fps = "15"
 	}
+	qv := r.URL.Query().Get("qv")
+	if qv == "" {
+		if w0 == "0" {
+			qv = "10"
+		} else if w0 == "1280" {
+			qv = "6"
+		} else {
+			qv = "5"
+		}
+	}
+
+	// TUTK 老旧协议机型（如创米 1080p ipc009 等）：无缝切换至云端 HLS 兼容拉流
+	if IsTutkCamera(did, dev.Model) {
+		hlsURL, err := s.fetchCloudHLSStream(did)
+		if err != nil {
+			logf("[tutk-cloud] 设备 %s 申请云端兼容流失败: %v", did, err)
+			writeErr(w, 502, "老协议兼容拉流中: "+err.Error())
+			return
+		}
+		s.streamFromHLSURL(w, r, did, hlsURL, w0, fps, qv)
+		return
+	}
+
 	ch := r.URL.Query().Get("channel")
 	if ch == "" {
 		ch = "1"
 	}
-	// 画质档位（官方库：LOW=1, HIGH=3）。
-	// 前端「2K 画质」必须传 3，否则只会拿到 640x360 的低码率流。
 	q := r.URL.Query().Get("q")
 	if q == "" {
-		q = "3" // 默认高清（原画）
-	}
-	// JPEG 质量：2K 用 8 省带宽（实测 2K q:v=6 是 27Mbps，偏大）；
-	// 小分辨率本来码率就低，可以用更好的质量。
-	qv := r.URL.Query().Get("qv")
-	if qv == "" {
-		if w0 == "0" {
-			qv = "10" // 2K/3K 原画（兼顾画质与网络吞吐）
-		} else if w0 == "1280" {
-			qv = "6" // 720p 高清（平衡画质与极低延迟）
-		} else {
-			qv = "5" // 360p 流畅
-		}
+		q = "3"
 	}
 
 	channels := "1"

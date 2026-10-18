@@ -70,6 +70,9 @@ func (s *Server) fetchDeviceIPs() map[string]string {
 	raw, err := sessions[0].Request("/v2/home/device_list", "{}")
 	if err != nil {
 		logf("[miot] 实时 IP 查询失败（退回缓存）: %v", err)
+		ipCacheMu.Lock()
+		ipCacheAt = time.Now() // 失败记录时间，防止高频反复打云端阻塞 10+ 秒
+		ipCacheMu.Unlock()
 		return nil
 	}
 	var v struct {
@@ -93,6 +96,10 @@ func (s *Server) fetchDeviceIPs() map[string]string {
 
 // resolveDeviceIP 解析设备 IP：实时优先，失败退回缓存。
 func (s *Server) resolveDeviceIP(dev *xiaomi.Device) (string, string) {
+	if dev.LocalIP != "" && dev.LocalIP != "0.0.0.0" && dev.LocalIP != "127.0.0.1" {
+		// 已有有效局域网 IP 时直接使用，避免阻塞前台请求
+		return dev.LocalIP, "cache"
+	}
 	if ip := s.liveDeviceIP(dev.Did); ip != "" && ip != "0.0.0.0" && ip != "127.0.0.1" {
 		if ip != dev.LocalIP {
 			logf("[miot] %s 的 IP 已变化: 缓存=%s 实时=%s", dev.Did, dev.LocalIP, ip)
