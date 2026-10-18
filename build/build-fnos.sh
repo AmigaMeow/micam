@@ -14,7 +14,12 @@ case "$ARCH" in
   *) echo "不支持的目标架构: $ARCH (支持: amd64, arm64)"; exit 1 ;;
 esac
 
-GO=/usr/local/go/bin/go
+GO="$(command -v go 2>/dev/null || true)"
+if [ -z "$GO" ] || [ ! -x "$GO" ]; then
+  if [ -x /usr/local/go/bin/go ]; then
+    GO=/usr/local/go/bin/go
+  fi
+fi
 export GOPROXY=https://goproxy.cn,direct
 
 echo "==> 清理与准备"
