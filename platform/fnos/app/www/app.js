@@ -7291,6 +7291,237 @@ function liveCredGuard(did){
   }).catch(function(){ /* 查不到就按原流程走 */ });
 }
 
+
+// ===== 实时画面数码缩放与全屏增强控制器 (2026-10-25) =====
+var liveZoomState = {
+  scale: 1,
+  x: 0,
+  y: 0,
+  isDragging: false,
+  startX: 0,
+  startY: 0,
+  initialDistance: 0,
+  initialScale: 1
+};
+
+function updateLiveZoomUI() {
+  var stage = document.querySelector('#player .player__stage') || document.getElementById('player');
+  var stream = document.getElementById('liveStreamImg');
+  var poster = document.getElementById('livePoster');
+  var badge = document.getElementById('zoomBadge');
+  var btnReset = document.getElementById('btnZoomReset');
+  var floatBadge = document.getElementById('liveZoomFloatBadge');
+
+  var s = liveZoomState.scale;
+  var x = liveZoomState.x;
+  var y = liveZoomState.y;
+
+  if (s <= 1.02) {
+    x = 0;
+    y = 0;
+    liveZoomState.x = 0;
+    liveZoomState.y = 0;
+  }
+
+  var transformStr = 'scale(' + s + ') translate(' + x + 'px, ' + y + 'px)';
+  if (stream) {
+    stream.style.transform = transformStr;
+    stream.style.transformOrigin = 'center center';
+    stream.style.cursor = (s > 1.05) ? (liveZoomState.isDragging ? 'grabbing' : 'grab') : 'default';
+  }
+  if (poster && poster.style.display !== 'none') {
+    poster.style.transform = transformStr;
+    poster.style.transformOrigin = 'center center';
+  }
+
+  var pct = Math.round(s * 100) + '%';
+  if (badge) badge.textContent = pct;
+  if (btnReset) {
+    btnReset.style.display = (s > 1.05 || s < 0.95) ? 'inline-flex' : 'none';
+  }
+
+  if (!floatBadge && stage) {
+    floatBadge = document.createElement('div');
+    floatBadge.id = 'liveZoomFloatBadge';
+    floatBadge.style.cssText = 'position:absolute;top:16px;left:16px;z-index:6;padding:5px 12px;background:rgba(15,23,42,0.8);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,0.2);border-radius:16px;color:#fff;font-size:12px;display:none;pointer-events:none;transition:opacity .2s;user-select:none;box-shadow:0 4px 12px rgba(0,0,0,0.3);';
+    stage.appendChild(floatBadge);
+  }
+  if (floatBadge) {
+    if (s > 1.05) {
+      floatBadge.textContent = '缩放 ' + pct + ' · 按住鼠标拖拽查看细节 · 双击复位';
+      floatBadge.style.display = 'block';
+    } else {
+      floatBadge.style.display = 'none';
+    }
+  }
+}
+
+function setLiveZoom(newScale) {
+  var s = Math.max(1, Math.min(4.0, newScale));
+  liveZoomState.scale = Math.round(s * 100) / 100;
+  if (liveZoomState.scale <= 1.02) {
+    liveZoomState.scale = 1;
+    liveZoomState.x = 0;
+    liveZoomState.y = 0;
+  }
+  updateLiveZoomUI();
+}
+
+function resetLiveZoom() {
+  liveZoomState.scale = 1;
+  liveZoomState.x = 0;
+  liveZoomState.y = 0;
+  updateLiveZoomUI();
+}
+
+function toggleLiveFullscreen() {
+  var pw = document.querySelector('.player-wrap') || document.getElementById('player');
+  if (!pw) return;
+  var isNativeFull = !!(document.fullscreenElement || document.webkitFullscreenElement);
+  var isWebFull = pw.classList.contains('is-web-fullscreen');
+  var lf = document.getElementById('btnLiveFull');
+
+  if (isNativeFull) {
+    (document.exitFullscreen || document.webkitExitFullscreen || function(){}).call(document);
+    pw.classList.remove('is-web-fullscreen');
+    document.body.classList.remove('has-web-fullscreen');
+    if (lf) lf.innerHTML = icon('maximize',15) + '<span>全屏</span>';
+    return;
+  }
+  if (isWebFull) {
+    pw.classList.remove('is-web-fullscreen');
+    document.body.classList.remove('has-web-fullscreen');
+    if (lf) lf.innerHTML = icon('maximize',15) + '<span>全屏</span>';
+    return;
+  }
+
+  var req = pw.requestFullscreen || pw.webkitRequestFullscreen;
+  var fallback = function() {
+    pw.classList.add('is-web-fullscreen');
+    document.body.classList.add('has-web-fullscreen');
+    if (lf) lf.innerHTML = icon('minimize',15) + '<span>退出全屏</span>';
+  };
+
+  if (req) {
+    try {
+      var p = req.call(pw);
+      if (p && p.catch) {
+        p.catch(function(){ fallback(); });
+      }
+      if (lf) lf.innerHTML = icon('minimize',15) + '<span>退出全屏</span>';
+    } catch(err) {
+      fallback();
+    }
+  } else {
+    fallback();
+  }
+}
+
+function syncFullscreenUI() {
+  var pw = document.querySelector('.player-wrap');
+  var lf = document.getElementById('btnLiveFull');
+  var isNative = !!(document.fullscreenElement || document.webkitFullscreenElement);
+  var isWeb = pw && pw.classList.contains('is-web-fullscreen');
+  if (lf) {
+    if (isNative || isWeb) {
+      lf.innerHTML = icon('minimize',15) + '<span>退出全屏</span>';
+    } else {
+      lf.innerHTML = icon('maximize',15) + '<span>全屏</span>';
+    }
+  }
+  if (!isNative && !isWeb && pw) {
+    document.body.classList.remove('has-web-fullscreen');
+  }
+}
+
+document.addEventListener('fullscreenchange', syncFullscreenUI);
+document.addEventListener('webkitfullscreenchange', syncFullscreenUI);
+window.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') {
+    var pw = document.querySelector('.player-wrap');
+    if (pw && pw.classList.contains('is-web-fullscreen')) {
+      pw.classList.remove('is-web-fullscreen');
+      document.body.classList.remove('has-web-fullscreen');
+      syncFullscreenUI();
+    }
+  }
+});
+
+function attachLiveZoomListeners(container) {
+  if (!container || container._hasZoomListeners) return;
+  container._hasZoomListeners = true;
+
+  container.addEventListener('wheel', function(e) {
+    if (e.target && e.target.closest && e.target.closest('.player__bar, .ptz-float, button, select, input')) return;
+    e.preventDefault();
+    var delta = e.deltaY;
+    var step = (delta < 0) ? 0.25 : -0.25;
+    setLiveZoom(liveZoomState.scale + step);
+  }, { passive: false });
+
+  container.addEventListener('mousedown', function(e) {
+    if (e.target && e.target.closest && e.target.closest('.player__bar, .ptz-float, button, select, input')) return;
+    if (liveZoomState.scale <= 1.05) return;
+    liveZoomState.isDragging = true;
+    liveZoomState.startX = e.clientX - liveZoomState.x * liveZoomState.scale;
+    liveZoomState.startY = e.clientY - liveZoomState.y * liveZoomState.scale;
+    e.preventDefault();
+    updateLiveZoomUI();
+  });
+
+  window.addEventListener('mousemove', function(e) {
+    if (!liveZoomState.isDragging) return;
+    liveZoomState.x = (e.clientX - liveZoomState.startX) / liveZoomState.scale;
+    liveZoomState.y = (e.clientY - liveZoomState.startY) / liveZoomState.scale;
+    updateLiveZoomUI();
+  });
+
+  window.addEventListener('mouseup', function() {
+    if (liveZoomState.isDragging) {
+      liveZoomState.isDragging = false;
+      updateLiveZoomUI();
+    }
+  });
+
+  container.addEventListener('touchstart', function(e) {
+    if (e.target && e.target.closest && e.target.closest('.player__bar, .ptz-float, button, select, input')) return;
+    if (e.touches.length === 2) {
+      var dx = e.touches[0].clientX - e.touches[1].clientX;
+      var dy = e.touches[0].clientY - e.touches[1].clientY;
+      liveZoomState.initialDistance = Math.hypot(dx, dy);
+      liveZoomState.initialScale = liveZoomState.scale;
+    } else if (e.touches.length === 1 && liveZoomState.scale > 1.05) {
+      liveZoomState.isDragging = true;
+      liveZoomState.startX = e.touches[0].clientX - liveZoomState.x * liveZoomState.scale;
+      liveZoomState.startY = e.touches[0].clientY - liveZoomState.y * liveZoomState.scale;
+    }
+  }, { passive: true });
+
+  container.addEventListener('touchmove', function(e) {
+    if (e.touches.length === 2 && liveZoomState.initialDistance > 0) {
+      e.preventDefault();
+      var dx = e.touches[0].clientX - e.touches[1].clientX;
+      var dy = e.touches[0].clientY - e.touches[1].clientY;
+      var currentDist = Math.hypot(dx, dy);
+      var factor = currentDist / liveZoomState.initialDistance;
+      setLiveZoom(liveZoomState.initialScale * factor);
+    } else if (e.touches.length === 1 && liveZoomState.isDragging) {
+      e.preventDefault();
+      liveZoomState.x = (e.touches[0].clientX - liveZoomState.startX) / liveZoomState.scale;
+      liveZoomState.y = (e.touches[0].clientY - liveZoomState.startY) / liveZoomState.scale;
+      updateLiveZoomUI();
+    }
+  }, { passive: false });
+
+  container.addEventListener('touchend', function(e) {
+    if (e.touches.length < 2) liveZoomState.initialDistance = 0;
+    if (e.touches.length === 0) {
+      liveZoomState.isDragging = false;
+      updateLiveZoomUI();
+    }
+  });
+}
+
 function renderLive(c){
   // 凭据受限时顶部提示
   checkCredBanner();
@@ -7447,7 +7678,10 @@ function renderLive(c){
       +         '<button class="pbar-btn" id="btnStop">' + icon('stop',15) + '<span>停止</span></button>'
       +         '<button class="pbar-btn" id="btnSnap" title="保存当前画面为图片">' + icon('camera',15) + '<span>截图</span></button>'
       +         '<button class="pbar-btn" id="btnRec">' + icon('circle-dot',15) + '<span>录像</span></button>'
-      +         '<button class="pbar-btn" id="btnLiveFull" title="全屏查看画面（双击播放器亦可全屏）">' + icon('maximize',15) + '<span>全屏</span></button>'
+      +         '<button class="pbar-btn" id="btnLiveFull" title="全屏查看画面（支持网页铺满与原生全屏）">' + icon('maximize',15) + '<span>全屏</span></button>'
+      +         '<button class="pbar-btn" id="btnZoomIn" title="画面放大（滚轮向上亦可放大）">' + icon('plus',15) + '<span>放大</span></button>'
+      +         '<button class="pbar-btn" id="btnZoomOut" title="画面缩小（滚轮向下亦可缩小）">' + icon('minus',15) + '<span>缩小</span></button>'
+      +         '<button class="pbar-btn" id="btnZoomReset" title="恢复原始画面大小" style="display:none;">' + icon('refresh',14) + '<span id="zoomBadge">100%</span></button>'
       +       '</div>'
       +       '<div class="player__bar-r">'
       +         '<label class="pbar-sel">' + icon('gauge',14)
@@ -7636,26 +7870,31 @@ function renderLive(c){
     var lf = document.getElementById('btnLiveFull');
     if(lf){
       lf.onclick = function(){
-        var p = document.getElementById('player');
-        if(!p) return;
-        if(!document.fullscreenElement && !document.webkitFullscreenElement){
-          (p.requestFullscreen || p.webkitRequestFullscreen || function(){}).call(p);
-          lf.innerHTML = icon('minimize',15) + '<span>退出全屏</span>';
-        } else {
-          (document.exitFullscreen || document.webkitExitFullscreen || function(){}).call(document);
-          lf.innerHTML = icon('maximize',15) + '<span>全屏</span>';
-        }
+        toggleLiveFullscreen();
       };
     }
+    var bzi = document.getElementById('btnZoomIn');
+    if(bzi){
+      bzi.onclick = function(){ setLiveZoom(liveZoomState.scale + 0.3); };
+    }
+    var bzo = document.getElementById('btnZoomOut');
+    if(bzo){
+      bzo.onclick = function(){ setLiveZoom(liveZoomState.scale - 0.3); };
+    }
+    var bzr = document.getElementById('btnZoomReset');
+    if(bzr){
+      bzr.onclick = function(){ resetLiveZoom(); };
+    }
+
     var plBox = document.getElementById('player');
     if(plBox){
+      attachLiveZoomListeners(plBox);
       plBox.ondblclick = function(e){
-        if(e.target && e.target.closest && e.target.closest('.player__bar')) return;
-        var p = plBox;
-        if(!document.fullscreenElement && !document.webkitFullscreenElement){
-          (p.requestFullscreen || p.webkitRequestFullscreen || function(){}).call(p);
+        if(e.target && e.target.closest && e.target.closest('.player__bar, .ptz-float, button, select, input')) return;
+        if(liveZoomState.scale > 1.05){
+          resetLiveZoom();
         } else {
-          (document.exitFullscreen || document.webkitExitFullscreen || function(){}).call(document);
+          toggleLiveFullscreen();
         }
       };
     }
@@ -7983,6 +8222,8 @@ function curDev(){
 }
 
 function startLive(did){
+  resetLiveZoom();
+  resetLiveZoom();
   // 先查凭据（异常时给出明确提示，而不是一直「正在连接…」）
   try { liveCredGuard(did); } catch(e){}
   var box = $("#player");

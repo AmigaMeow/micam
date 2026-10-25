@@ -1059,7 +1059,22 @@
   background: #000;
   box-shadow: var(--shadow-lg);
 }
-.player-wrap:fullscreen { border-radius: 0; max-height: none; aspect-ratio: auto; height: 100vh; }
+.player-wrap:fullscreen,
+.player-wrap:-webkit-full-screen,
+.player-wrap.is-web-fullscreen {
+  position: fixed !important;
+  inset: 0 !important;
+  width: 100vw !important;
+  height: 100vh !important;
+  max-height: none !important;
+  aspect-ratio: auto !important;
+  border-radius: 0 !important;
+  z-index: 999999 !important;
+  margin: 0 !important;
+}
+body.has-web-fullscreen {
+  overflow: hidden !important;
+}
 .player-wrap .player { position: absolute; inset: 0; aspect-ratio: auto; max-height: none; border-radius: 0; margin: 0; }
 
 /* ---- 顶部浮层 ---- */
