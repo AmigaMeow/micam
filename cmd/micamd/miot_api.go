@@ -28,6 +28,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -57,20 +58,90 @@ var (
 	miotAuthCli *miot.OAuth2Client
 )
 
-// loadMiotAuth 启动时载入。
-func loadMiotAuth() {
+// loadMiotAuth 启动与续期前载入最新授权状态。
+func loadMiotAuth() *miotAuth {
 	raw, err := os.ReadFile(miotAuthFile())
 	if err != nil {
-		return
+		return nil
 	}
 	var a miotAuth
 	if json.Unmarshal(raw, &a) != nil || a.AccessToken == "" {
-		return
+		return nil
 	}
+	miotAuthMu.Lock()
 	miotAuthSt = &a
 	miotAuthCli = miot.NewOAuth2Client(a.DeviceUUID, "")
-	logf("[miot] 已载入 OAuth2 授权（绑定于 %s，过期 %s）",
-		a.BoundAt, time.Unix(a.ExpiresAt, 0).Format("2006-01-02 15:04"))
+	miotAuthMu.Unlock()
+	return &a
+}
+
+var autoReauthMu sync.Mutex
+
+// autoReauthFromAccount 使用用户已登录的小米账号会话 (PassToken) 重新拉取 OAuth code 并换取新令牌。
+// 当 refresh_token 因轮换冲突或过期失效时，此方法可全自动自愈，无需用户重新手动授权。
+func (s *Server) autoReauthFromAccount() error {
+	autoReauthMu.Lock()
+	defer autoReauthMu.Unlock()
+
+	// 先检查磁盘上的令牌是否已被其它协程更新且有效
+	if a := loadMiotAuth(); a != nil {
+		left := time.Until(time.Unix(a.ExpiresAt, 0))
+		if left > 2*time.Hour && a.AccessToken != "" {
+			logf("[miot] 检测到磁盘已有最新有效令牌 (剩余 %.1f 小时)，直接复用", left.Hours())
+			return nil
+		}
+	}
+
+	sessions := s.store.AllSessions()
+	if len(sessions) == 0 || sessions[0].PassToken == "" {
+		return fmt.Errorf("尚未登录小米账号，无法自动重签")
+	}
+	sess := sessions[0]
+
+	miotAuthMu.Lock()
+	uid := ""
+	if miotAuthSt != nil {
+		uid = miotAuthSt.DeviceUUID
+	}
+	cli := miot.NewOAuth2Client(uid, "")
+	miotAuthCli = cli
+	miotAuthMu.Unlock()
+
+	flow, err := miot.NewQRFlow(cli.DeviceUUID)
+	if err != nil {
+		return fmt.Errorf("创建授权客户端失败: %w", err)
+	}
+	flow.UserID = sess.UserID
+	flow.PassToken = sess.PassToken
+	flow.State = "success"
+
+	if err := flow.FetchOAuthCodeDirect(); err != nil {
+		return fmt.Errorf("自动重签拉取 OAuth code 失败: %w", err)
+	}
+
+	tok, err := cli.ExchangeCode(flow.Code)
+	if err != nil {
+		return fmt.Errorf("自动重签换取令牌失败: %w", err)
+	}
+
+	na := &miotAuth{
+		DeviceUUID:   cli.DeviceUUID,
+		AccessToken:  tok.AccessToken,
+		RefreshToken: tok.RefreshToken,
+		ExpiresAt:    time.Now().Add(time.Duration(tok.ExpiresIn) * time.Second).Unix(),
+		BoundAt:      time.Now().Format(time.RFC3339),
+		RedirectURI:  cli.RedirectURI,
+	}
+	if err := saveMiotAuth(na); err != nil {
+		logf("[miot] 保存重签令牌失败: %v", err)
+	}
+
+	miotAuthMu.Lock()
+	miotAuthSt = na
+	miotAuthMu.Unlock()
+
+	logf("[miot] 自动根据小米账号凭据重签 OAuth2 令牌成功 (有效期 %d 小时)", tok.ExpiresIn/3600)
+	return nil
 }
 
 func saveMiotAuth(a *miotAuth) error {
@@ -109,59 +180,20 @@ func (s *Server) handleMiotAutoAuth(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, 405, "只支持 POST")
 		return
 	}
-	sessions := s.store.AllSessions()
-	if len(sessions) == 0 || sessions[0].PassToken == "" {
-		writeErr(w, 400, "尚未登录小米账号，请先扫码登录小米账号")
+	if err := s.autoReauthFromAccount(); err != nil {
+		writeErr(w, 500, "一键同步授权失败: "+err.Error())
 		return
 	}
-	sess := sessions[0]
-
 	miotAuthMu.Lock()
-	uid := ""
-	if miotAuthSt != nil {
-		uid = miotAuthSt.DeviceUUID
-	}
-	cli := miot.NewOAuth2Client(uid, "")
-	miotAuthCli = cli
+	a := miotAuthSt
 	miotAuthMu.Unlock()
-
-	flow, err := miot.NewQRFlow(cli.DeviceUUID)
-	if err != nil {
-		writeErr(w, 500, "创建授权客户端失败: "+err.Error())
-		return
+	expiresIn := int64(0)
+	if a != nil {
+		expiresIn = a.ExpiresAt - time.Now().Unix()
 	}
-	flow.UserID = sess.UserID
-	flow.PassToken = sess.PassToken
-	flow.State = "success"
-
-	if err := flow.FetchOAuthCodeDirect(); err != nil {
-		writeErr(w, 400, "一键同步授权失败: "+err.Error())
-		return
-	}
-
-	tok, err := cli.ExchangeCode(flow.Code)
-	if err != nil {
-		writeErr(w, 502, "换取令牌失败: "+err.Error())
-		return
-	}
-
-	a := &miotAuth{
-		DeviceUUID:   cli.DeviceUUID,
-		AccessToken:  tok.AccessToken,
-		RefreshToken: tok.RefreshToken,
-		ExpiresAt:    time.Now().Add(time.Duration(tok.ExpiresIn) * time.Second).Unix(),
-		BoundAt:      time.Now().Format(time.RFC3339),
-		RedirectURI:  cli.RedirectURI,
-	}
-	_ = saveMiotAuth(a)
-	miotAuthMu.Lock()
-	miotAuthSt = a
-	miotAuthMu.Unlock()
-
-	logf("[miot] ✅ 已登录账号一键授权成功（有效期 %d 小时）", tok.ExpiresIn/3600)
 	writeJSON(w, 200, map[string]any{
 		"ok":        true,
-		"expiresIn": tok.ExpiresIn,
+		"expiresIn": expiresIn,
 		"msg":       "一键同步授权成功！官方通道已激活。",
 	})
 }
@@ -233,7 +265,7 @@ func (s *Server) handleMiotAuthorize(w http.ResponseWriter, r *http.Request) {
 	miotAuthSt = a
 	miotAuthMu.Unlock()
 
-	logf("[miot] ✅ OAuth2 授权成功（有效期 %d 秒）", tok.ExpiresIn)
+	logf("[miot] OAuth2 授权成功（有效期 %d 秒）", tok.ExpiresIn)
 	writeJSON(w, 200, map[string]any{
 		"ok":        true,
 		"expiresIn": tok.ExpiresIn,

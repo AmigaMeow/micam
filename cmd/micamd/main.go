@@ -51,7 +51,7 @@ var appDestDir string
 // startedAt 进程启动时间（状态条显示「运行时间」用）
 var startedAt = time.Now()
 
-var appVersion = "0.41.32"
+var appVersion = "0.41.33"
 
 func main() {
 	checkMiotLib()
@@ -108,9 +108,21 @@ func main() {
 			*dataDir = "."
 		}
 	}
+	dataDirPath = *dataDir
 	if err := os.MkdirAll(*dataDir, 0o755); err != nil {
 		log.Fatalf("创建数据目录失败: %v", err)
 	}
+
+	// 单实例互斥文件锁：防止多重守护进程/容器并发冲突
+	lockPath := filepath.Join(*dataDir, "micamd.lock")
+	lockFile, err := os.OpenFile(lockPath, os.O_CREATE|os.O_RDWR, 0o600)
+	if err != nil {
+		log.Fatalf("打开单实例锁文件失败: %v", err)
+	}
+	if err := syscall.Flock(int(lockFile.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err != nil {
+		log.Fatalf("已有另一个 micamd 实例正在运行 (lock %s: %v)，立即退出避免冲突", lockPath, err)
+	}
+	defer lockFile.Close()
 
 	// 默认配置路径
 	if *configPath == "" {

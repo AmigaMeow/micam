@@ -61,19 +61,26 @@ need_restart() {
 }
 
 start_process() {
-    local pid
-    pid=$(current_pid)
+    local pids
+    pids=$(pgrep -f "${APP_BIN}" 2>/dev/null || true)
 
-    if [ -n "$pid" ]; then
-        if need_restart "$pid"; then
-            log_msg "检测到二进制已更新，重启进程 (pid=$pid)"
-            kill "$pid" 2>/dev/null || true
+    if [ -n "$pids" ]; then
+        local restart_needed=0
+        for p in $pids; do
+            if need_restart "$p"; then
+                restart_needed=1
+                break
+            fi
+        done
+        if [ "$restart_needed" -eq 1 ]; then
+            log_msg "检测到二进制已更新或存在多重残留进程，清理旧进程 ($pids)"
+            kill $pids 2>/dev/null || true
             local n=0
-            while check_process "$pid" && [ "$n" -lt 15 ]; do
+            while pgrep -f "${APP_BIN}" >/dev/null 2>&1 && [ "$n" -lt 15 ]; do
                 sleep 1
                 n=$((n + 1))
             done
-            check_process "$pid" && kill -KILL "$pid" 2>/dev/null || true
+            pgrep -f "${APP_BIN}" 2>/dev/null | xargs -r kill -KILL 2>/dev/null || true
             rm -f "${PID_FILE}"
             sleep 1
         else
@@ -122,18 +129,16 @@ start_process() {
 stop_process() {
     log_msg "Stopping process ..."
 
-    local pid
-    pid=$(current_pid)
-    if [ -n "$pid" ]; then
-        kill "$pid" 2>/dev/null || true
+    local pids
+    pids=$(pgrep -f "${APP_BIN}" 2>/dev/null || true)
+    if [ -n "$pids" ]; then
+        kill $pids 2>/dev/null || true
         local n=0
-        while check_process "$pid" && [ "$n" -lt 20 ]; do
+        while pgrep -f "${APP_BIN}" >/dev/null 2>&1 && [ "$n" -lt 20 ]; do
             sleep 1
             n=$((n + 1))
         done
-        if check_process "$pid"; then
-            kill -KILL "$pid" 2>/dev/null || true
-        fi
+        pgrep -f "${APP_BIN}" 2>/dev/null | xargs -r kill -KILL 2>/dev/null || true
     fi
 
     rm -f "${PID_FILE}" "${SOCKET_FILE}"

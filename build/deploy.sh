@@ -79,9 +79,9 @@ echo "--- 6) 校验"
 if curl -sf -m 15 http://127.0.0.1:8900/api/health >/dev/null 2>&1; then
   curl -s -m 15 http://127.0.0.1:8900/api/health | head -c 200
   echo
-  echo "    ✅ 部署成功"
+  echo "    部署成功"
 else
-  echo "    ❌ 健康检查失败，最后 20 行日志："
+  echo "    健康检查失败，最后 20 行日志："
   tail -20 "$DATA/micamd.log" | sed 's/^/      /'
   exit 1
 fi

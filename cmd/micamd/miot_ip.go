@@ -96,15 +96,14 @@ func (s *Server) fetchDeviceIPs() map[string]string {
 
 // resolveDeviceIP 解析设备 IP：实时优先，失败退回缓存。
 func (s *Server) resolveDeviceIP(dev *xiaomi.Device) (string, string) {
-	if dev.LocalIP != "" && dev.LocalIP != "0.0.0.0" && dev.LocalIP != "127.0.0.1" {
-		// 已有有效局域网 IP 时直接使用，避免阻塞前台请求
-		return dev.LocalIP, "cache"
-	}
 	if ip := s.liveDeviceIP(dev.Did); ip != "" && ip != "0.0.0.0" && ip != "127.0.0.1" {
-		if ip != dev.LocalIP {
-			logf("[miot] %s 的 IP 已变化: 缓存=%s 实时=%s", dev.Did, dev.LocalIP, ip)
+		if dev.LocalIP != "" && ip != dev.LocalIP {
+			logf("[miot] %s 的 IP 已更新: 缓存=%s 实时=%s", dev.Did, dev.LocalIP, ip)
 		}
 		return ip, "live"
+	}
+	if dev.LocalIP != "" && dev.LocalIP != "0.0.0.0" && dev.LocalIP != "127.0.0.1" {
+		return dev.LocalIP, "cache"
 	}
 	return dev.LocalIP, "cache"
 }

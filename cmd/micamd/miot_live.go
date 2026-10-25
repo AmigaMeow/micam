@@ -81,7 +81,7 @@ func (s *Server) handleMiotLive(w http.ResponseWriter, r *http.Request) {
 	var dev *xiaomiDevice
 	for _, d := range s.allCameras() {
 		if d.Did == did {
-			// ⚠️ IP 必须实时查 —— 摄像头 IP 会变，用缓存会 PPCS_Connect -3
+			// IP 必须实时查 —— 摄像头 IP 会变，用缓存会 PPCS_Connect -3
 			ip, src := s.resolveDeviceIP(d)
 			logf("[miot] %s 使用 %s IP: %s (%s)", did, src, ip, d.Model)
 			dev = &xiaomiDevice{Name: d.Name, Model: d.Model, IP: ip}
@@ -155,7 +155,7 @@ func (s *Server) handleMiotLive(w http.ResponseWriter, r *http.Request) {
 		"--out", "-",
 	}
 
-	// ⚠️ 每设备串行化：摄像头同一时刻只接受一条 PPCS 连接。
+	// 每设备串行化：摄像头同一时刻只接受一条 PPCS 连接。
 	//    若后台录像正在运行，主动让出连接，保证用户实时流优先秒开。
 	s.yieldCameraForLive(did)
 
@@ -214,7 +214,8 @@ func (s *Server) handleMiotLive(w http.ResponseWriter, r *http.Request) {
 		}
 	}()
 
-	// sidecar 日志转进插件日志（便于诊断 401 之类与 TUTK 限制）
+	// sidecar 日志转进插件日志（实时捕获 401 鉴权失效并自动重签）
+	var is401 atomic.Bool
 	go func() {
 		buf := make([]byte, 2048)
 		for {
@@ -222,6 +223,12 @@ func (s *Server) handleMiotLive(w http.ResponseWriter, r *http.Request) {
 			if n > 0 {
 				msg := string(buf[:n])
 				logf("[miot] %s", msg)
+				if strings.Contains(msg, "401") || strings.Contains(msg, "error http code, 401") {
+					if !is401.Swap(true) {
+						logf("[miot] 检测到官方通道 401 Unauthorized，立即触发令牌自动重签自愈")
+						go s.forceMiotRefresh()
+					}
+				}
 				if strings.Contains(msg, "Can't support TUTK vendor") || strings.Contains(msg, "miss_client_vendor") {
 					tutkDevicesMu.Lock()
 					tutkDevices[did] = true
@@ -237,24 +244,15 @@ func (s *Server) handleMiotLive(w http.ResponseWriter, r *http.Request) {
 
 	// ===== MJPEG 输出（2026-10-11 修正）=====
 	//
-	// ⚠️ 之前直接写 sidecar 的裸字节流，但 Content-Type 声明的是 multipart。
+	// 之前直接写 sidecar 的裸字节流，但 Content-Type 声明的是 multipart。
 	//    浏览器按 multipart 解析却找不到分隔符 -> naturalWidth=0 -> 黑屏。
 	//    必须自己把连续 JPEG 切出来，组装成标准 multipart 帧。
 	const boundary = "mjpegframe"
-
-	w.Header().Set("Content-Type", "multipart/x-mixed-replace; boundary="+boundary)
-	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
-	w.Header().Set("Pragma", "no-cache")
-
 	flusher, _ := w.(http.Flusher)
-	w.WriteHeader(200)
-	if flusher != nil {
-		flusher.Flush()
-	}
+	headerSent := false
 
-	// 前端已具备 livePoster 底层封面展示，此处只输出真实解码帧，
-	// 避免在摄像头握手或异常断开时向浏览器注入伪画面导致前端误判为播放中而冻结。
-
+	// 首帧缓冲设计：在切出首个真实 JPEG 帧前严禁发送 200 Header，
+	// 避免在 401 鉴权失效或握手失败时向浏览器输出空 200 流，导致 WebKit/Safari 渲染破损问号图标。
 	var pending []byte
 	readBuf := make([]byte, 64*1024)
 	sent := 0
@@ -267,8 +265,6 @@ func (s *Server) handleMiotLive(w http.ResponseWriter, r *http.Request) {
 		n, rerr := stdout.Read(readBuf)
 		if n > 0 {
 			lastData.Store(time.Now().Unix())
-		}
-		if n > 0 {
 			pending = append(pending, readBuf[:n]...)
 
 			// 尽可能多地切出完整帧
@@ -290,6 +286,18 @@ func (s *Server) handleMiotLive(w http.ResponseWriter, r *http.Request) {
 				}
 				frames = append(frames, pending[start:end+2])
 				pending = pending[end+2:]
+			}
+
+			// 首帧就绪，正式建立 HTTP 200 Multipart 响应
+			if len(frames) > 0 && !headerSent {
+				w.Header().Set("Content-Type", "multipart/x-mixed-replace; boundary="+boundary)
+				w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+				w.Header().Set("Pragma", "no-cache")
+				w.WriteHeader(http.StatusOK)
+				if flusher != nil {
+					flusher.Flush()
+				}
+				headerSent = true
 			}
 
 			for i, frame := range frames {
@@ -356,8 +364,21 @@ func (s *Server) handleMiotLive(w http.ResponseWriter, r *http.Request) {
 			break
 		}
 	}
+
+	if !headerSent {
+		if is401.Load() {
+			writeErr(w, http.StatusUnauthorized, "官方通道授权已失效，正在后台重签，请稍后重试")
+		} else {
+			writeErr(w, http.StatusBadGateway, "摄像头实时画面连接中断，未接收到视频数据")
+		}
+	}
+
 	logf("[miot] 推流结束 did=%s（真实帧 %d / 总帧 %d，%d 字节）", did, realFrames, sent, sentBytes)
 	recordMiotPush(did, startAt, int64(realFrames), int64(sentBytes))
+	if realFrames == 0 && r.Context().Err() == nil {
+		logf("[miot] 实时拉流异常中断 (0帧)，触发令牌自愈检查 did=%s", did)
+		go s.forceMiotRefresh()
+	}
 	_ = cmd.Wait()
 }
 
