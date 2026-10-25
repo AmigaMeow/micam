@@ -116,7 +116,44 @@ func (s *Server) grabFrameViaMiot(did string) ([]byte, error) {
 			break
 		}
 	}
-	if model == "" || ip == "" {
+	if model == "" {
+		return nil, errNoDevice
+	}
+
+	// TUTK 老旧机型（如 ipc009 等）：直接利用云端 HLS 流抓取首帧，不走闭源库
+	if IsTutkCamera(did, model) {
+		hlsURL, err := s.fetchCloudHLSStream(did)
+		if err != nil {
+			return nil, err
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), 12*time.Second)
+		defer cancel()
+		cmd := exec.CommandContext(ctx, s.ffmpegPath(),
+			"-hide_banner", "-loglevel", "error",
+			"-user_agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+			"-rw_timeout", "10000000",
+			"-i", hlsURL,
+			"-vframes", "1",
+			"-q:v", "3",
+			"-f", "image2",
+			"pipe:1",
+		)
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		cmd.Cancel = func() error {
+			if cmd.Process != nil && cmd.Process.Pid > 0 {
+				return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+			}
+			return nil
+		}
+		cmd.WaitDelay = 2 * time.Second
+		out, err := cmd.Output()
+		if err != nil || len(out) == 0 {
+			return nil, errNoFrame
+		}
+		return out, nil
+	}
+
+	if ip == "" {
 		return nil, errNoDevice
 	}
 
@@ -140,6 +177,13 @@ func (s *Server) grabFrameViaMiot(did string) ([]byte, error) {
 		"--out", "-",
 	)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error {
+		if cmd.Process != nil && cmd.Process.Pid > 0 {
+			return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		}
+		return nil
+	}
+	cmd.WaitDelay = 2 * time.Second
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
 		return nil, err

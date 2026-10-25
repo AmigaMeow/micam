@@ -354,7 +354,7 @@ func (s *Server) triggerAutoMigrate(root string) {
 					if f.IsDir() || !strings.HasSuffix(f.Name(), ".mkv") {
 						continue
 					}
-					base := strings.TrimSuffix(f.Name(), ".mkv")
+					base := strings.TrimSuffix(f.Name(), filepath.Ext(f.Name()))
 					if len(base) >= 8 {
 						if t, err := time.ParseInLocation("20060102", base[:8], time.Local); err == nil {
 							actualDate := t.Format("2006-01-02")
@@ -468,7 +468,11 @@ func (s *Server) handleRecDates(w http.ResponseWriter, r *http.Request) {
 	for _, root := range roots {
 		var dirs []string
 		if name != "" {
-			dirs = []string{filepath.Join(root, name)}
+			dirs = append(dirs, filepath.Join(root, name))
+			sName := sanitizeName(name)
+			if sName != name {
+				dirs = append(dirs, filepath.Join(root, sName))
+			}
 		} else {
 			entries, _ := os.ReadDir(root)
 			for _, e := range entries {
@@ -501,7 +505,7 @@ func (s *Server) handleRecDates(w http.ResponseWriter, r *http.Request) {
 						continue
 					}
 					clipDate := date
-					base := strings.TrimSuffix(f.Name(), ".mkv")
+					base := strings.TrimSuffix(f.Name(), filepath.Ext(f.Name()))
 					if len(base) >= 8 {
 						if t, err := time.ParseInLocation("20060102", base[:8], time.Local); err == nil {
 							clipDate = t.Format("2006-01-02")
@@ -666,7 +670,7 @@ func (s *Server) collectRecFiles(root, name, date string) []recFileInfo {
 		rel, _ := filepath.Rel(root, pth)
 		parts := strings.Split(rel, string(filepath.Separator))
 		st := info.ModTime().Format("2006-01-02 15:04:05")
-		base := strings.TrimSuffix(strings.TrimSuffix(info.Name(), ".mkv"), ".mp4")
+		base := strings.TrimSuffix(info.Name(), filepath.Ext(info.Name()))
 		fileDate := ""
 		if len(base) >= 8 {
 			if t, err := time.ParseInLocation("20060102", base[:8], time.Local); err == nil {
@@ -1522,7 +1526,8 @@ func (s *Server) handleRecBatchDelete(w http.ResponseWriter, r *http.Request) {
 			if err != nil || info == nil || info.IsDir() {
 				return nil
 			}
-			if filepath.Ext(pth) != ".mkv" {
+			ext := strings.ToLower(filepath.Ext(pth))
+			if ext != ".mkv" && ext != ".mp4" && ext != ".265" && ext != ".264" {
 				return nil
 			}
 			rel, _ := filepath.Rel(base, pth)

@@ -26,6 +26,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -76,8 +77,17 @@ func (s *Server) startRecordingMiot(dev *xiaomi.Device) error {
 			break
 		}
 	}
-	if model == "" || ip == "" {
-		return fmt.Errorf("设备信息不完整（model=%s ip=%s）", model, ip)
+	if model == "" {
+		return fmt.Errorf("设备信息不完整（model 为空）")
+	}
+
+	// TUTK 老旧机型通过云端 HLS 兼容通道进行按段录制
+	if IsTutkCamera(dev.Did, model) {
+		return s.startRecordingTutkCloud(dev, model)
+	}
+
+	if ip == "" {
+		return fmt.Errorf("设备信息不完整（model=%s ip 为空）", model)
 	}
 
 	// 录像目录：<root>/<设备名>/<日期>/
@@ -112,7 +122,7 @@ func (s *Server) startRecordingMiot(dev *xiaomi.Device) error {
 	// 登记到录制器（界面显示"在录"）
 	s.rec.TrackExternal(dev.Did, dev.Name, nil, cancel)
 
-	logf("[rec] ✅ 官方通道录像已启动 did=%s (%s @ %s) -> %s", dev.Did, model, ip, dir)
+	logf("[rec] 官方通道录像已启动 did=%s (%s @ %s) -> %s", dev.Did, model, ip, dir)
 	return nil
 }
 
@@ -134,6 +144,17 @@ func (j *miotRecJob) run(ctx context.Context, s *Server, libPath, sidecar, model
 			return
 		}
 
+		// 每次重启前重新解析一次设备最新局域网 IP，避免摄像头重启或 DHCP 换 IP 后一直使用失效 IP 导致录像永久中断
+		liveIP := ip
+		for _, d := range s.allCameras() {
+			if d.Did == j.did {
+				if curIP, _ := s.resolveDeviceIP(d); curIP != "" {
+					liveIP = curIP
+				}
+				break
+			}
+		}
+
 		startAt := time.Now()
 		curDir := filepath.Join(s.rec.GetConfig().Dir, sanitizeName(j.name),
 			startAt.Format("2006-01-02"))
@@ -150,7 +171,7 @@ func (j *miotRecJob) run(ctx context.Context, s *Server, libPath, sidecar, model
 			"--token", token,
 			"--did", j.did,
 			"--model", model,
-			"--ip", ip,
+			"--ip", liveIP,
 			"--channel", "1",
 			"--channels", recChannels,
 			"--quality", j.quality,
@@ -319,4 +340,123 @@ func sanitizeName(s string) string {
 		s = "camera"
 	}
 	return s
+}
+
+
+// startRecordingTutkCloud 为 TUTK 早期协议机型启动云端 HLS 兼容录像。
+func (s *Server) startRecordingTutkCloud(dev *xiaomi.Device, model string) error {
+	dir := filepath.Join(s.rec.GetConfig().Dir, sanitizeName(dev.Name),
+		time.Now().Format("2006-01-02"))
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return fmt.Errorf("创建录像目录失败: %w", err)
+	}
+
+	seg := int(s.rec.GetConfig().Segment.Seconds())
+	if seg <= 0 {
+		seg = 300
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	job := &miotRecJob{
+		did: dev.Did, name: dev.Name, dir: dir,
+		quality: "3", segment: seg,
+		cancel: cancel,
+	}
+
+	miotRecJobsMu.Lock()
+	if old, ok := miotRecJobs[dev.Did]; ok {
+		old.stop()
+	}
+	miotRecJobs[dev.Did] = job
+	miotRecJobsMu.Unlock()
+
+	go job.runTutkCloud(ctx, s, model)
+
+	s.rec.TrackExternal(dev.Did, dev.Name, nil, cancel)
+	logf("[rec] 老旧协议云端兼容录像已启动 did=%s (%s) -> %s", dev.Did, model, dir)
+	return nil
+}
+
+// runTutkCloud TUTK 早期机型云端 HLS 录像主循环。
+func (j *miotRecJob) runTutkCloud(ctx context.Context, s *Server, model string) {
+	backoff := 3 * time.Second
+	const maxBackoff = 30 * time.Second
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		hlsURL, err := s.fetchCloudHLSStream(j.did)
+		if err != nil {
+			logf("[rec-tutk] 获取云端兼容流失败 did=%s: %v (%.0f 秒后重试)", j.did, err, backoff.Seconds())
+			if !j.sleep(ctx, backoff) {
+				return
+			}
+			backoff = minDur(backoff*2, maxBackoff)
+			continue
+		}
+
+		startAt := time.Now()
+		curDir := filepath.Join(s.rec.GetConfig().Dir, sanitizeName(j.name),
+			startAt.Format("2006-01-02"))
+		_ = os.MkdirAll(curDir, 0o755)
+		j.dir = curDir
+
+		outFilePattern := filepath.Join(curDir, "%Y%m%d_%H%M%S.mkv")
+		cmd := exec.CommandContext(ctx, s.ffmpegPath(),
+			"-hide_banner", "-loglevel", "error",
+			"-user_agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+			"-reconnect", "1",
+			"-reconnect_at_eof", "1",
+			"-reconnect_streamed", "1",
+			"-reconnect_delay_max", "5",
+			"-rw_timeout", "15000000",
+			"-i", hlsURL,
+			"-c", "copy",
+			"-f", "segment",
+			"-segment_time", strconv.Itoa(j.segment),
+			"-reset_timestamps", "1",
+			"-strftime", "1",
+			outFilePattern,
+		)
+		cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+		cmd.Cancel = func() error {
+			if cmd.Process != nil && cmd.Process.Pid > 0 {
+				return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+			}
+			return nil
+		}
+		cmd.WaitDelay = 3 * time.Second
+
+		if err := cmd.Start(); err != nil {
+			logf("[rec-tutk] ffmpeg 录像启动失败 did=%s: %v", j.did, err)
+			if !j.sleep(ctx, backoff) {
+				return
+			}
+			backoff = minDur(backoff*2, maxBackoff)
+			continue
+		}
+
+		_ = cmd.Wait()
+
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
+
+		ran := time.Since(startAt)
+		if ran > 30*time.Second {
+			backoff = 3 * time.Second
+		} else {
+			backoff = minDur(backoff*2, maxBackoff)
+		}
+
+		if !j.sleep(ctx, backoff) {
+			return
+		}
+	}
 }

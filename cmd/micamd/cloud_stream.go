@@ -170,12 +170,17 @@ func (s *Server) streamFromHLSURL(w http.ResponseWriter, r *http.Request, did, h
 	defer finishStream()
 
 	scaleFilter := "scale=" + w0 + ":-2"
-	if w0 == "0" {
+	if w0 == "0" || w0 == "" {
 		scaleFilter = "null"
 	}
 	args := []string{
-		"-hide_banner", "-loglevel", "error",
-		"-re",
+		"-hide_banner", "-loglevel", "warning",
+		"-user_agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+		"-reconnect", "1",
+		"-reconnect_at_eof", "1",
+		"-reconnect_streamed", "1",
+		"-reconnect_delay_max", "5",
+		"-rw_timeout", "15000000",
 		"-i", hlsURL,
 		"-an",
 		"-vf", scaleFilter,
@@ -193,10 +198,25 @@ func (s *Server) streamFromHLSURL(w http.ResponseWriter, r *http.Request, did, h
 		}
 		return nil
 	}
+	cmd.WaitDelay = 3 * time.Second
+
+	stderr, _ := cmd.StderrPipe()
+	go func() {
+		buf := make([]byte, 2048)
+		for {
+			n, err := stderr.Read(buf)
+			if n > 0 {
+				logf("[tutk-cloud] ffmpeg [%s]: %s", did, trimNL(string(buf[:n])))
+			}
+			if err != nil {
+				return
+			}
+		}
+	}()
 
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
-		writeErr(w, 500, "启动转码失败: "+err.Error())
+		writeErr(w, 500, "启动转码管道失败: "+err.Error())
 		return
 	}
 
@@ -207,22 +227,19 @@ func (s *Server) streamFromHLSURL(w http.ResponseWriter, r *http.Request, did, h
 	logf("[tutk-cloud] 设备 %s 云端 HLS 兼容流已启动转码", did)
 
 	const boundary = "mjpegframe"
-	w.Header().Set("Content-Type", "multipart/x-mixed-replace; boundary="+boundary)
-	w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
-	w.Header().Set("Pragma", "no-cache")
-
 	flusher, _ := w.(http.Flusher)
-	w.WriteHeader(200)
-	if flusher != nil {
-		flusher.Flush()
-	}
+	headerSent := false
 
 	var pending []byte
 	readBuf := make([]byte, 64*1024)
+	sent := 0
+	startAt := time.Now()
+
 	for {
 		n, rerr := stdout.Read(readBuf)
 		if n > 0 {
 			pending = append(pending, readBuf[:n]...)
+			var frames [][]byte
 			for {
 				start := indexOfJPEGStart(pending)
 				if start < 0 {
@@ -238,12 +255,26 @@ func (s *Server) streamFromHLSURL(w http.ResponseWriter, r *http.Request, did, h
 					}
 					break
 				}
-				frame := pending[start : end+2]
+				frames = append(frames, pending[start:end+2])
 				pending = pending[end+2:]
+			}
 
-				head := "--" + boundary + "\r\n" +
-					"Content-Type: image/jpeg\r\n" +
-					"Content-Length: " + strconv.Itoa(len(frame)) + "\r\n\r\n"
+			if len(frames) > 0 && !headerSent {
+				w.Header().Set("Content-Type", "multipart/x-mixed-replace; boundary="+boundary)
+				w.Header().Set("Cache-Control", "no-cache, no-store, must-revalidate")
+				w.Header().Set("Pragma", "no-cache")
+				w.WriteHeader(http.StatusOK)
+				if flusher != nil {
+					flusher.Flush()
+				}
+				headerSent = true
+			}
+
+			for i, frame := range frames {
+				if len(frames) > 1 && i < len(frames)-1 {
+					continue
+				}
+				head := "--" + boundary + "\r\nContent-Type: image/jpeg\r\nContent-Length: " + strconv.Itoa(len(frame)) + "\r\n\r\n"
 				if _, werr := w.Write([]byte(head)); werr != nil {
 					return
 				}
@@ -256,10 +287,15 @@ func (s *Server) streamFromHLSURL(w http.ResponseWriter, r *http.Request, did, h
 				if flusher != nil {
 					flusher.Flush()
 				}
+				sent++
 			}
 		}
 		if rerr != nil {
 			break
 		}
+	}
+	if !headerSent {
+		logf("[tutk-cloud] 设备 %s 兼容流拉流结束但未收到任何有效帧 (耗时 %.2fs)", did, time.Since(startAt).Seconds())
+		writeErr(w, 502, "云端兼容流未输出视频帧，请稍后重试")
 	}
 }
