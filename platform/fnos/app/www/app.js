@@ -7174,7 +7174,7 @@ function curDevHasPTZ(){
   }
   // 保底：若后端未返回 hasPTZ，按已知型号特征安全识别
   var m = (d.model || '').toLowerCase();
-  if(m.indexOf('060a02') >= 0 || m.indexOf('029a02') >= 0 || m.indexOf('ipc009') >= 0 ||
+  if(m.indexOf('029a02') >= 0 || m.indexOf('ipc009') >= 0 ||
      m.indexOf('cateye') >= 0 || m.indexOf('doorbell') >= 0 || m.indexOf('feeder') >= 0 ||
      m.indexOf('card') >= 0 || m.indexOf('battery') >= 0){
     return false;
@@ -7445,8 +7445,9 @@ function renderLive(c){
       +     '<div class="player__bar">'
       +       '<div class="player__bar-l">'
       +         '<button class="pbar-btn" id="btnStop">' + icon('stop',15) + '<span>停止</span></button>'
-      +         '<button class="pbar-btn" id="btnSnap">' + icon('camera',15) + '<span>截图</span></button>'
+      +         '<button class="pbar-btn" id="btnSnap" title="保存当前画面为图片">' + icon('camera',15) + '<span>截图</span></button>'
       +         '<button class="pbar-btn" id="btnRec">' + icon('circle-dot',15) + '<span>录像</span></button>'
+      +         '<button class="pbar-btn" id="btnLiveFull" title="全屏查看画面（双击播放器亦可全屏）">' + icon('maximize',15) + '<span>全屏</span></button>'
       +       '</div>'
       +       '<div class="player__bar-r">'
       +         '<label class="pbar-sel">' + icon('gauge',14)
@@ -7632,6 +7633,32 @@ function renderLive(c){
     $("#selQuality").addEventListener('change', function(){ setTimeout(loadLiveVersion, 100); });
     $("#btnSnap").onclick = function(){ snap(currentDid); };
     $("#btnRec").onclick = function(){ startRec(currentDid); };
+    var lf = document.getElementById('btnLiveFull');
+    if(lf){
+      lf.onclick = function(){
+        var p = document.getElementById('player');
+        if(!p) return;
+        if(!document.fullscreenElement && !document.webkitFullscreenElement){
+          (p.requestFullscreen || p.webkitRequestFullscreen || function(){}).call(p);
+          lf.innerHTML = icon('minimize',15) + '<span>退出全屏</span>';
+        } else {
+          (document.exitFullscreen || document.webkitExitFullscreen || function(){}).call(document);
+          lf.innerHTML = icon('maximize',15) + '<span>全屏</span>';
+        }
+      };
+    }
+    var plBox = document.getElementById('player');
+    if(plBox){
+      plBox.ondblclick = function(e){
+        if(e.target && e.target.closest && e.target.closest('.player__bar')) return;
+        var p = plBox;
+        if(!document.fullscreenElement && !document.webkitFullscreenElement){
+          (p.requestFullscreen || p.webkitRequestFullscreen || function(){}).call(p);
+        } else {
+          (document.exitFullscreen || document.webkitExitFullscreen || function(){}).call(document);
+        }
+      };
+    }
     Array.prototype.forEach.call(document.querySelectorAll("[data-ptz]"), function(b){
       b.onclick = function(){
         var dir = b.dataset.dir;
@@ -14429,6 +14456,29 @@ function setPtzFlip(axis, on){
 
 // ===== 动作 =====
 function snap(did){
+  var liveImg = document.getElementById('liveStreamImg');
+  var livePoster = document.getElementById('livePoster');
+  var target = (liveImg && liveImg.naturalWidth > 0 && liveImg.style.opacity !== '0') ? liveImg : (livePoster && livePoster.naturalWidth > 0 ? livePoster : null);
+
+  if(target){
+    try {
+      var cv = document.createElement('canvas');
+      cv.width = target.naturalWidth;
+      cv.height = target.naturalHeight;
+      var ctx = cv.getContext('2d');
+      ctx.drawImage(target, 0, 0);
+      var url = cv.toDataURL('image/jpeg', 0.95);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = (did || 'camera') + '_' + Date.now() + '.jpg';
+      a.click();
+      toast('截图已保存', 'ok');
+      return;
+    } catch(e) {
+      console.log('[snap] 本地 canvas 导出失败，降级云端抓图: ' + e);
+    }
+  }
+
   toast("正在抓图…");
   fetch(apiUrl("/api/live/snapshot?did="+encodeURIComponent(did)+"&w=0"+lensParam()))
     .then(function(r){ if(!r.ok) throw new Error("HTTP "+r.status); return r.blob(); })
