@@ -8266,7 +8266,7 @@ function startLiveMJPEG(did){
   box.innerHTML = ""
     + "<div class=\"player__stage\" style=\"position:relative;width:100%;height:100%;overflow:hidden;background:#000;\">"
     +   "<img id=\"livePoster\" class=\"live-poster\" src=\"" + posterUrl + "\" alt=\"\" style=\"position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;transition:opacity .35s ease-out;z-index:1;\">"
-    +   "<img id=\"liveStreamImg\" class=\"live-stream-img\" src=\"" + streamUrl + "\" alt=\"\" style=\"position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;opacity:1;transition:opacity .25s ease-in;z-index:2;\">"
+    +   "<img id=\"liveStreamImg\" class=\"live-stream-img\" src=\"" + streamUrl + "\" alt=\"\" style=\"position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;opacity:0;transition:opacity .25s ease-in;z-index:2;\">"
     +   "<div id=\"liveConnecting\" class=\"live-connecting-pill\" style=\"position:absolute;top:16px;right:16px;z-index:5;display:inline-flex;align-items:center;gap:8px;padding:6px 14px;background:rgba(15,23,42,.85);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.15);border-radius:20px;color:#fff;font-size:12px;box-shadow:0 4px 16px rgba(0,0,0,.4);transition:all .3s ease;pointer-events:none;\">"
     +     "<span class=\"spinner-sm\" style=\"width:12px;height:12px;border:2px solid rgba(255,255,255,.25);border-top-color:#1890ff;border-radius:50%;display:inline-block;animation:spin 1s linear infinite;flex-shrink:0;\"></span>"
     +     "<span id=\"liveConnectingText\">正在建立实时连线…</span>"
@@ -8291,8 +8291,10 @@ function startLiveMJPEG(did){
   var reconnectTimer = null;
 
   var safetyTimer = setTimeout(function(){
-    revealLiveStream();
-  }, 2500);
+    if(!frameRevealed && pillText){
+      pillText.textContent = "正在等待摄像头响应画面…";
+    }
+  }, 3500);
 
   function revealLiveStream(){
     if(frameRevealed) return;
@@ -8308,7 +8310,7 @@ function startLiveMJPEG(did){
     }
     if(pill) {
       pill.style.opacity = "0";
-      setTimeout(function(){ if(pill && pill.parentNode) pill.remove(); }, 350);
+      pill.style.pointerEvents = "none";
     }
     if(st) st.textContent = "播放中";
     if(hint) hint.textContent = "";
@@ -8316,23 +8318,35 @@ function startLiveMJPEG(did){
   }
 
   function scheduleReconnect(reason){
-    if(frameRevealed){
-      frameRevealed = false;
-      if(stream) stream.style.opacity = "0.5";
-      if(poster) poster.style.opacity = "1";
+    frameRevealed = false;
+    if(stream) stream.style.opacity = "0";
+    if(poster) poster.style.opacity = "1";
+    if(pill) {
+      pill.style.opacity = "1";
     }
     if(retryCount >= maxRetries){
       if(pill) {
-        pill.innerHTML = "<span class=\"status-dot is-offline\"></span><span>连接繁忙，请稍后刷新</span>";
+        pill.innerHTML = "<span class=\"status-dot is-offline\"></span><span style=\"cursor:pointer\">连线异常，点击重新连接</span>";
         pill.style.borderColor = "rgba(255,77,79,.4)";
+        pill.style.pointerEvents = "auto";
+        pill.onclick = function(){
+          retryCount = 0;
+          startLiveMJPEG(did);
+        };
       }
-      if(st) st.textContent = "已停止";
-      if(hint) hint.textContent = "摄像头正被其它服务占用，请稍后再试";
+      if(st) st.textContent = "连接异常";
+      if(hint) hint.textContent = "摄像头当前无法建立连接，请点击重试或检查设备网络";
+      if(reconnectTimer) clearTimeout(reconnectTimer);
+      reconnectTimer = setTimeout(function(){
+        if(!stream || !stream.parentElement) return;
+        retryCount = 0;
+        startLiveMJPEG(did);
+      }, 15000);
       return;
     }
     retryCount++;
-    var delay = retryCount === 1 ? 1200 : (retryCount === 2 ? 2000 : 3500);
-    if(pillText) pillText.textContent = "正在调度摄像头连接 (重试 " + retryCount + ")…";
+    var delay = retryCount === 1 ? 1500 : (retryCount === 2 ? 3000 : 5000);
+    if(pillText) pillText.textContent = "正在重新连线 (重试 " + retryCount + ")…";
     if(st) st.textContent = "连接中";
     if(hint) hint.textContent = reason || "摄像头握手中…";
 
@@ -8361,6 +8375,7 @@ function startLiveMJPEG(did){
   };
 
   stream.onerror = function(){
+    if(stream) stream.style.opacity = "0";
     scheduleReconnect("连接中断，重连中…");
   };
 
