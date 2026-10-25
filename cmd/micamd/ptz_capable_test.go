@@ -4,7 +4,7 @@ import "testing"
 
 func TestIsPTZCapable(t *testing.T) {
 	cases := map[string]bool{
-		"chuangmi.camera.060a02": false,
+		"chuangmi.camera.060a02": true,
 		"chuangmi.camera.029a02": false,
 		"chuangmi.camera.ipc009": false,
 		"chuangmi.camera.070a02": true,

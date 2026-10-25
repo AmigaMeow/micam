@@ -14,6 +14,7 @@ package record
 
 import (
 	"context"
+	"strings"
 	"fmt"
 	"io"
 	"os"
@@ -286,20 +287,31 @@ type File struct {
 	ModTime string `json:"modTime"`
 }
 
-// ListFiles 列出某设备的录像文件。
+// ListFiles 列出某设备的录像文件（若 name 为空则列出所有设备）。
 func (m *Manager) ListFiles(name string, limit int) ([]File, error) {
 	m.mu.Lock()
 	cfg := m.cfg
 	m.mu.Unlock()
 
-	root := filepath.Join(cfg.Dir, sanitize(name))
+	root := cfg.Dir
+	if strings.TrimSpace(name) != "" {
+		cand := filepath.Join(cfg.Dir, sanitize(name))
+		if fi, err := os.Stat(cand); err == nil && fi.IsDir() {
+			root = cand
+		} else if fi, err := os.Stat(filepath.Join(cfg.Dir, name)); err == nil && fi.IsDir() {
+			root = filepath.Join(cfg.Dir, name)
+		} else {
+			root = cand
+		}
+	}
 	var files []File
 
 	err := filepath.Walk(root, func(p string, info os.FileInfo, err error) error {
 		if err != nil || info == nil || info.IsDir() {
 			return nil
 		}
-		if filepath.Ext(p) != ".mkv" {
+		ext := strings.ToLower(filepath.Ext(p))
+		if ext != ".mkv" && ext != ".mp4" && ext != ".265" && ext != ".264" {
 			return nil
 		}
 		files = append(files, File{

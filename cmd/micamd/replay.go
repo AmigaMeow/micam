@@ -493,7 +493,11 @@ func (s *Server) handleRecDates(w http.ResponseWriter, r *http.Request) {
 				}
 				files, _ := os.ReadDir(filepath.Join(d, date))
 				for _, f := range files {
-					if f.IsDir() || !strings.HasSuffix(f.Name(), ".mkv") {
+					if f.IsDir() {
+						continue
+					}
+					ext := strings.ToLower(filepath.Ext(f.Name()))
+					if ext != ".mkv" && ext != ".mp4" && ext != ".265" && ext != ".264" {
 						continue
 					}
 					clipDate := date
@@ -631,6 +635,11 @@ func (s *Server) handleRecList(w http.ResponseWriter, r *http.Request) {
 // collectRecFiles 收集某设备（可带日期）下的录像文件。
 func (s *Server) collectRecFiles(root, name, date string) []recFileInfo {
 	devDir := filepath.Join(root, name)
+	if _, err := os.Stat(devDir); err != nil && name != "" {
+		if fi, err := os.Stat(filepath.Join(root, sanitizeName(name))); err == nil && fi.IsDir() {
+			devDir = filepath.Join(root, sanitizeName(name))
+		}
+	}
 	walkTarget := devDir
 	if date != "" {
 		dateDir := filepath.Join(devDir, date)
@@ -645,10 +654,10 @@ func (s *Server) collectRecFiles(root, name, date string) []recFileInfo {
 			return nil
 		}
 		ext := strings.ToLower(filepath.Ext(pth))
-		if ext != ".mkv" && ext != ".mp4" {
+		if ext != ".mkv" && ext != ".mp4" && ext != ".265" && ext != ".264" {
 			return nil
 		}
-		if info.Size() < 64*1024 {
+		if info.Size() < 1024 {
 			return nil
 		}
 		if strings.Contains(info.Name(), ".tmp.") || strings.HasPrefix(info.Name(), ".") {

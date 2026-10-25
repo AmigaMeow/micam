@@ -42,8 +42,7 @@ func IsPTZCapable(model string) bool {
 
 	// 1. 明确无物理电机的型号黑名单
 	switch m {
-	case "chuangmi.camera.060a02", // 小白智能摄像机卡片机 / 青春版
-		"chuangmi.camera.029a02",  // 小白智能摄像机卡片版 1080P
+	case "chuangmi.camera.029a02",  // 小白智能摄像机卡片版 1080P
 		"chuangmi.camera.021a04",  // 小白智能摄像机电池版
 		"chuangmi.camera.026c02",  // 小白室外摄像机电池版
 		"chuangmi.camera.046c01",  // 小白室外摄像机电池版 EC3
@@ -94,7 +93,8 @@ func IsPTZCapable(model string) bool {
 
 	// 创米云台机系列
 	switch m {
-	case "chuangmi.camera.070a02", // 小白智能摄像机云台版
+	case "chuangmi.camera.060a02", // 小白智能摄像机云台版 2K
+		"chuangmi.camera.070a02", // 小白智能摄像机云台版
 		"chuangmi.camera.021a02",
 		"chuangmi.camera.025a01",
 		"chuangmi.camera.030a01",
