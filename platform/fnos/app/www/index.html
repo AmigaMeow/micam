@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <title>MiCam - 智能监控中心</title>
-<meta name="micam-build" content="2026-10-25 12:32:23">
+<meta name="micam-build" content="2026-10-25 12:45:48">
 <!-- 内联 SVG favicon（data URI）：
      浏览器默认会请求 /favicon.ico 并得到 404（控制台报错）。
      这里用 data URI 消除该请求 —— 同时保持「全内联、不联网」的约束。 -->
@@ -18118,7 +18118,7 @@ function curDevHasPTZ(){
   }
   // 保底：若后端未返回 hasPTZ，按已知型号特征安全识别
   var m = (d.model || '').toLowerCase();
-  if(m.indexOf('029a02') >= 0 || m.indexOf('ipc009') >= 0 ||
+  if(m.indexOf('ipc009') >= 0 ||
      m.indexOf('cateye') >= 0 || m.indexOf('doorbell') >= 0 || m.indexOf('feeder') >= 0 ||
      m.indexOf('card') >= 0 || m.indexOf('battery') >= 0){
     return false;
@@ -22376,7 +22376,7 @@ function modelLabel(m){
   var map = {
     'isa.camera.hlmax':'CW500 双摄版', 'isa.camera.hlmax2':'CW500 双摄版',
     'mxiang.camera.moc001':'CW300', 'mxiang.camera.moc006':'C400',
-    'chuangmi.camera.029a02':'小白智能摄像机',
+    'chuangmi.camera.029a02':'小米智能摄像机 云台版 2K',
     'chuangmi.camera.ipc019':'米家智能摄像机',
     'isa.camera.hlc6':'C500 双摄',
   };

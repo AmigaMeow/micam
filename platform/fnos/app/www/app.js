@@ -7174,7 +7174,7 @@ function curDevHasPTZ(){
   }
   // 保底：若后端未返回 hasPTZ，按已知型号特征安全识别
   var m = (d.model || '').toLowerCase();
-  if(m.indexOf('029a02') >= 0 || m.indexOf('ipc009') >= 0 ||
+  if(m.indexOf('ipc009') >= 0 ||
      m.indexOf('cateye') >= 0 || m.indexOf('doorbell') >= 0 || m.indexOf('feeder') >= 0 ||
      m.indexOf('card') >= 0 || m.indexOf('battery') >= 0){
     return false;
@@ -11432,7 +11432,7 @@ function modelLabel(m){
   var map = {
     'isa.camera.hlmax':'CW500 双摄版', 'isa.camera.hlmax2':'CW500 双摄版',
     'mxiang.camera.moc001':'CW300', 'mxiang.camera.moc006':'C400',
-    'chuangmi.camera.029a02':'小白智能摄像机',
+    'chuangmi.camera.029a02':'小米智能摄像机 云台版 2K',
     'chuangmi.camera.ipc019':'米家智能摄像机',
     'isa.camera.hlc6':'C500 双摄',
   };
