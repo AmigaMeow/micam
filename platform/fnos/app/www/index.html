@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <title>MiCam - 智能监控中心</title>
-<meta name="micam-build" content="2026-10-25 12:47:05">
+<meta name="micam-build" content="2026-10-27 09:42:09">
 <!-- 内联 SVG favicon（data URI）：
      浏览器默认会请求 /favicon.ico 并得到 404（控制台报错）。
      这里用 data URI 消除该请求 —— 同时保持「全内联、不联网」的约束。 -->
@@ -11562,6 +11562,16 @@ function openReplayDrawer(dev, file, offSec, timeStr, titleStr, did){
       +   '<div class="replay-drawer__body">'
       +     '<div class="replay-drawer__video-box">'
       +       '<video id="drawerVideo" controls autoplay playsinline></video>'
+      +       '<div class="drawer-speed-bar" style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--bg-sub);border-radius:var(--radius-sm);margin-top:6px;border:1px solid var(--border-color);">'
+      +         '<span style="font-size:12px;color:var(--text-sec);display:inline-flex;align-items:center;gap:4px;">' + icon('gauge', 14) + '<span>播放倍速</span></span>'
+      +         '<div class="drawer-speed-group" style="display:inline-flex;gap:4px;">'
+      +           '<button type="button" class="btn btn--sm drawer-speed-btn" data-speed="0.5">0.5x</button>'
+      +           '<button type="button" class="btn btn--sm drawer-speed-btn is-active btn--primary" data-speed="1">1.0x</button>'
+      +           '<button type="button" class="btn btn--sm drawer-speed-btn" data-speed="1.25">1.25x</button>'
+      +           '<button type="button" class="btn btn--sm drawer-speed-btn" data-speed="1.5">1.5x</button>'
+      +           '<button type="button" class="btn btn--sm drawer-speed-btn" data-speed="2">2.0x</button>'
+      +         '</div>'
+      +       '</div>'
       +     '</div>'
       +     '<div class="replay-drawer__meta">'
       +       '<div class="replay-drawer__tip">'
@@ -11585,6 +11595,30 @@ function openReplayDrawer(dev, file, offSec, timeStr, titleStr, did){
   var subEl = document.getElementById('drawerSub');
   var videoEl = document.getElementById('drawerVideo');
   var fullBtn = document.getElementById('drawerGotoFull');
+
+  var currentDrawerSpeed = 1.0;
+  var drawerSpeedBtns = document.querySelectorAll('.drawer-speed-btn');
+  Array.prototype.forEach.call(drawerSpeedBtns, function(btn){
+    btn.onclick = function(){
+      currentDrawerSpeed = parseFloat(btn.dataset.speed) || 1.0;
+      Array.prototype.forEach.call(drawerSpeedBtns, function(b){ b.classList.remove('is-active', 'btn--primary'); });
+      btn.classList.add('is-active', 'btn--primary');
+      if(videoEl) videoEl.playbackRate = currentDrawerSpeed;
+    };
+  });
+  if(videoEl){
+    videoEl.onplay = function(){ videoEl.playbackRate = currentDrawerSpeed; };
+    videoEl.onratechange = function(){
+      var r = videoEl.playbackRate;
+      Array.prototype.forEach.call(drawerSpeedBtns, function(b){
+        if(Math.abs(parseFloat(b.dataset.speed) - r) < 0.05){
+          b.classList.add('is-active', 'btn--primary');
+        } else {
+          b.classList.remove('is-active', 'btn--primary');
+        }
+      });
+    };
+  }
   
   if(titleEl) titleEl.textContent = titleStr || '事件线索片段';
   if(subEl) subEl.innerHTML = icon('camera', 12) + ' ' + esc(dev || '') + (timeStr ? ' · ' + esc(timeStr) : '');
@@ -14636,6 +14670,16 @@ function openEventDetail(ev){
     +         '</div>'
     +       '</div>'
     +     '</div>'
+    +     '<div class="evd__player-bar" style="display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--bg-sub);border-radius:var(--radius-sm);margin-top:6px;border:1px solid var(--border-color);">'
+    +       '<span style="font-size:12px;color:var(--text-sec);display:inline-flex;align-items:center;gap:4px;">' + icon('gauge', 14) + '<span>播放倍速</span></span>'
+    +       '<div class="evd-speed-group" style="display:inline-flex;gap:4px;">'
+    +         '<button type="button" class="btn btn--sm evd-speed-btn" data-speed="0.5">0.5x</button>'
+    +         '<button type="button" class="btn btn--sm evd-speed-btn is-active btn--primary" data-speed="1">1.0x</button>'
+    +         '<button type="button" class="btn btn--sm evd-speed-btn" data-speed="1.25">1.25x</button>'
+    +         '<button type="button" class="btn btn--sm evd-speed-btn" data-speed="1.5">1.5x</button>'
+    +         '<button type="button" class="btn btn--sm evd-speed-btn" data-speed="2">2.0x</button>'
+    +       '</div>'
+    +     '</div>'
     +     '<div class="evd__frames">'
     +       '<div class="evd__frames-head">关键帧</div>'
     +       '<div class="evd__frames-list" id="evdFrames">' + loading('加载关键帧…') + '</div>'
@@ -14760,9 +14804,10 @@ function openEventDetail(ev){
       if(!v.src || v.src.indexOf(encodeURIComponent(ev.recFile)) < 0){
         v.src = playUrl;
         v.load();
-        v.play().catch(function(){});
+        v.playbackRate = currentSpeed;
+        v.play().then(function(){ v.playbackRate = currentSpeed; }).catch(function(){});
       } else {
-        try { v.currentTime = baseOff; v.play().catch(function(){}); } catch(e){}
+        try { v.currentTime = baseOff; v.playbackRate = currentSpeed; v.play().catch(function(){}); } catch(e){}
       }
     };
 
@@ -16000,7 +16045,24 @@ function bindAIChatEvents(){
       var file = this.dataset.file;
       var off = parseFloat(this.dataset.off) || 0;
       var videoUrl = apiUrl('/api/recordings/play?name=' + encodeURIComponent(dev) + '&file=' + encodeURIComponent(file) + '#t=' + off);
-      slot.innerHTML = '<video class="ai-chat-ev__video" src="' + videoUrl + '" controls autoplay playsinline></video>';
+      slot.innerHTML = '<video class="ai-chat-ev__video" src="' + videoUrl + '" controls autoplay playsinline></video>'
+        + '<div style="display:flex;align-items:center;justify-content:flex-end;gap:4px;margin-top:4px;">'
+        +   '<span style="font-size:11px;color:var(--text-sec);display:inline-flex;align-items:center;gap:3px;">' + icon('gauge', 12) + '倍速</span>'
+        +   '<button type="button" class="btn btn--xs is-active btn--primary" data-chat-speed="1">1x</button>'
+        +   '<button type="button" class="btn btn--xs" data-chat-speed="1.25">1.25x</button>'
+        +   '<button type="button" class="btn btn--xs" data-chat-speed="1.5">1.5x</button>'
+        +   '<button type="button" class="btn btn--xs" data-chat-speed="2">2x</button>'
+        + '</div>';
+      var chatVid = slot.querySelector('video');
+      Array.prototype.forEach.call(slot.querySelectorAll('[data-chat-speed]'), function(sb){
+        sb.onclick = function(se){
+          se.stopPropagation();
+          var sp = parseFloat(this.dataset.chatSpeed) || 1.0;
+          Array.prototype.forEach.call(slot.querySelectorAll('[data-chat-speed]'), function(b){ b.classList.remove('is-active', 'btn--primary'); });
+          this.classList.add('is-active', 'btn--primary');
+          if(chatVid) chatVid.playbackRate = sp;
+        };
+      });
       this.style.display = 'none';
     };
   });
