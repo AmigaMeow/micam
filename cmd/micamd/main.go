@@ -234,6 +234,9 @@ func main() {
 	srv.startMotionDetector()
 	srv.startRecordingAIScanner()
 
+	// 启动云端硬件 AI 事件同步守护
+	srv.startCloudEventSyncer()
+
 	// 设备在线状态守护：离线/上线发通知
 	srv.startDeviceWatcher()
 	srv.startDailyDigestScheduler()
@@ -615,6 +618,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/events/bulk", s.handleEventBulk)
 	mux.HandleFunc("/api/events/clip", s.handleEventClip)
 	mux.HandleFunc("/api/events/heatmap", s.handleEventsHeatmap)
+	mux.HandleFunc("/api/events/sync", s.handleEventsSync)
 	mux.HandleFunc("/api/people", s.handlePeople)
 	mux.HandleFunc("/api/people/link", s.handlePeopleLink)
 	mux.HandleFunc("/api/people/events", s.handlePeopleEvents)

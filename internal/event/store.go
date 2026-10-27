@@ -118,6 +118,9 @@ func (s *Store) Add(ev Event) {
 		existing := s.readDayLocked(day)
 		for _, ex := range existing {
 			if ex.Did == ev.Did {
+				if ev.ID != "" && ex.ID == ev.ID {
+					return
+				}
 				if ev.RecFile != "" && ex.RecFile == ev.RecFile && ex.RecOff == ev.RecOff {
 					return
 				}
@@ -140,6 +143,22 @@ func (s *Store) HasRecFile(did, file, day string) bool {
 	existing := s.readDayLocked(day)
 	for _, ex := range existing {
 		if (ex.Did == did || ex.Device == did) && ex.RecFile == file {
+			return true
+		}
+	}
+	return false
+}
+
+// HasEventID 检查指定事件在某天是否已记录
+func (s *Store) HasEventID(id, day string) bool {
+	if id == "" || day == "" {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	existing := s.readDayLocked(day)
+	for _, ex := range existing {
+		if ex.ID == id {
 			return true
 		}
 	}
@@ -193,10 +212,13 @@ func (s *Store) Query(q Query) []Event {
 				continue
 			}
 			out = append(out, e)
-			if len(out) >= q.Limit {
-				break
-			}
 		}
+	}
+	sort.Slice(out, func(i, j int) bool {
+		return out[i].Time > out[j].Time
+	})
+	if len(out) > q.Limit {
+		out = out[:q.Limit]
 	}
 	return out
 }
