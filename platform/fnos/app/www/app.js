@@ -3315,6 +3315,7 @@ function paintEvents(c){
     +     '<input type="checkbox" id="evHideNoise"' + (evState.hideNoise ? ' checked' : '') + '> '
     +     '<span>隐藏微小噪点' + (list0.filter(isNoiseEvent).length > 0 ? ' (' + list0.filter(isNoiseEvent).length + ')' : '') + '</span>'
     +   '</label>'
+    +   '<button class="btn btn--sm ev-sync-btn" id="evSyncCloud" title="从小米摄像机云端同步最新硬件 AI 事件">' + icon('refresh-cw',13) + '<span>同步云端</span></button>'
     + '</div>'
 
     // 近 7 天趋势（用户反馈第 5 条）
@@ -3578,6 +3579,21 @@ function paintEvents(c){
   if(so) so.onchange = function(){ evState.sort = this.value; paintList(); };
   var hn = document.getElementById('evHideNoise');
   if(hn) hn.onchange = function(){ evState.hideNoise = this.checked; paintList(); };
+  var syncBtn = document.getElementById('evSyncCloud');
+  if(syncBtn){
+    syncBtn.onclick = function(){
+      syncBtn.disabled = true;
+      syncBtn.innerHTML = icon('loader',13) + '<span>同步中…</span>';
+      api('/api/events/sync', { method:'POST' }).then(function(res){
+        toast('成功同步 ' + (res.synced || 0) + ' 条云端硬件事件');
+        renderEvents(c);
+      }).catch(function(err){
+        toast('同步失败: ' + (err.message || err));
+        syncBtn.disabled = false;
+        syncBtn.innerHTML = icon('refresh-cw',13) + '<span>同步云端</span>';
+      });
+    };
+  }
   var sq = document.getElementById('evSearch');
   if(sq){
     var deb = null;
