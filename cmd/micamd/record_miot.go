@@ -399,6 +399,16 @@ func (j *miotRecJob) runTutkCloud(ctx context.Context, s *Server, model string) 
 			continue
 		}
 
+		// 预热与就绪探测：避免小米云转码首片 404 引发录像频繁重启
+		if !pollM3U8Ready(ctx, hlsURL, 6*time.Second) {
+			logf("[rec-tutk] HLS 地址等待云端就绪超时 did=%s，重新申请", j.did)
+			invalidateCloudStream(j.did)
+			if !j.sleep(ctx, 2*time.Second) {
+				return
+			}
+			continue
+		}
+
 		startAt := time.Now()
 		curDir := filepath.Join(s.rec.GetConfig().Dir, sanitizeName(j.name),
 			startAt.Format("2006-01-02"))
@@ -412,7 +422,8 @@ func (j *miotRecJob) runTutkCloud(ctx context.Context, s *Server, model string) 
 			"-reconnect", "1",
 			"-reconnect_at_eof", "1",
 			"-reconnect_streamed", "1",
-			"-reconnect_delay_max", "5",
+			"-reconnect_on_http_error", "4xx,5xx",
+			"-reconnect_delay_max", "3",
 			"-rw_timeout", "15000000",
 			"-i", hlsURL,
 			"-c", "copy",

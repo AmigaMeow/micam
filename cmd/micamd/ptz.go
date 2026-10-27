@@ -20,6 +20,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/AlexxIT/go2rtc/pkg/xiaomi/crypto"
@@ -135,9 +136,10 @@ var ptzMu sync.Mutex
 
 // ptzSession 一次云台操作会话。
 type ptzSession struct {
-	conn *cs2.Conn
-	key  []byte
-	mu   sync.Mutex
+	conn     *cs2.Conn
+	key      []byte
+	mu       sync.Mutex
+	inFlight int32
 }
 
 // openPTZ 建立云台连接。
@@ -170,7 +172,7 @@ type ptzCached struct {
 	closed   bool
 }
 
-const ptzCacheIdle = 8 * time.Second
+const ptzCacheIdle = 3 * time.Second
 
 // ptzSend 发送命令，**任何错误都自动丢弃连接**。
 //
@@ -236,6 +238,12 @@ func (s *Server) reapPTZ(did string, sess *ptzSession) {
 		}
 		idle := time.Since(c.lastUsed)
 		if idle >= ptzCacheIdle {
+			// 若当前正有操作在执行，绝不中断会话
+			if atomic.LoadInt32(&sess.inFlight) > 0 {
+				c.lastUsed = time.Now()
+				ptzCacheMu.Unlock()
+				continue
+			}
 			c.closed = true
 			delete(ptzCache, did)
 			ptzCacheMu.Unlock()
@@ -333,6 +341,9 @@ func (p *ptzSession) sendExtra(op int, extra map[string]any) (*ptzResp, error) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
+	atomic.AddInt32(&p.inFlight, 1)
+	defer atomic.AddInt32(&p.inFlight, -1)
+
 	payload := map[string]any{"operation": op}
 	for k, v := range extra {
 		payload[k] = v
@@ -346,7 +357,7 @@ func (p *ptzSession) sendExtra(op int, extra map[string]any) (*ptzResp, error) {
 	if err != nil {
 		return nil, fmt.Errorf("加密失败: %w", err)
 	}
-	_ = p.conn.SetDeadline(time.Now().Add(8 * time.Second))
+	_ = p.conn.SetDeadline(time.Now().Add(3500 * time.Millisecond))
 	if err := p.conn.WriteCommand(ptzCmdEncoded, enc); err != nil {
 		return nil, fmt.Errorf("发送失败: %w", err)
 	}
@@ -377,7 +388,7 @@ func (p *ptzSession) sendExtra(op int, extra map[string]any) (*ptzResp, error) {
 	select {
 	case res := <-ch:
 		return res.r, res.err
-	case <-time.After(8 * time.Second):
+	case <-time.After(3500 * time.Millisecond):
 		return nil, fmt.Errorf("等待响应超时")
 	}
 }

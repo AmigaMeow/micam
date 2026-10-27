@@ -74,34 +74,39 @@ func isTUTKDevice(did, model string) bool {
 const streamCooldown = 1500 * time.Millisecond
 
 // beginMiotStream 开始一条新流：
-//   - 取消该设备上一条流并等它退出（最多 3 秒）
+//   - 取消该设备上一条流并等它退出
 //   - 返回本次流的 context 和"结束"函数
 func beginMiotStream(parent context.Context, did string) (context.Context, context.CancelFunc, func()) {
+	// 1. 取出上一条流的控制句柄并立即释放互斥锁，严禁持锁等待（否则上一条流的 finish() 会死锁等待该锁，导致必卡 1.5 秒）
 	miotStreamMu.Lock()
-	// 取消上一条
-	if cancel, ok := miotStreamCtx[did]; ok {
-		cancel()
+	cancelOld := miotStreamCtx[did]
+	doneOld := miotStreamWG[did]
+	miotStreamMu.Unlock()
+
+	// 2. 触发取消并等待上一条流彻底退出与释放连接槽
+	if cancelOld != nil {
+		cancelOld()
 	}
-	if done, ok := miotStreamWG[did]; ok {
+	if doneOld != nil {
 		select {
-		case <-done:
-		case <-time.After(1500 * time.Millisecond):
-			logf("[miot] %s 的上一条流未在 1.5 秒内退出，继续", did)
-		}
-	}
-	// 冷却：等上一条流结束满 streamCooldown 再建新流。
-	// 位置很关键 —— 必须在【旧流确认退出之后】，否则快速切档时冷却不起作用。
-	if t, ok := miotStreamEnd[did]; ok {
-		if wait := streamCooldown - time.Since(t); wait > 0 {
-			logf("[miot] %s 冷却 %.1fs（保护摄像头会话表，避免反复建连把它撑满）", did, wait.Seconds())
-			time.Sleep(wait)
+		case <-doneOld:
+		case <-time.After(2 * time.Second):
+			logf("[miot] %s 的上一条流未在 2 秒内退出，继续", did)
 		}
 	}
 
-	// 关键：以【HTTP 请求的 ctx】为父。
-	// 客户端断开（关页面 / curl 超时）时，父 ctx 取消 → exec.CommandContext
-	// 会 SIGKILL 掉 sidecar，连接槽立即释放。
-	// 之前用 context.Background()，导致客户端走了 sidecar 还活着占着摄像头。
+	miotStreamMu.Lock()
+	// 3. 冷却：等上一条流结束满 streamCooldown 再建新流。
+	// 位置很关键 —— 必须在【旧流确认退出之后】，否则快速切档时冷却不起作用。
+	if t, ok := miotStreamEnd[did]; ok {
+		if wait := streamCooldown - time.Since(t); wait > 0 {
+			miotStreamMu.Unlock()
+			logf("[miot] %s 冷却 %.1fs（保护摄像头会话表，避免反复建连把它撑满）", did, wait.Seconds())
+			time.Sleep(wait)
+			miotStreamMu.Lock()
+		}
+	}
+
 	if parent == nil {
 		parent = context.Background()
 	}

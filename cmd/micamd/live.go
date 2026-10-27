@@ -150,6 +150,13 @@ func (s *Server) runFFmpeg(ctx context.Context, dev *xiaomi.Device, lens int, ar
 		if err != nil {
 			return nil, nil, nil, nil, err
 		}
+		if !pollM3U8Ready(ctx, hlsURL, 6*time.Second) {
+			invalidateCloudStream(dev.Did)
+			if freshURL, err2 := s.fetchCloudHLSStream(dev.Did); err2 == nil && freshURL != "" {
+				hlsURL = freshURL
+				pollM3U8Ready(ctx, hlsURL, 6*time.Second)
+			}
+		}
 		var cleanArgs []string
 		for i := 0; i < len(args); i++ {
 			if args[i] == "-f" && i+1 < len(args) && args[i+1] == "mpegts" {
@@ -162,7 +169,16 @@ func (s *Server) runFFmpeg(ctx context.Context, dev *xiaomi.Device, lens int, ar
 			}
 			cleanArgs = append(cleanArgs, args[i])
 		}
-		finalArgs := append([]string{"-re", "-i", hlsURL}, cleanArgs...)
+		finalArgs := append([]string{
+			"-hide_banner", "-loglevel", "warning",
+			"-reconnect", "1",
+			"-reconnect_at_eof", "1",
+			"-reconnect_streamed", "1",
+			"-reconnect_on_http_error", "4xx,5xx",
+			"-reconnect_delay_max", "3",
+			"-rw_timeout", "15000000",
+			"-re", "-i", hlsURL,
+		}, cleanArgs...)
 		cmd := exec.CommandContext(ctx, s.ffmpegPath(), finalArgs...)
 		stdout, err := cmd.StdoutPipe()
 		if err != nil {

@@ -12,6 +12,7 @@ package main
 //      ffmpeg 接入后可无缝输出 MJPEG 与 HLS，彻底消除旧机型黑屏与无法播放。
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -35,6 +36,47 @@ var (
 	cloudStreamMu    sync.Mutex
 	cloudStreamCache = map[string]*cachedCloudStream{}
 )
+// invalidateCloudStream 废弃失效或断开的云端流缓存。
+func invalidateCloudStream(did string) {
+	cloudStreamMu.Lock()
+	delete(cloudStreamCache, did)
+	cloudStreamMu.Unlock()
+}
+
+// pollM3U8Ready 预检探测云端 HLS 转码器是否已切出首片 m3u8 并返回 200 OK。
+func pollM3U8Ready(ctx context.Context, hlsURL string, maxWait time.Duration) bool {
+	client := &http.Client{
+		Timeout: 2 * time.Second,
+	}
+	deadline := time.Now().Add(maxWait)
+	for {
+		select {
+		case <-ctx.Done():
+			return false
+		default:
+		}
+		if time.Now().After(deadline) {
+			return false
+		}
+		req, err := http.NewRequestWithContext(ctx, http.MethodGet, hlsURL, nil)
+		if err == nil {
+			req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
+			resp, err := client.Do(req)
+			if err == nil {
+				resp.Body.Close()
+				if resp.StatusCode == http.StatusOK {
+					return true
+				}
+			}
+		}
+		select {
+		case <-ctx.Done():
+			return false
+		case <-time.After(350 * time.Millisecond):
+		}
+	}
+}
+
 
 // IsTutkCamera 判断设备是否为 TUTK 协议或已知老旧协议机型。
 func IsTutkCamera(did, model string) bool {
@@ -169,6 +211,18 @@ func (s *Server) streamFromHLSURL(w http.ResponseWriter, r *http.Request, did, h
 	defer cancel()
 	defer finishStream()
 
+	// 预检探测与云端预热等待：小米云转码服务首次生成 m3u8 切片需 1.5~3 秒
+	// 若尚未切出首个分片则会返回 HTTP 404，过早启动 ffmpeg 会导致秒退中断
+	if !pollM3U8Ready(ctx, hlsURL, 6*time.Second) {
+		logf("[tutk-cloud] 设备 %s 首次预检未就绪，重试申请新鲜 HLS 地址并等待预热...", did)
+		invalidateCloudStream(did)
+		freshURL, err := s.fetchCloudHLSStream(did)
+		if err == nil && freshURL != "" {
+			hlsURL = freshURL
+			pollM3U8Ready(ctx, hlsURL, 6*time.Second)
+		}
+	}
+
 	scaleFilter := "scale=" + w0 + ":-2"
 	if w0 == "0" || w0 == "" {
 		scaleFilter = "null"
@@ -179,7 +233,8 @@ func (s *Server) streamFromHLSURL(w http.ResponseWriter, r *http.Request, did, h
 		"-reconnect", "1",
 		"-reconnect_at_eof", "1",
 		"-reconnect_streamed", "1",
-		"-reconnect_delay_max", "5",
+		"-reconnect_on_http_error", "4xx,5xx",
+		"-reconnect_delay_max", "3",
 		"-rw_timeout", "15000000",
 		"-i", hlsURL,
 		"-an",
@@ -295,6 +350,7 @@ func (s *Server) streamFromHLSURL(w http.ResponseWriter, r *http.Request, did, h
 		}
 	}
 	if !headerSent {
+		invalidateCloudStream(did)
 		logf("[tutk-cloud] 设备 %s 兼容流拉流结束但未收到任何有效帧 (耗时 %.2fs)", did, time.Since(startAt).Seconds())
 		writeErr(w, 502, "云端兼容流未输出视频帧，请稍后重试")
 	}
