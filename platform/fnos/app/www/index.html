@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <title>MiCam - 智能监控中心</title>
-<meta name="micam-build" content="2026-10-31 22:58:52">
+<meta name="micam-build" content="2026-10-31 23:23:45">
 <!-- 内联 SVG favicon（data URI）：
      浏览器默认会请求 /favicon.ico 并得到 404（控制台报错）。
      这里用 data URI 消除该请求 —— 同时保持「全内联、不联网」的约束。 -->
@@ -18796,39 +18796,65 @@ function renderLive(c){
     };
     // 镜头切换（双摄机型）
     var selLensEl = document.getElementById('selLens');
-    if(selLensEl){
-      selLensEl.onchange = function(){
-        currentLens = parseInt(this.value, 10) || 1;
-        Array.prototype.forEach.call(document.querySelectorAll('[data-lens]'), function(x){
-          x.classList.toggle('is-active', parseInt(x.dataset.lens, 10) === currentLens);
-        });
-        console.log('[micam] 切换到镜头 ' + currentLens);
-        refreshPTZUI();
-        // 清面板，避免显示上一个镜头的分辨率
-        var ir = document.getElementById('iiRes');
-        if(ir) ir.textContent = '—';
-        lastLiveRes = '';
+    function switchLiveLens(lens){
+      lens = parseInt(lens, 10) || 1;
+      if(lens === currentLens) return;
+      currentLens = lens;
+      if(selLensEl) selLensEl.value = String(currentLens);
+      Array.prototype.forEach.call(document.querySelectorAll('[data-lens]'), function(x){
+        x.classList.toggle('is-active', parseInt(x.dataset.lens, 10) === currentLens);
+      });
+      console.log('[micam] 切换到镜头 ' + currentLens);
+      refreshPTZUI();
+      // 清面板，避免显示上一个镜头的分辨率
+      var ir = document.getElementById('iiRes');
+      if(ir) ir.textContent = '—';
+      lastLiveRes = '';
+
+      var stream = document.getElementById('liveStreamImg');
+      var isStreaming = stream && stream.naturalWidth > 0 && stream.parentElement;
+
+      if(isStreaming){
+        var pill = document.getElementById('liveConnecting');
+        var pillText = document.getElementById('liveConnectingText');
+        if(pill && pillText){
+          pillText.textContent = (lens === 2 ? '正在切换至副摄 (全景)…' : '正在切换至主摄 (云台)…');
+          pill.style.opacity = '1';
+        }
+        api('/api/miot/channel?did=' + encodeURIComponent(currentDid) + '&channel=' + currentLens, {method: 'POST'})
+          .then(function(res){
+            if(res && res.ok){
+              console.log('[micam] 官方通道动态切镜头成功 (channel=' + currentLens + ')');
+              setTimeout(function(){
+                if(pill && pill.style.opacity === '1') pill.style.opacity = '0';
+              }, 1200);
+              refreshLiveInfoBurst();
+            } else {
+              console.log('[micam] 动态切换不可用，重新拉流');
+              if(currentDid) startLive(currentDid);
+              refreshLiveInfoBurst();
+            }
+          })
+          .catch(function(err){
+            console.warn('[micam] 动态切换请求异常，重新拉流', err);
+            if(currentDid) startLive(currentDid);
+            refreshLiveInfoBurst();
+          });
+      } else {
         if(currentDid) startLive(currentDid);
         refreshLiveInfoBurst();
+      }
+    }
+
+    if(selLensEl){
+      selLensEl.onchange = function(){
+        switchLiveLens(this.value);
       };
     }
     // 顶部双摄快速胶囊切换
     Array.prototype.forEach.call(document.querySelectorAll('[data-lens]'), function(b){
       b.onclick = function(){
-        var lens = parseInt(this.dataset.lens, 10) || 1;
-        if(lens === currentLens) return;
-        currentLens = lens;
-        if(selLensEl) selLensEl.value = String(currentLens);
-        Array.prototype.forEach.call(document.querySelectorAll('[data-lens]'), function(x){
-          x.classList.toggle('is-active', parseInt(x.dataset.lens, 10) === currentLens);
-        });
-        console.log('[micam] 切换到镜头 ' + currentLens);
-        refreshPTZUI();
-        var ir = document.getElementById('iiRes');
-        if(ir) ir.textContent = '—';
-        lastLiveRes = '';
-        if(currentDid) startLive(currentDid);
-        refreshLiveInfoBurst();
+        switchLiveLens(this.dataset.lens);
       };
     });
 
@@ -19245,7 +19271,6 @@ function curDev(){
 
 function startLive(did){
   resetLiveZoom();
-  resetLiveZoom();
   // 先查凭据（异常时给出明确提示，而不是一直「正在连接…」）
   try { liveCredGuard(did); } catch(e){}
   var box = $("#player");
@@ -19550,16 +19575,19 @@ function startLiveMJPEG(did){
   // 1. 底层：最新高清封面图 (livePoster) —— 用户点击瞬间画面立即呈现（0毫秒感知）
   // 2. 中层：真实实时视频流 (liveStreamImg) —— 初始透明，首帧就绪后渐显
   // 3. 顶层：轻量指示胶囊 (liveConnecting) —— 极简非侵入提示，首帧到达后自动隐退
+  var isSubLens = (curDevLenses() >= 2 && currentLens === 2);
   var posterUrl = apiUrl("/api/live/thumb?did=" + encodeURIComponent(did) + "&w=1280&t=" + Date.now());
   var streamUrl = liveStreamURL(did, 15, liveWidth, currentLens) + '&_t=' + Date.now();
+  var initText = isSubLens ? "正在建立实时连线 (副摄 全景)…" : "正在建立实时连线…";
+  var posterStyle = isSubLens ? "display:none;" : "position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;transition:opacity .35s ease-out;z-index:1;";
 
   box.innerHTML = ""
     + "<div class=\"player__stage\" style=\"position:relative;width:100%;height:100%;overflow:hidden;background:#000;\">"
-    +   "<img id=\"livePoster\" class=\"live-poster\" src=\"" + posterUrl + "\" alt=\"\" style=\"position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;transition:opacity .35s ease-out;z-index:1;\">"
+    +   "<img id=\"livePoster\" class=\"live-poster\" src=\"" + (isSubLens ? "" : posterUrl) + "\" alt=\"\" style=\"" + posterStyle + "\">"
     +   "<img id=\"liveStreamImg\" class=\"live-stream-img\" src=\"" + streamUrl + "\" alt=\"\" style=\"position:absolute;inset:0;width:100%;height:100%;object-fit:contain;display:block;opacity:0;transition:opacity .25s ease-in;z-index:2;\">"
     +   "<div id=\"liveConnecting\" class=\"live-connecting-pill\" style=\"position:absolute;top:16px;right:16px;z-index:5;display:inline-flex;align-items:center;gap:8px;padding:6px 14px;background:rgba(15,23,42,.85);backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.15);border-radius:20px;color:#fff;font-size:12px;box-shadow:0 4px 16px rgba(0,0,0,.4);transition:all .3s ease;pointer-events:none;\">"
     +     "<span class=\"spinner-sm\" style=\"width:12px;height:12px;border:2px solid rgba(255,255,255,.25);border-top-color:#1890ff;border-radius:50%;display:inline-block;animation:spin 1s linear infinite;flex-shrink:0;\"></span>"
-    +     "<span id=\"liveConnectingText\">正在建立实时连线…</span>"
+    +     "<span id=\"liveConnectingText\">" + esc(initText) + "</span>"
     +   "</div>"
     + "</div>";
 
