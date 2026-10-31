@@ -18,7 +18,7 @@
   python3 miot_mjpeg.py --token T --did D --model M --ip IP --channel 1 \
                         --ffmpeg /usr/bin/ffmpeg --out -
 """
-import argparse, os, subprocess, sys, threading, time
+import argparse, os, signal, subprocess, sys, threading, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from miot_camera import MiotCamera, find_lib   # noqa: E402
 
@@ -62,6 +62,78 @@ def main():
     want = max(1, int(args.channel)) - 1
     started_event = threading.Event()
 
+    def cleanup():
+        stop["v"] = True
+        with ff_lock:
+            nonlocal ff
+            if ff is not None:
+                try: ff.kill()
+                except Exception: pass
+                ff = None
+        try:
+            cam.stop()
+            cam.free()
+        except Exception:
+            pass
+
+    def sig_handler(signum, frame):
+        sys.stderr.write("[miot] 收到退出信号(%s)，正常释放 PPCS 会话与资源\n" % signum)
+        sys.stderr.flush()
+        cleanup()
+        sys.exit(0)
+
+    try:
+        signal.signal(signal.SIGTERM, sig_handler)
+        signal.signal(signal.SIGINT, sig_handler)
+    except Exception:
+        pass
+
+    def switch_channel(new_want):
+        nonlocal want, ff
+        if new_want == want:
+            return
+        sys.stderr.write("[miot] 动态切换输出通道: %d -> %d\n" % (want + 1, new_want + 1))
+        sys.stderr.flush()
+        with ff_lock:
+            want = new_want
+            old_ff = ff
+            ff = None
+            if old_ff:
+                try:
+                    if old_ff.stdin:
+                        old_ff.stdin.close()
+                except Exception:
+                    pass
+                try:
+                    old_ff.kill()
+                except Exception:
+                    pass
+
+    def stdin_listener():
+        while not stop["v"]:
+            try:
+                line = sys.stdin.readline()
+                if not line:
+                    break
+                line = line.strip()
+                if not line:
+                    continue
+                parts = line.split()
+                if parts[0] == "channel" and len(parts) >= 2:
+                    try:
+                        ch = int(parts[1])
+                        switch_channel(max(0, ch - 1))
+                    except ValueError:
+                        pass
+                elif parts[0] == "stop":
+                    stop["v"] = True
+                    break
+            except Exception:
+                break
+
+    stdin_t = threading.Thread(target=stdin_listener, daemon=True)
+    stdin_t.start()
+
     def get_or_start_ff(codec):
         nonlocal ff
         if ff is not None:
@@ -93,7 +165,7 @@ def main():
                 "-c:v", "mjpeg", "-q:v", str(args.qv),
                 "-f", "mjpeg", "-",
             ]
-            sys.stderr.write("[ffmpeg] 动态启动转码: input=%s (codec=%d) qv=%d\n" % (fmt, codec, args.qv))
+            sys.stderr.write("[ffmpeg] 动态启动转码: channel=%d input=%s (codec=%d) qv=%d\n" % (want + 1, fmt, codec, args.qv))
             sys.stderr.flush()
             ff = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
                                   stderr=subprocess.DEVNULL, bufsize=0)
@@ -112,7 +184,8 @@ def main():
         try:
             p.stdin.write(data)
         except Exception:
-            stop["v"] = True
+            pass
+
     cam._on_frame = writer
 
     # 按官方格式：每通道一个 quality + 终止 0
@@ -121,8 +194,7 @@ def main():
     rc = cam.start((_q * _nch)[:_nch], channel_count=_nch)
     sys.stderr.write("[start] rc=%d\n" % rc)
     if rc != 0:
-        cam.stop(); cam.free()
-        if ff: ff.kill()
+        cleanup()
         return 5
 
     out = sys.stdout.buffer if args.out == "-" else open(args.out, "wb")
@@ -130,25 +202,25 @@ def main():
     # 等待第一帧启动 ffmpeg（最多等 10 秒）
     if not started_event.wait(10.0):
         sys.stderr.write("等待首帧数据超时\n")
-        stop["v"] = True
-        cam.stop(); cam.free()
+        cleanup()
         return 6
 
     try:
-        while True:
-            chunk = ff.stdout.read(4096)
+        while not stop["v"]:
+            p = ff
+            if p is None or p.stdout is None:
+                time.sleep(0.01)
+                continue
+            chunk = p.stdout.read(4096)
             if not chunk:
-                break
+                time.sleep(0.01)
+                continue
             out.write(chunk)
             out.flush()
     except (BrokenPipeError, KeyboardInterrupt):
         pass
     finally:
-        stop["v"] = True
-        try:
-            if ff: ff.kill()
-        except Exception: pass
-        cam.stop(); cam.free()
+        cleanup()
     return 0
 
 

@@ -159,7 +159,7 @@ func (s *Server) handleMiotLive(w http.ResponseWriter, r *http.Request) {
 	//    若后台录像正在运行，主动让出连接，保证用户实时流优先秒开。
 	s.yieldCameraForLive(did)
 
-	ctx, cancel, finishStream := beginMiotStream(r.Context(), did)
+	ctx, cancel, finishStream := beginMiotStream(r.Context(), did, ch)
 	defer cancel()
 	defer func() {
 		finishStream()
@@ -171,9 +171,16 @@ func (s *Server) handleMiotLive(w http.ResponseWriter, r *http.Request) {
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Cancel = func() error {
 		if cmd.Process != nil && cmd.Process.Pid > 0 {
-			return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
+			return nil
 		}
 		return nil
+	}
+	cmd.WaitDelay = 2 * time.Second
+
+	stdinPipe, err := cmd.StdinPipe()
+	if err == nil {
+		registerMiotStreamStdin(did, ch, stdinPipe)
 	}
 	stdout, err := cmd.StdoutPipe()
 	if err != nil {
@@ -431,6 +438,31 @@ func (s *Server) handleMiotCameras(w http.ResponseWriter, r *http.Request) {
 		"libAvailable": libPath != "",
 		"cameras":      out,
 		"generatedAt":  time.Now().Format(time.RFC3339),
+	})
+}
+
+// handleMiotSwitchChannel POST /api/miot/channel?did=&channel=
+//
+// 动态无缝切换正在拉流的双摄通道，无需断开重连 PPCS。
+func (s *Server) handleMiotSwitchChannel(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeErr(w, http.StatusMethodNotAllowed, "method not allowed")
+		return
+	}
+	did := r.URL.Query().Get("did")
+	if did == "" {
+		writeErr(w, 400, "缺少 did")
+		return
+	}
+	ch := r.URL.Query().Get("channel")
+	if ch == "" {
+		ch = "1"
+	}
+	ok := switchMiotStreamChannel(did, ch)
+	writeJSON(w, 200, map[string]any{
+		"ok":      ok,
+		"did":     did,
+		"channel": ch,
 	})
 }
 

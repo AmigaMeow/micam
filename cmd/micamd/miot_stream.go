@@ -18,11 +18,20 @@ package main
 // （浏览器行为不可控），必须在服务端强制。
 
 import (
-	"strings"
 	"context"
+	"fmt"
+	"io"
+	"strings"
 	"sync"
 	"time"
 )
+
+type miotActiveStream struct {
+	did     string
+	channel string
+	stdin   io.WriteCloser
+	done    chan struct{}
+}
 
 var (
 	miotStreamMu      sync.Mutex
@@ -30,6 +39,7 @@ var (
 	miotStreamWG      = map[string]chan struct{}{}      // did -> 流退出信号
 	miotStreamEnd     = map[string]time.Time{}          // did -> 上一条流结束时刻
 	miotStreamingList = map[string]bool{}               // did -> 正在进行实时预览
+	miotActiveStreams = map[string]*miotActiveStream{}  // did -> 当前活跃拉流会话
 	tutkDevicesMu     sync.RWMutex
 	tutkDevices       = map[string]bool{}
 )
@@ -60,24 +70,48 @@ func isTUTKDevice(did, model string) bool {
 }
 
 // streamCooldown 两条流之间的最小间隔。
-//
-// ===== 教训（2026-10-13，我自己的踩坑记录）=====
-//
-// CW500 的 PPCS 会话表很脆弱：连接断开后释放很慢。
-// 反复快速建连会把会话表撑满，之后【所有】新连接都被立即关闭
-// （cs2_read error = -14 ERROR_PPCS_SESSION_CLOSED_CALLED），
-// 实测静默 6 分钟也不自愈，必须给摄像头断电重插。
-//
-// 同样双摄机型的 CW300 没有这个问题（反复测都正常）。
-//
-// 所以两条流之间强制留一点间隔，让摄像头来得及释放会话。
-const streamCooldown = 1500 * time.Millisecond
+// 现已支持优雅 SIGTERM 释放 PPCS 会话，冷却缩短为 300ms 兜底保护。
+const streamCooldown = 300 * time.Millisecond
+
+func registerMiotStreamStdin(did, channel string, stdin io.WriteCloser) {
+	miotStreamMu.Lock()
+	defer miotStreamMu.Unlock()
+	if st, ok := miotActiveStreams[did]; ok && st != nil {
+		st.stdin = stdin
+		st.channel = channel
+	}
+}
+
+func switchMiotStreamChannel(did, channel string) bool {
+	miotStreamMu.Lock()
+	defer miotStreamMu.Unlock()
+	st, ok := miotActiveStreams[did]
+	if !ok || st == nil || st.stdin == nil {
+		return false
+	}
+	if st.channel == channel {
+		return true
+	}
+	cmd := fmt.Sprintf("channel %s\n", channel)
+	if _, err := st.stdin.Write([]byte(cmd)); err != nil {
+		logf("[miot] 设备 %s 发送通道切换命令失败: %v", did, err)
+		return false
+	}
+	st.channel = channel
+	logf("[miot] 设备 %s 成功无缝切换到通道 %s（零重连延迟）", did, channel)
+	return true
+}
 
 // beginMiotStream 开始一条新流：
 //   - 取消该设备上一条流并等它退出
 //   - 返回本次流的 context 和"结束"函数
-func beginMiotStream(parent context.Context, did string) (context.Context, context.CancelFunc, func()) {
-	// 1. 取出上一条流的控制句柄并立即释放互斥锁，严禁持锁等待（否则上一条流的 finish() 会死锁等待该锁，导致必卡 1.5 秒）
+func beginMiotStream(parent context.Context, did string, initialChannel ...string) (context.Context, context.CancelFunc, func()) {
+	initCh := "1"
+	if len(initialChannel) > 0 && initialChannel[0] != "" {
+		initCh = initialChannel[0]
+	}
+
+	// 1. 取出上一条流的控制句柄并立即释放互斥锁，严禁持锁等待（否则上一条流的 finish() 会死锁等待该锁，导致必卡）
 	miotStreamMu.Lock()
 	cancelOld := miotStreamCtx[did]
 	doneOld := miotStreamWG[did]
@@ -97,11 +131,10 @@ func beginMiotStream(parent context.Context, did string) (context.Context, conte
 
 	miotStreamMu.Lock()
 	// 3. 冷却：等上一条流结束满 streamCooldown 再建新流。
-	// 位置很关键 —— 必须在【旧流确认退出之后】，否则快速切档时冷却不起作用。
 	if t, ok := miotStreamEnd[did]; ok {
 		if wait := streamCooldown - time.Since(t); wait > 0 {
 			miotStreamMu.Unlock()
-			logf("[miot] %s 冷却 %.1fs（保护摄像头会话表，避免反复建连把它撑满）", did, wait.Seconds())
+			logf("[miot] %s 冷却 %.1fs（保护摄像头会话表）", did, wait.Seconds())
 			time.Sleep(wait)
 			miotStreamMu.Lock()
 		}
@@ -115,22 +148,35 @@ func beginMiotStream(parent context.Context, did string) (context.Context, conte
 	miotStreamCtx[did] = cancel
 	miotStreamWG[did] = done
 	miotStreamingList[did] = true
+	miotActiveStreams[did] = &miotActiveStream{
+		did:     did,
+		channel: initCh,
+		done:    done,
+	}
 	miotStreamMu.Unlock()
 
+	var finishOnce sync.Once
 	finish := func() {
-		miotStreamMu.Lock()
-		// 只有自己还是"当前流"时才清理，避免误删新流
-		if c, ok := miotStreamCtx[did]; ok && c != nil {
-			// 用指针比较不可靠，改为比较 done channel 身份
-			if d, ok2 := miotStreamWG[did]; ok2 && d == done {
-				delete(miotStreamCtx, did)
-				delete(miotStreamWG, did)
-				delete(miotStreamingList, did)
-				miotStreamEnd[did] = time.Now()
+		finishOnce.Do(func() {
+			miotStreamMu.Lock()
+			// 只有自己还是"当前流"时才清理，避免误删新流
+			if c, ok := miotStreamCtx[did]; ok && c != nil {
+				if d, ok2 := miotStreamWG[did]; ok2 && d == done {
+					if a, ok3 := miotActiveStreams[did]; ok3 && a != nil && a.done == done {
+						if a.stdin != nil {
+							_ = a.stdin.Close()
+						}
+						delete(miotActiveStreams, did)
+					}
+					delete(miotStreamCtx, did)
+					delete(miotStreamWG, did)
+					delete(miotStreamingList, did)
+					miotStreamEnd[did] = time.Now()
+				}
 			}
-		}
-		miotStreamMu.Unlock()
-		close(done)
+			miotStreamMu.Unlock()
+			close(done)
+		})
 	}
 	return ctx, cancel, finish
 }

@@ -594,6 +594,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/miot/unbind", s.handleMiotUnbind)
 	mux.HandleFunc("/api/miot/refresh", s.handleMiotRefresh)
 	mux.HandleFunc("/api/miot/live", s.handleMiotLive)
+	mux.HandleFunc("/api/miot/channel", s.handleMiotSwitchChannel)
 	mux.HandleFunc("/api/miot/live/stats", s.handleMiotLiveStats)
 	mux.HandleFunc("/api/miot/cameras", s.handleMiotCameras)
 	mux.HandleFunc("/api/miot/qr", s.handleMiotQRStart)
