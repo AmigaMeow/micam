@@ -7852,6 +7852,19 @@ function renderLive(c){
     };
     // 镜头切换（双摄机型）
     var selLensEl = document.getElementById('selLens');
+    function refreshPTZUI(){
+      var hasPTZ = curDevHasPTZ();
+      var banner = document.getElementById('ptzFixedBanner');
+      if(banner) banner.style.display = hasPTZ ? 'none' : '';
+      var pad = document.getElementById('ptzPad');
+      if(pad) pad.classList.toggle('is-disabled', !hasPTZ);
+      Array.prototype.forEach.call(document.querySelectorAll('.ptz-pad__btn'), function(b){
+        b.disabled = !hasPTZ;
+      });
+      var ptzInfo = document.getElementById('ptzInfo');
+      if(ptzInfo && !hasPTZ) ptzInfo.textContent = '固定镜头（无云台）';
+    }
+
     function switchLiveLens(lens){
       lens = parseInt(lens, 10) || 1;
       if(lens === currentLens) return;
@@ -7862,17 +7875,16 @@ function renderLive(c){
       });
       console.log('[micam] 切换到镜头 ' + currentLens);
       refreshPTZUI();
-      // 清面板，避免显示上一个镜头的分辨率
+
       var ir = document.getElementById('iiRes');
       if(ir) ir.textContent = '—';
       lastLiveRes = '';
 
       var stream = document.getElementById('liveStreamImg');
-      var isStreaming = stream && stream.naturalWidth > 0 && stream.parentElement;
+      var pill = document.getElementById('liveConnecting');
+      var pillText = document.getElementById('liveConnectingText');
 
-      if(isStreaming){
-        var pill = document.getElementById('liveConnecting');
-        var pillText = document.getElementById('liveConnectingText');
+      if(stream && stream.parentElement){
         if(pill && pillText){
           pillText.textContent = (lens === 2 ? '正在切换至副摄 (全景)…' : '正在切换至主摄 (云台)…');
           pill.style.opacity = '1';
@@ -7883,16 +7895,16 @@ function renderLive(c){
               console.log('[micam] 官方通道动态切镜头成功 (channel=' + currentLens + ')');
               setTimeout(function(){
                 if(pill && pill.style.opacity === '1') pill.style.opacity = '0';
-              }, 1200);
+              }, 800);
               refreshLiveInfoBurst();
             } else {
-              console.log('[micam] 动态切换不可用，重新拉流');
+              console.log('[micam] 后端无活跃连接，常规拉取新通道流');
               if(currentDid) startLive(currentDid);
               refreshLiveInfoBurst();
             }
           })
           .catch(function(err){
-            console.warn('[micam] 动态切换请求异常，重新拉流', err);
+            console.warn('[micam] 动态切镜头请求异常，常规拉流', err);
             if(currentDid) startLive(currentDid);
             refreshLiveInfoBurst();
           });
