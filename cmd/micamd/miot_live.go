@@ -284,7 +284,17 @@ func (s *Server) handleMiotLive(w http.ResponseWriter, r *http.Request) {
 					}
 					break
 				}
+				// 防截断保护：检查 start 之后是否存在另一个开始标志（动态切镜头等情况下前帧可能被截断）
+				nextStart := indexOfJPEGStart(pending[start+2:])
 				end := indexOfJPEGEnd(pending, start)
+				if nextStart >= 0 {
+					actualNextStart := start + 2 + nextStart
+					if end < 0 || actualNextStart < end {
+						// 前一个起始标志已被截断破坏，直接对齐至最新的有效起始标志
+						pending = pending[actualNextStart:]
+						continue
+					}
+				}
 				if end < 0 {
 					if start > 0 {
 						pending = pending[start:]
