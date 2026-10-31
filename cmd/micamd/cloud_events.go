@@ -274,7 +274,7 @@ func (s *Server) syncCameraCloudEvents(dev *xiaomi.Device, beginTime time.Time) 
 		aiCls := ""
 		conf := 90.0
 
-		// 解析事件类型 (支持复合类型 如 PeopleMotion:IgnoreEvent)
+		// 解析事件类型 (支持复合类型 如 PeopleMotion:IgnoreEvent / DogMotion / CatMotion / PackageMotion)
 		lowerType := strings.ToLower(u.EventType)
 		if strings.Contains(lowerType, "people") || strings.Contains(lowerType, "person") || strings.Contains(lowerType, "human") {
 			evType = "person"
@@ -286,12 +286,27 @@ func (s *Server) syncCameraCloudEvents(dev *xiaomi.Device, beginTime time.Time) 
 			evDesc = "检测到车辆活动"
 			aiCls = "car"
 			conf = 95.0
+		} else if strings.Contains(lowerType, "dog") {
+			evType = "animal"
+			evDesc = "检测到小狗活动"
+			aiCls = "dog"
+			conf = 95.0
+		} else if strings.Contains(lowerType, "cat") {
+			evType = "animal"
+			evDesc = "检测到猫咪活动"
+			aiCls = "cat"
+			conf = 95.0
 		} else if strings.Contains(lowerType, "pet") || strings.Contains(lowerType, "animal") {
 			evType = "animal"
 			evDesc = "检测到宠物活动"
 			aiCls = "pet"
 			conf = 93.0
-		} else if strings.Contains(lowerType, "baby") || strings.Contains(lowerType, "cry") {
+		} else if strings.Contains(lowerType, "package") || strings.Contains(lowerType, "box") {
+			evType = "package"
+			evDesc = "检测到包裹活动"
+			aiCls = "package"
+			conf = 94.0
+		} else if strings.Contains(lowerType, "baby") || strings.Contains(lowerType, "cry") || strings.Contains(lowerType, "sound") {
 			evType = "motion"
 			evDesc = "检测到声音异响"
 			aiCls = "sound"
@@ -355,8 +370,9 @@ func (s *Server) syncCameraCloudEvents(dev *xiaomi.Device, beginTime time.Time) 
 		imported++
 
 		// 如果事件是最近 3 分钟内发生的，且开启了动态录像，触发本地录像启动
+		isAI := (evType == "person" || evType == "vehicle" || evType == "animal" || evType == "package")
 		if time.Since(t) < 3*time.Minute && s.cfg.RecordEnabled && (s.cfg.RecordMode == "motion" || s.cfg.RecordMode == "ai_event") {
-			s.triggerMotionRecording(dev, true)
+			s.triggerMotionRecording(dev, isAI)
 		}
 	}
 

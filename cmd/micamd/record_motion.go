@@ -100,8 +100,22 @@ func (s *Server) renewMotionRecording(dev *xiaomi.Device) {
 		postRoll = 30
 	}
 	motionRec.mu.Lock()
-	motionRec.activeUntil[dev.Did] = time.Now().Add(time.Duration(postRoll) * time.Second)
+	did := dev.Did
+	motionRec.activeUntil[did] = time.Now().Add(time.Duration(postRoll) * time.Second)
+	isRec := false
+	for _, st := range s.rec.List() {
+		if st.Did == did && st.Running {
+			isRec = true
+			break
+		}
+	}
 	motionRec.mu.Unlock()
+
+	if !isRec && !isMiotStreaming(did) {
+		go func() {
+			_ = s.startRecording(dev)
+		}()
+	}
 }
 
 // checkTimeouts 检查静止超时的设备并停止录像。

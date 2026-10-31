@@ -154,7 +154,36 @@ func (s *Server) scanSingleRecFile(devName, date, file string) ([]event.Event, e
 		}
 
 		if s.ai == nil || !s.ai.IsReady() {
-			continue
+			// 本地视觉模型未就绪时，采用帧差算法提取画面变动，确保录像能生成事件
+			if len(offsets) >= 2 {
+				f1, e1 := s.extractRecFrameByPath(fullPath, offsets[0], 320)
+				f2, e2 := s.extractRecFrameByPath(fullPath, offsets[1], 320)
+				if e1 == nil && e2 == nil && len(f1) > 1024 && len(f2) > 1024 {
+					g1 := s.downscaleGray(f1, 160, 90)
+					g2 := s.downscaleGray(f2, 160, 90)
+					if g1 != nil && g2 != nil {
+						diffScore := meanAbsDiff(g1, g2)
+						if diffScore >= 6.0 {
+							thumbName := s.eventStore.SaveThumb(f2)
+							ev := event.Event{
+								Did:      did,
+								Device:   devName,
+								Type:     event.TypeMotion,
+								Desc:     "检测到画面变化",
+								Thumb:    thumbName,
+								Score:    diffScore,
+								Duration: int(fi.Size() / (256 * 1024)),
+								Conf:     85.0,
+								RecFile:  file,
+								RecOff:   offsets[0],
+							}
+							s.eventStore.Add(ev)
+							newEvents = append(newEvents, ev)
+						}
+					}
+				}
+			}
+			return newEvents, nil
 		}
 
 		res, err := s.ai.Detect(frame)

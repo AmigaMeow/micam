@@ -377,6 +377,15 @@ func (s *Server) triggerAutoMigrate(root string) {
 
 // triggerAutoRemux 异步触发孤立码流修复（后台排队并发防护，绝不阻塞任何 HTTP 请求）
 func (s *Server) triggerAutoRemux(root string) {
+	s.triggerAutoRemuxOpt(root, false)
+}
+
+// forceAutoRemux 强制立即对已停止录像的分片执行重封装（不等待 15 秒静止期）
+func (s *Server) forceAutoRemux(root string) {
+	s.triggerAutoRemuxOpt(root, true)
+}
+
+func (s *Server) triggerAutoRemuxOpt(root string, forceRecent bool) {
 	if root == "" {
 		return
 	}
@@ -400,14 +409,14 @@ func (s *Server) triggerAutoRemux(root string) {
 			if err != nil || info == nil || info.IsDir() {
 				return nil
 			}
-			if count >= 5 {
+			if count >= 10 {
 				return filepath.SkipAll
 			}
 			ext := strings.ToLower(filepath.Ext(pth))
 			if ext != ".265" && ext != ".264" {
 				return nil
 			}
-			if time.Since(info.ModTime()) < 15*time.Second {
+			if !forceRecent && time.Since(info.ModTime()) < 15*time.Second {
 				return nil
 			}
 			if info.Size() < 1024 {
@@ -423,7 +432,7 @@ func (s *Server) triggerAutoRemux(root string) {
 			if ext == ".264" {
 				inFmt = "h264"
 			}
-			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 			defer cancel()
 			tmpDst := filepath.Join(os.TempDir(), filepath.Base(dst)+fmt.Sprintf(".%d.mkv", time.Now().UnixNano()))
 			cmd := exec.CommandContext(ctx, s.ffmpegPath(), "-hide_banner", "-loglevel", "error", "-y",
@@ -434,7 +443,7 @@ func (s *Server) triggerAutoRemux(root string) {
 						if werr := os.WriteFile(dst, data, 0o644); werr == nil {
 							_ = os.Remove(pth)
 							count++
-							logf("[replay] 后台自动封装孤立录像完成: %s -> %s (%.2fMB)",
+							logf("[replay] 自动封装孤立录像完成: %s -> %s (%.2fMB)",
 								filepath.Base(pth), filepath.Base(dst), float64(fi.Size())/(1<<20))
 						}
 					}

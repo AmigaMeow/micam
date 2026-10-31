@@ -143,13 +143,15 @@ func (m *metaStore) GetByDevName(devName string) string {
 // ---- 侦测状态 ----
 
 type motionState struct {
-	mu         sync.Mutex
-	prev       map[string][]uint8   // did -> 上一帧灰度
-	prevAt     map[string]time.Time // did -> 上次采样的缓存时间戳（用于判断缓存是否更新）
-	lastEvt    map[string]time.Time // did -> 上次记录事件的时间
-	streak     map[string]int       // 连续触发次数
-	pureStreak map[string]int       // 连续纯画面变化次数（用于防飞虫噪点退避）
-	segStart   map[string]segInfo   // did -> 当前活动段（用于累计时长）
+	mu            sync.Mutex
+	prev          map[string][]uint8   // did -> 上一帧灰度
+	prevAt        map[string]time.Time // did -> 上次采样的缓存时间戳（用于判断缓存是否更新）
+	lastPureEvt   map[string]time.Time // did -> 上次纯变动事件时间
+	lastTargetEvt map[string]time.Time // did -> 上次真实目标(人/车/宠物/包裹)事件时间
+	lastEvt       map[string]time.Time // did -> 上次记录事件的时间（兼容保留）
+	streak        map[string]int       // 连续触发次数
+	pureStreak    map[string]int       // 连续纯画面变化次数（用于防飞虫噪点退避）
+	segStart      map[string]segInfo   // did -> 当前活动段（用于累计时长）
 }
 
 // segInfo 一段连续活动的累积信息
@@ -170,17 +172,19 @@ var (
 )
 
 var motion = &motionState{
-	prev:       map[string][]uint8{},
-	prevAt:     map[string]time.Time{},
-	lastEvt:    map[string]time.Time{},
-	streak:     map[string]int{},
-	pureStreak: map[string]int{},
-	segStart:   map[string]segInfo{},
+	prev:          map[string][]uint8{},
+	prevAt:        map[string]time.Time{},
+	lastPureEvt:   map[string]time.Time{},
+	lastTargetEvt: map[string]time.Time{},
+	lastEvt:       map[string]time.Time{},
+	streak:        map[string]int{},
+	pureStreak:    map[string]int{},
+	segStart:      map[string]segInfo{},
 }
 
 const (
-	motionInterval = 20 * time.Second // 采样间隔：从 8s 调大到 20s，减少 P2P 连接频率，避免触发小米限流
-	motionSilence  = 60 * time.Second // 同一设备静默期：从 30s 调大到 60s，更好地合并连续触发
+	motionInterval = 8 * time.Second  // 采样间隔：缩短为 8 秒，提高人员与宠物快速跑动捕捉灵敏度
+	motionSilence  = 45 * time.Second // 纯变动静默期基准：45 秒
 	motionThresh   = 6.0              // 平均绝对差阈值（0-255）
 	motionW        = 160              // 降采样宽度
 	motionH        = 90
@@ -253,10 +257,20 @@ func (s *Server) detectOnce() {
 
 		score := meanAbsDiff(prev, gray)
 		now := time.Now()
-		thresh := motionThresh
+
+		// 动态阈值：根据配置的灵敏度 (low / medium / high) 调整判断门槛
+		baseThresh := motionThresh
+		switch strings.ToLower(s.cfg.RecordMotionSensitivity) {
+		case "low":
+			baseThresh = 9.5 // 低灵敏度：仅人物、车辆或剧烈动作触发，过滤微小噪点与飞虫
+		case "high":
+			baseThresh = 3.5 // 高灵敏度：微小变动即响应
+		}
+
+		thresh := baseThresh
 		if isNightTimeStr(now.Format("2006-01-02 15:04:05")) {
-			// 夜间红外补光灯下，飞虫近景反光和红外噪点高，将微小变动阈值提升至 8.5
-			thresh = 8.5
+			// 夜间红外补光灯下，飞虫近景反光和红外噪点高，阈值适当上浮 35%
+			thresh = baseThresh * 1.35
 		}
 		if score < thresh {
 			motion.mu.Lock()
@@ -378,40 +392,62 @@ func (s *Server) detectOnce() {
 			}
 		}
 
-		// 静默期计算：高价值真实目标 60 秒即响应；纯画面变化实行防刷屏退避
-		silence := motionSilence
+		// 如果用户指定仅录制 AI 智能事件 (ai_event)，且本次未识别到真实目标（纯画面变化/飞虫噪点），
+		// 则直接跳过录像与事件生成，绝不浪费存储或刷屏
+		if s.cfg.RecordMode == "ai_event" && !isRealTarget {
+			continue
+		}
+
+		// 静默期计算与分类触发：真实目标（人/车/宠物/包裹）拥有独立通道，绝不被飞虫噪点静默窗口吞没
 		motion.mu.Lock()
 		if isRealTarget {
 			motion.pureStreak[d.Did] = 0
+			lastTarget := motion.lastTargetEvt[d.Did]
+			// 真实目标去抖保护（15 秒内不重复刷屏，但持续顺延录像）
+			if time.Since(lastTarget) < 15*time.Second {
+				motion.mu.Unlock()
+			s.renewMotionRecording(d)
+				continue
+			}
+			motion.lastTargetEvt[d.Did] = now
+			motion.lastEvt[d.Did] = now
+			motion.streak[d.Did]++
+			motion.mu.Unlock()
+
+			// 触发真实目标 AI 录像 (isAIEvent = true)
+			s.triggerMotionRecording(d, true)
 		} else {
 			motion.pureStreak[d.Did]++
 			pStreak := motion.pureStreak[d.Did]
+			silence := motionSilence
 			if pStreak == 2 {
-				silence = 180 * time.Second // 连续纯画面变化退避到 3 分钟
+				silence = 120 * time.Second // 连续纯画面变化退避到 2 分钟
 			} else if pStreak >= 3 {
-				silence = 300 * time.Second // 连续纯画面变化退避到 5 分钟
+				silence = 240 * time.Second // 连续纯画面变化退避到 4 分钟
 			}
-		}
 
-		last := motion.lastEvt[d.Did]
-		if time.Since(last) < silence {
-			// 同一段活动的延续：累加时长并顺延录像
-			if seg, ok := motion.segStart[d.Did]; ok {
-				seg.Duration += int(motionInterval / time.Second)
-				if score > seg.Peak {
-					seg.Peak = score
+			lastPure := motion.lastPureEvt[d.Did]
+			if time.Since(lastPure) < silence {
+				// 同一段纯变动的延续：累加时长并顺延录像
+				if seg, ok := motion.segStart[d.Did]; ok {
+					seg.Duration += int(motionInterval / time.Second)
+					if score > seg.Peak {
+						seg.Peak = score
+					}
+					motion.segStart[d.Did] = seg
 				}
-				motion.segStart[d.Did] = seg
+				motion.mu.Unlock()
+				s.renewMotionRecording(d)
+				continue
 			}
+			motion.lastPureEvt[d.Did] = now
+			motion.lastEvt[d.Did] = now
+			motion.streak[d.Did]++
 			motion.mu.Unlock()
-			s.renewMotionRecording(d)
-			continue
-		}
-		motion.lastEvt[d.Did] = now
-		motion.streak[d.Did]++
-		motion.mu.Unlock()
 
-		s.triggerMotionRecording(d, false)
+			// 触发普通动检录像 (isAIEvent = false)
+			s.triggerMotionRecording(d, false)
+		}
 
 		if aiCls != "" {
 			logf("[ai] %s 识别为 %s (%.0f%%)", d.Name, aiCls, evConf)

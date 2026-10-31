@@ -183,7 +183,7 @@ func (j *miotRecJob) run(ctx context.Context, s *Server, libPath, sidecar, model
 		cmd.Cancel = func() error {
 			return cmd.Process.Signal(syscall.SIGTERM)
 		}
-		cmd.WaitDelay = 4 * time.Second
+		cmd.WaitDelay = 15 * time.Second
 		stderr, _ := cmd.StderrPipe()
 		if err := cmd.Start(); err != nil {
 			logf("[rec] sidecar 启动失败 did=%s: %v（%.0f 秒后重试）", j.did, err, backoff.Seconds())
@@ -208,7 +208,7 @@ func (j *miotRecJob) run(ctx context.Context, s *Server, libPath, sidecar, model
 		}()
 
 		_ = cmd.Wait()
-		s.triggerAutoRemux(j.dir)
+		s.forceAutoRemux(j.dir)
 
 		select {
 		case <-ctx.Done():
@@ -271,7 +271,7 @@ func (s *Server) stopRecordingMiot(did string) bool {
 	miotRecJobsMu.Unlock()
 	if ok {
 		job.stop()
-		s.triggerAutoRemux(job.dir)
+		s.forceAutoRemux(job.dir)
 		logf("[rec] 官方通道录像已停止 did=%s（共重启 %d 次）", did, job.restarts)
 	}
 	return ok
