@@ -196,14 +196,9 @@ func (s *Server) handleCleanupPreview(w http.ResponseWriter, r *http.Request) {
 		roots = []string{s.recRoot()}
 	}
 
-	aiFiles := make(map[string]bool)
-	if protectAI && s.eventStore != nil {
-		evs := s.eventStore.Query(event.Query{Days: 60})
-		for _, e := range evs {
-			if e.RecFile != "" {
-				aiFiles[e.RecFile] = true
-			}
-		}
+	var checker *fileProtectionChecker
+	if protectAI {
+		checker = newFileProtectionChecker(s)
 	}
 
 	type cleanItem struct {
@@ -262,7 +257,7 @@ func (s *Server) handleCleanupPreview(w http.ResponseWriter, r *http.Request) {
 					mb := float64(info.Size()) / (1 << 20)
 
 					if cleanAll || info.ModTime().Before(deadline) {
-						if protectAI && (aiFiles[fe.Name()] || isFileProtected(filepath.Join(dateDir, fe.Name()), s)) {
+						if protectAI && checker.isProtected(filepath.Join(dateDir, fe.Name())) {
 							protectedAICount++
 							protectedAIMB += mb
 							continue
@@ -412,6 +407,10 @@ func (s *Server) checkStorageOnce() {
 	if s.cfg.RecordKeepDays > 0 {
 		deadline := time.Now().AddDate(0, 0, -s.cfg.RecordKeepDays)
 		protectAI := (s.cfg.RecordLowSpaceMode == "protectAI")
+		var checker *fileProtectionChecker
+		if protectAI {
+			checker = newFileProtectionChecker(s)
+		}
 		var n int
 		var freed int64
 		_ = filepath.Walk(recDir, func(p string, info os.FileInfo, err error) error {
@@ -422,7 +421,7 @@ func (s *Server) checkStorageOnce() {
 				return nil
 			}
 			if info.ModTime().Before(deadline) {
-				if protectAI && isFileProtected(p, s) {
+				if protectAI && checker.isProtected(p) {
 					return nil
 				}
 				if e := os.Remove(p); e == nil {
@@ -439,61 +438,83 @@ func (s *Server) checkStorageOnce() {
 	}
 }
 
-// isFileProtected 判断录像文件是否受分级归档保护（L1 级用户收藏锁定 / L2 级 AI 关键事件片段保护）
-func isFileProtected(path string, s *Server) bool {
+type protectedTimeRange struct {
+	start time.Time
+	end   time.Time
+}
+
+type fileProtectionChecker struct {
+	s              *Server
+	protectedFiles map[string]bool
+	timeRanges     []protectedTimeRange
+}
+
+func newFileProtectionChecker(s *Server) *fileProtectionChecker {
+	c := &fileProtectionChecker{
+		s:              s,
+		protectedFiles: make(map[string]bool),
+	}
 	if s == nil {
+		return c
+	}
+
+	if s.eventStore != nil {
+		evs := s.eventStore.Query(event.Query{Days: 60, Limit: 1000})
+		for _, e := range evs {
+			isL1 := false
+			if s.marks != nil {
+				m := s.marks.get(e.ID)
+				if m.Bookmark || m.Watch {
+					isL1 = true
+				}
+			}
+			isL2 := (e.Type == "person" || e.Type == "vehicle" || e.Type == "package")
+
+			if isL1 || isL2 {
+				if e.RecFile != "" {
+					c.protectedFiles[e.RecFile] = true
+				}
+				if e.Time != "" {
+					if evTime, err := time.ParseInLocation("2006-01-02 15:04:05", e.Time, time.Local); err == nil {
+						c.timeRanges = append(c.timeRanges, protectedTimeRange{
+							start: evTime.Add(-15 * time.Minute),
+							end:   evTime.Add(1 * time.Minute),
+						})
+					}
+				}
+			}
+		}
+	}
+	return c
+}
+
+func (c *fileProtectionChecker) isProtected(path string) bool {
+	if c == nil || c.s == nil {
 		return false
 	}
 	base := filepath.Base(path)
 
-	// 1. 直接以文件名命名的标记（兼容直接对文件标记的场景）
-	if s.marks != nil {
-		m := s.marks.get(base)
+	// 1. 用户直接在文件维度打的标（收藏/关注）
+	if c.s.marks != nil {
+		m := c.s.marks.get(base)
 		if m.Bookmark || m.Watch {
 			return true
 		}
 	}
 
-	// 2. 检查录像分片是否对应高价值事件或被用户标记收藏/关注的事件
-	if s.eventStore != nil {
+	// 2. 对应高价值或被标记事件关联的 RecFile
+	if c.protectedFiles[base] {
+		return true
+	}
+
+	// 3. 时间窗口范围匹配
+	if len(c.timeRanges) > 0 {
 		cleanBase := strings.TrimSuffix(strings.TrimSuffix(base, ".mkv"), ".mp4")
-		var fileTime time.Time
 		if len(cleanBase) >= 15 {
-			if t, err := time.ParseInLocation("20060102_150405", cleanBase[:15], time.Local); err == nil {
-				fileTime = t
-			}
-		}
-
-		// 查询最近 60 天内的重点事件（L1 收藏/关注，L2 人员/车辆/包裹）
-		evs := s.eventStore.Query(event.Query{Days: 60, Limit: 1000})
-		for _, e := range evs {
-			// A. 事件记录中明确关联了该录像切片文件
-			if e.RecFile == base {
-				if s.marks != nil {
-					m := s.marks.get(e.ID)
-					if m.Bookmark || m.Watch {
-						return true // L1 级：用户收藏或重点关注，绝对免疫轮替清理
-					}
-				}
-				if e.Type == "person" || e.Type == "vehicle" || e.Type == "package" {
-					return true // L2 级：高价值 AI 动态事件片段，防删保护
-				}
-			}
-
-			// B. 录像时间窗口匹配（分片通常 5-15 分钟）
-			if !fileTime.IsZero() && e.Time != "" {
-				evTime, err := time.ParseInLocation("2006-01-02 15:04:05", e.Time, time.Local)
-				if err == nil {
-					if evTime.After(fileTime.Add(-1*time.Minute)) && evTime.Before(fileTime.Add(15*time.Minute)) {
-						if s.marks != nil {
-							m := s.marks.get(e.ID)
-							if m.Bookmark || m.Watch {
-								return true // L1 级：时段内含重点标记事件
-							}
-						}
-						if e.Type == "person" || e.Type == "vehicle" || e.Type == "package" {
-							return true // L2 级：时段内含高价值目标事件
-						}
+			if fileTime, err := time.ParseInLocation("20060102_150405", cleanBase[:15], time.Local); err == nil {
+				for _, tr := range c.timeRanges {
+					if !fileTime.Before(tr.start) && !fileTime.After(tr.end) {
+						return true
 					}
 				}
 			}
@@ -501,6 +522,11 @@ func isFileProtected(path string, s *Server) bool {
 	}
 
 	return false
+}
+
+// isFileProtected 判断录像文件是否受分级归档保护（保持单次兼容）
+func isFileProtected(path string, s *Server) bool {
+	return newFileProtectionChecker(s).isProtected(path)
 }
 
 func cleanupToTargetSize(recDir string, targetBytes int64, protectAI bool, s *Server) (int, int64, error) {
@@ -532,11 +558,16 @@ func cleanupToTargetSize(recDir string, targetBytes int64, protectAI bool, s *Se
 	var deletedCount int
 	var freedBytes int64
 
+	var checker *fileProtectionChecker
+	if protectAI {
+		checker = newFileProtectionChecker(s)
+	}
+
 	for _, f := range files {
 		if totalBytes-freedBytes <= targetBytes {
 			break
 		}
-		if protectAI && isFileProtected(f.path, s) {
+		if protectAI && checker.isProtected(f.path) {
 			continue
 		}
 		if err := os.Remove(f.path); err == nil {
@@ -570,11 +601,15 @@ func emergencyCleanupEx(recDir string, needGB float64, protectAI bool, s *Server
 
 	var n int
 	var freed int64
+	var checker *fileProtectionChecker
+	if protectAI {
+		checker = newFileProtectionChecker(s)
+	}
 	for _, f := range files {
 		if du := record.DiskUsageOf(recDir); du.FreeGB >= needGB {
 			break
 		}
-		if protectAI && isFileProtected(f.path, s) {
+		if protectAI && checker.isProtected(f.path) {
 			continue
 		}
 		if err := os.Remove(f.path); err == nil {
