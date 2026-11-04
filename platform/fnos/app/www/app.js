@@ -10558,7 +10558,7 @@ function paintStorage(c, d, cleanup){
     +     '<div class="card__head">' + icon('settings',15) + '<span class="card__title">存储策略</span></div>'
     +     '<div class="st-policy">'
     +       stField('分片时长', 'stSeg', pol.segmentSec || 300, '秒', '每个录像文件的时长')
-    +       stField('保留天数', 'stKeep', pol.keepDays || 7, '天', '超过后将被自动清理')
+    +       stField('保留天数', 'stKeep', (pol.keepDays != null ? pol.keepDays : 7), '天', '超过后将被自动清理（0 表示永久保留）')
     +       stField('最低保留空间', 'stThresh', (pol.minFreeGB != null ? pol.minFreeGB : 10), 'GB',
     // 用户反馈 #2：可编辑项应该是 **GB**，百分比只做只读派生展示。
     //
@@ -10692,7 +10692,7 @@ function paintStorage(c, d, cleanup){
     +     '<div class="card">'
     +       '<div class="card__head"><span class="card__title">自动清理与安全保障策略</span></div>'
     +       '<div class="st-policy">'
-    +         stField('保留天数', 'stKeepClean', pol.keepDays || 7, '天', '超过后系统后台将自动调度清理')
+    +         stField('保留天数', 'stKeepClean', (pol.keepDays != null ? pol.keepDays : 7), '天', '超过后系统后台将自动调度清理（0 表示永久保留）')
     +         stField('最低保留空间', 'stThreshClean', (pol.minFreeGB != null ? pol.minFreeGB : 10), 'GB', '剩余空间低于此值时触发紧急清理保障系统运行')
     +         '<div class="st-switchrow">'
     +           '<span class="st-switchrow__label">启用定时自动清理</span>'
@@ -11055,18 +11055,26 @@ function bindStorage(c, cams){
 
   var sv = document.getElementById('stSave');
   if(sv) sv.onclick = function(){
-    // 直接读 GB，不再「百分比 -> 换算 GB」反推（见字段处的说明）。
-    // 顺带省掉一次 /api/storage/detail 往返 —— 那个请求原本只为拿 totalGB 做换算。
     var minFree = parseInt((th||{}).value, 10) || 10;
     if(minFree < 1) minFree = 1;
-    api('/api/recordings/config', { method:'POST', headers:{'Content-Type':'application/json'},
+    var keepVal = parseInt((keep||{}).value, 10);
+    if(isNaN(keepVal) || keepVal < 0) keepVal = 7;
+    var autoVal = auto ? auto.checked : true;
+    var lowVal = low ? low.value : 'protectAI';
+
+    api('/api/storage/policy', {
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
       body: JSON.stringify({
         segmentSec: parseInt((seg||{}).value,10) || 300,
-        keepDays: parseInt((keep||{}).value,10) || 7,
+        keepDays: keepVal,
         minFreeGB: minFree,
-      }) })
+        autoClean: autoVal,
+        lowSpaceMode: lowVal,
+      })
+    })
     .then(function(){
-      toast('策略已保存（最低保留 ' + minFree + ' GB）', 'ok');
+      toast('策略已保存（保留 ' + (keepVal === 0 ? '永久' : keepVal + ' 天') + '，最低保留 ' + minFree + ' GB）', 'ok');
       render();
     }).catch(function(e){ toast('保存失败：' + e.message, 'err'); });
   };
