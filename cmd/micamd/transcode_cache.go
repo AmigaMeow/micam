@@ -344,9 +344,27 @@ func (s *Server) cacheMaxBytes() int64 {
 	return int64(gb) << 30
 }
 
+// allCacheDirs 返回所有可能存放转码缓存的目录列表（包含首选本地高速 SSD 缓存与各存储池 .cache）
+func (s *Server) allCacheDirs() []string {
+	seen := make(map[string]bool)
+	var dirs []string
+	add := func(d string) {
+		if d == "" || seen[d] {
+			return
+		}
+		seen[d] = true
+		dirs = append(dirs, d)
+	}
+	add(s.transcodeCacheDir())
+	for _, root := range s.recRoots() {
+		add(filepath.Join(root, ".cache"))
+	}
+	return dirs
+}
+
 // evictCache 超限时删最旧的缓存（跨所有存储池聚合 LRU 清理）。
 func (s *Server) evictCache() {
-	roots := s.recRoots()
+	dirs := s.allCacheDirs()
 
 	type ent struct {
 		path string
@@ -356,8 +374,7 @@ func (s *Server) evictCache() {
 	var all []ent
 	var total int64
 
-	for _, root := range roots {
-		dir := filepath.Join(root, ".cache")
+	for _, dir := range dirs {
 		_ = filepath.Walk(dir, func(pth string, info os.FileInfo, err error) error {
 			if err != nil || info == nil || info.IsDir() {
 				return nil
@@ -393,11 +410,10 @@ func (s *Server) evictCache() {
 
 // cacheStats 缓存统计（跨所有存储池聚合统计）。
 func (s *Server) cacheStats() map[string]any {
-	roots := s.recRoots()
+	dirs := s.allCacheDirs()
 	var total int64
 	var count int
-	for _, root := range roots {
-		dir := filepath.Join(root, ".cache")
+	for _, dir := range dirs {
 		_ = filepath.Walk(dir, func(pth string, info os.FileInfo, err error) error {
 			if err != nil || info == nil || info.IsDir() {
 				return nil
@@ -411,7 +427,7 @@ func (s *Server) cacheStats() map[string]any {
 	enc := encFP
 	encFPMu.Unlock()
 	return map[string]any{
-		"dir":     filepath.Join(s.recRoot(), ".cache"),
+		"dir":     s.transcodeCacheDir(),
 		"count":   count,
 		"totalMB": float64(total) / (1 << 20),
 		"maxMB":   float64(s.cacheMaxBytes()) / (1 << 20),

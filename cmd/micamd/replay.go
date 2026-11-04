@@ -1159,8 +1159,7 @@ func (s *Server) handleCacheClear(w http.ResponseWriter, r *http.Request) {
 	}
 	var freed int64
 	var n int
-	for _, root := range s.recRoots() {
-		dir := filepath.Join(root, ".cache")
+	for _, dir := range s.allCacheDirs() {
 		_ = filepath.Walk(dir, func(pth string, info os.FileInfo, err error) error {
 			if err != nil || info == nil || info.IsDir() {
 				return nil

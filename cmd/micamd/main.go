@@ -51,7 +51,7 @@ var appDestDir string
 // startedAt 进程启动时间（状态条显示「运行时间」用）
 var startedAt = time.Now()
 
-var appVersion = "0.41.39"
+var appVersion = "0.41.40"
 
 func main() {
 	checkMiotLib()
@@ -725,6 +725,9 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/storage", s.handleStorage)
 	mux.HandleFunc("/api/storage/detail", s.handleStorageDetail)
 	mux.HandleFunc("/api/storage/cleanup-preview", s.handleCleanupPreview)
+	mux.HandleFunc("/api/storage/policy", s.handleStoragePolicy)
+	mux.HandleFunc("/api/storage/clean", s.handleRecordCleanup)
+	mux.HandleFunc("/api/storage/cleanup", s.handleRecordCleanup)
 	mux.HandleFunc("/api/storage/migrate/plan", s.handleStorageMigratePlan)
 	mux.HandleFunc("/api/storage/migrate/status", s.handleStorageMigrateStatus)
 	mux.HandleFunc("/api/storage/migrate/cancel", s.handleStorageMigrateCancel)

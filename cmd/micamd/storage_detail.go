@@ -110,12 +110,37 @@ func (s *Server) handleStorageDetail(w http.ResponseWriter, r *http.Request) {
 
 	// ---- 按类型统计（真实目录）----
 	recRoot := s.recRoot()
-	cacheDir := filepath.Join(recRoot, ".cache")
+	recRoots := s.recRoots()
+	cacheDir := s.transcodeCacheDir()
 	eventsDir := filepath.Join(base, "events")
 	modelsDir := filepath.Join(base, "models")
 	lprDir := filepath.Join(base, "lpr")
 
 	types := []storageType{}
+	// 录像数据：跨所有纳管录像池聚合统计
+	var recBytes int64
+	var recFiles int
+	for _, r := range recRoots {
+		b, n := dirUsage(r, true)
+		recBytes += b
+		recFiles += n
+	}
+	if recBytes > 0 || recFiles > 0 {
+		types = append(types, storageType{Key: "recordings", Name: "录像数据", SizeGB: float64(recBytes) / 1073741824, Files: recFiles})
+	}
+
+	// 转码缓存：跨所有缓存目录聚合统计（包含本地高速 SSD 目录与各池 .cache）
+	var cacheBytes int64
+	var cacheFiles int
+	for _, cd := range s.allCacheDirs() {
+		b, n := dirUsage(cd, false)
+		cacheBytes += b
+		cacheFiles += n
+	}
+	if cacheBytes > 0 || cacheFiles > 0 {
+		types = append(types, storageType{Key: "cache", Name: "转码缓存", SizeGB: float64(cacheBytes) / 1073741824, Files: cacheFiles})
+	}
+
 	add := func(key, name, dir string, skipHidden bool) {
 		b, n := dirUsage(dir, skipHidden)
 		if b == 0 && n == 0 {
@@ -123,9 +148,6 @@ func (s *Server) handleStorageDetail(w http.ResponseWriter, r *http.Request) {
 		}
 		types = append(types, storageType{Key: key, Name: name, SizeGB: float64(b) / 1073741824, Files: n})
 	}
-	// 录像数据要跳过隐藏目录 —— 否则 .cache 会同时被算进「转码缓存」
-	add("recordings", "录像数据", recRoot, true)
-	add("cache", "转码缓存", cacheDir, false)
 	add("events", "事件数据", eventsDir, false)
 	add("models", "AI 模型", modelsDir, false)
 	add("lpr", "车牌模型", lprDir, false)

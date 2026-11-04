@@ -210,11 +210,13 @@ func (s *Server) handleRecordCleanup(w http.ResponseWriter, r *http.Request) {
 							deletedCount++
 							freedBytes += info.Size()
 							_ = os.Remove(filepath.Join(root, ".thumbs", devName, fe.Name()+".jpg"))
-							cacheMatches, _ := filepath.Glob(filepath.Join(root, ".cache", devName, dateE.Name(), fe.Name()+".*"))
-							for _, cp := range cacheMatches {
-								if cfi, err := os.Stat(cp); err == nil {
-									freedBytes += cfi.Size()
-									_ = os.Remove(cp)
+							for _, cd := range s.allCacheDirs() {
+								cacheMatches, _ := filepath.Glob(filepath.Join(cd, devName, dateE.Name(), fe.Name()+".*"))
+								for _, cp := range cacheMatches {
+									if cfi, err := os.Stat(cp); err == nil {
+										freedBytes += cfi.Size()
+										_ = os.Remove(cp)
+									}
 								}
 							}
 						}
@@ -225,14 +227,15 @@ func (s *Server) handleRecordCleanup(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if req.CleanCache {
-			cDir := filepath.Join(root, ".cache")
-			_ = filepath.Walk(cDir, func(p string, fi os.FileInfo, err error) error {
-				if err == nil && fi != nil && !fi.IsDir() {
-					freedBytes += fi.Size()
-					_ = os.Remove(p)
-				}
-				return nil
-			})
+			for _, cDir := range s.allCacheDirs() {
+				_ = filepath.Walk(cDir, func(p string, fi os.FileInfo, err error) error {
+					if err == nil && fi != nil && !fi.IsDir() {
+						freedBytes += fi.Size()
+						_ = os.Remove(p)
+					}
+					return nil
+				})
+			}
 		}
 	}
 

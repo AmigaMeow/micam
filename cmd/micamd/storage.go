@@ -10,6 +10,7 @@ package main
 // 设计目标：让用户一眼看到「录像占了多少空间、还能录多久」。
 
 import (
+	"encoding/json"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -283,14 +284,15 @@ func (s *Server) handleCleanupPreview(w http.ResponseWriter, r *http.Request) {
 		}
 
 		if includeCache {
-			cDir := filepath.Join(root, ".cache")
-			_ = filepath.Walk(cDir, func(p string, fi os.FileInfo, err error) error {
-				if err == nil && fi != nil && !fi.IsDir() {
-					cacheMB += float64(fi.Size()) / (1 << 20)
-					cacheFiles++
-				}
-				return nil
-			})
+			for _, cDir := range s.allCacheDirs() {
+				_ = filepath.Walk(cDir, func(p string, fi os.FileInfo, err error) error {
+					if err == nil && fi != nil && !fi.IsDir() {
+						cacheMB += float64(fi.Size()) / (1 << 20)
+						cacheFiles++
+					}
+					return nil
+				})
+			}
 		}
 	}
 
@@ -413,29 +415,42 @@ func (s *Server) checkStorageOnce() {
 		}
 		var n int
 		var freed int64
-		_ = filepath.Walk(recDir, func(p string, info os.FileInfo, err error) error {
-			if err != nil || info == nil || info.IsDir() {
-				return nil
-			}
-			if filepath.Ext(p) != ".mkv" {
-				return nil
-			}
-			if info.ModTime().Before(deadline) {
-				if protectAI && checker.isProtected(p) {
+		// 跨所有纳管录像池（包括当前活跃与历史目录）统一清理过期录像
+		for _, r := range s.recRoots() {
+			_ = filepath.Walk(r, func(p string, info os.FileInfo, err error) error {
+				if err != nil || info == nil || info.IsDir() {
 					return nil
 				}
-				if e := os.Remove(p); e == nil {
-					n++
-					freed += info.Size()
+				if filepath.Ext(p) != ".mkv" {
+					return nil
 				}
-			}
-			return nil
-		})
+				if info.ModTime().Before(deadline) {
+					if protectAI && checker.isProtected(p) {
+						return nil
+					}
+					if e := os.Remove(p); e == nil {
+						n++
+						freed += info.Size()
+						base := filepath.Base(p)
+						for _, cd := range s.allCacheDirs() {
+							matches, _ := filepath.Glob(filepath.Join(cd, "*", "*", base+".*"))
+							for _, cp := range matches {
+								_ = os.Remove(cp)
+							}
+						}
+					}
+				}
+				return nil
+			})
+		}
 		if n > 0 {
 			logf("[storage] 定期清理：删除 %d 个过期文件（>%d 天），释放 %.1fMB",
 				n, s.cfg.RecordKeepDays, float64(freed)/(1<<20))
 		}
 	}
+
+	// 5. 定期检查转码缓存超限
+	s.evictCache()
 }
 
 type protectedTimeRange struct {
@@ -655,3 +670,52 @@ func emergencyCleanup(recDir string, needGB float64) (int, int64, error) {
 }
 
 var _ = http.MethodGet
+
+// handleStoragePolicy 处理存储与安全保障策略的查询与保存
+func (s *Server) handleStoragePolicy(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, 200, map[string]any{
+			"ok":           true,
+			"keepDays":     s.cfg.RecordKeepDays,
+			"minFreeGB":    s.cfg.RecordMinFreeGB,
+			"autoClean":    s.cfg.RecordAutoClean,
+			"lowSpaceMode": s.cfg.RecordLowSpaceMode,
+			"segmentSec":   s.cfg.RecordSegment,
+		})
+	case http.MethodPost:
+		var req struct {
+			KeepDays     *int    `json:"keepDays"`
+			MinFreeGB    *int    `json:"minFreeGB"`
+			AutoClean    *bool   `json:"autoClean"`
+			LowSpaceMode *string `json:"lowSpaceMode"`
+			SegmentSec   *int    `json:"segmentSec"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeErr(w, 400, "参数错误: "+err.Error())
+			return
+		}
+		if err := s.cfg.SetRecordPolicy(nil, nil, req.SegmentSec, req.KeepDays, nil, req.MinFreeGB, nil, nil, req.AutoClean, req.LowSpaceMode, nil); err != nil {
+			writeErr(w, 500, "保存失败: "+err.Error())
+			return
+		}
+		cur := s.rec.GetConfig()
+		if req.SegmentSec != nil && *req.SegmentSec > 0 {
+			cur.Segment = time.Duration(*req.SegmentSec) * time.Second
+		}
+		if req.KeepDays != nil && *req.KeepDays >= 0 {
+			cur.KeepDays = *req.KeepDays
+		}
+		if req.MinFreeGB != nil && *req.MinFreeGB >= 0 {
+			cur.MinFreeGB = *req.MinFreeGB
+		}
+		s.rec.SetConfig(cur)
+
+		go s.checkStorageOnce()
+
+		writeJSON(w, 200, map[string]any{"ok": true})
+	default:
+		writeErr(w, 405, "方法不允许")
+	}
+}
+
