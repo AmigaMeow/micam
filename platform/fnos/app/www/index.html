@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark light">
 <title>MiCam - 智能监控中心</title>
-<meta name="micam-build" content="2026-11-04 00:18:33">
+<meta name="micam-build" content="2026-11-13 17:59:33">
 <!-- 内联 SVG favicon（data URI）：
      浏览器默认会请求 /favicon.ico 并得到 404（控制台报错）。
      这里用 data URI 消除该请求 —— 同时保持「全内联、不联网」的约束。 -->
@@ -60,6 +60,12 @@
   --text-main:      var(--text);
   --text-2:         var(--text-secondary);
   --text-3:         var(--text-muted);
+  --text-sec:       var(--text-secondary);
+  --bg-sub:         var(--surface-2);
+  --border-color:   var(--border);
+  --brand:          var(--accent);
+  --brand-subtle:   var(--accent-soft);
+  --primary-color:  var(--accent);
 
   --accent:       #3b82f6;
   --accent-hover: #2563eb;
@@ -99,6 +105,12 @@
   --text-main:      var(--text);
   --text-2:         var(--text-secondary);
   --text-3:         var(--text-muted);
+  --text-sec:       var(--text-secondary);
+  --bg-sub:         var(--surface-2);
+  --border-color:   var(--border);
+  --brand:          var(--accent);
+  --brand-subtle:   var(--accent-soft);
+  --primary-color:  var(--accent);
 
   --accent:       #3b82f6;
   --accent-hover: #4d8df7;
@@ -1751,6 +1763,33 @@ input[type="checkbox"]:not(.switch input) { width: 16px; height: 16px; flex: 0 0
 /* 徽章成功与警告点 */
 .badge--success { background: rgba(34, 197, 94, .15); color: #22c55e; }
 .status-dot.is-warning { background: var(--warning); }
+
+
+/* ===== 组件别名与扩展类名 (对齐 app.js) ===== */
+.btn--xs { height: 26px; padding: 0 var(--space-2); font-size: var(--text-xs); }
+.btn--subtle { background: var(--surface-2); border-color: var(--border-subtle); color: var(--text-secondary); }
+.btn--subtle:hover { background: var(--surface-3); color: var(--text); }
+.dialog__title { display: flex; align-items: center; gap: var(--space-2); flex: 1; }
+.drawer-speed-bar,
+.evd__player-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 8px 12px;
+  background: var(--surface-2);
+  border-radius: var(--radius-sm);
+  margin-top: 6px;
+  border: 1px solid var(--border);
+}
+.drawer-speed-group,
+.evd-speed-group {
+  display: inline-flex;
+  gap: 4px;
+}
+.drawer-speed-btn,
+.evd-speed-btn {
+  /* 基础依托 .btn 与 .btn--sm */
+}
 
 
 /* ===== assets/css/pages.css ===== */
@@ -10675,6 +10714,86 @@ body.has-mobile-fullscreen {
   align-items: center;
   justify-content: center;
   gap: 6px;
+}
+
+
+/* ===== 业务页面扩展与辅助类名 (对齐 app.js) ===== */
+.gtile__time {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 10;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  padding: 2px 6px;
+  background: rgba(15, 23, 42, 0.75);
+  border-radius: 4px;
+  color: #e2e8f0;
+}
+.gtile__osd-name {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
+.grid-layout-svg {
+  display: inline-block;
+  vertical-align: middle;
+}
+.ev-sync-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+.st-locs-refresh,
+.st-toggle-custom,
+.st-custom-apply,
+.st-apply-dir {
+  /* 基础依托 .btn 体系 */
+}
+.st-jump-perm {
+  cursor: pointer;
+}
+.st-custom-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.st-custom-inp {
+  /* 基础依托 .input */
+}
+.st-perm-guide__toggle-text {
+  display: inline-block;
+}
+.st-perm-guide__toggle-icon {
+  display: inline-flex;
+  align-items: center;
+}
+.st-note {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+.st-mono {
+  font-family: var(--font-mono, monospace);
+  font-size: var(--text-xs);
+}
+.st-clean-card {
+  /* 基础依托 .card */
+}
+.st-col-right {
+  display: flex;
+  flex-direction: column;
+}
+.st-field__sep {
+  color: var(--text-muted);
+  padding: 0 var(--space-2);
 }
 
 

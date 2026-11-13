@@ -40,6 +40,12 @@
   --text-main:      var(--text);
   --text-2:         var(--text-secondary);
   --text-3:         var(--text-muted);
+  --text-sec:       var(--text-secondary);
+  --bg-sub:         var(--surface-2);
+  --border-color:   var(--border);
+  --brand:          var(--accent);
+  --brand-subtle:   var(--accent-soft);
+  --primary-color:  var(--accent);
 
   --accent:       #3b82f6;
   --accent-hover: #2563eb;
@@ -79,6 +85,12 @@
   --text-main:      var(--text);
   --text-2:         var(--text-secondary);
   --text-3:         var(--text-muted);
+  --text-sec:       var(--text-secondary);
+  --bg-sub:         var(--surface-2);
+  --border-color:   var(--border);
+  --brand:          var(--accent);
+  --brand-subtle:   var(--accent-soft);
+  --primary-color:  var(--accent);
 
   --accent:       #3b82f6;
   --accent-hover: #4d8df7;
