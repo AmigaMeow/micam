@@ -4986,16 +4986,19 @@ body.has-web-fullscreen {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: var(--space-2);
   margin-bottom: 12px;
 }
 .st-stat__title-row {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 .st-stat__icon-wrap {
   width: 32px;
   height: 32px;
+  flex-shrink: 0;
   border-radius: 8px;
   background: color-mix(in srgb, var(--accent) 12%, transparent);
   color: var(--accent);
@@ -5007,6 +5010,7 @@ body.has-web-fullscreen {
   font-size: 13px;
   font-weight: 500;
   color: var(--text-secondary);
+  white-space: nowrap;
 }
 .st-stat__badge {
   font-size: 11px;
@@ -5016,6 +5020,8 @@ body.has-web-fullscreen {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 .st-stat__val-wrap {
   display: flex;
@@ -5090,7 +5096,8 @@ body.has-web-fullscreen {
   margin-bottom: var(--space-5);
 }
 .st-row--2 {
-  align-items: stretch;
+  align-items: start;
+  grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
 }
 .st-row--2 > .card {
   display: flex;
@@ -5108,9 +5115,13 @@ body.has-web-fullscreen {
 }
 .pnl[data-pnl="ov"] .st-row--2 {
   grid-template-columns: 1fr;
+  align-items: stretch;
 }
-.st-row--2 {
-  grid-template-columns: minmax(0,1.55fr) minmax(0,1fr);
+.st-col-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-width: 0;
 }
 @media (max-width: 1100px) {
   .st-row--2 { grid-template-columns: 1fr; }
@@ -5233,14 +5244,14 @@ body.has-web-fullscreen {
   padding: 0 var(--space-5) var(--space-4);
 }
 .st-table {
-  min-width: 620px;
+  min-width: 460px;
 }
 .st-table__head {
   display: grid;
-  gap: var(--space-3);
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1.2fr) 88px 84px 92px;
+  gap: var(--space-2);
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1.15fr) 70px 68px 74px;
   align-items: center;
-  padding: 10px 14px;
+  padding: 10px 12px;
   font-size: 12px;
   font-weight: 600;
   color: var(--text-secondary);
@@ -5250,10 +5261,10 @@ body.has-web-fullscreen {
 }
 .st-table__row {
   display: grid;
-  gap: var(--space-3);
-  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1.2fr) 88px 84px 92px;
+  gap: var(--space-2);
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1.15fr) 70px 68px 74px;
   align-items: center;
-  padding: 12px 14px;
+  padding: 12px 12px;
   border-radius: 6px;
   border-bottom: 1px solid var(--border-subtle);
   transition: background .15s ease;
@@ -5340,26 +5351,44 @@ body.has-web-fullscreen {
   color: var(--text-secondary);
   font-size: 13px;
   font-weight: 500;
+  white-space: nowrap;
 }
 .st-field__num {
-  width: 96px;
+  width: 104px;
   height: 36px;
 }
 .st-field__unit {
   color: var(--text-muted);
   font-size: 13px;
+  white-space: nowrap;
 }
 .st-field__hint {
   color: var(--text-muted);
   font-size: 12px;
+  line-height: 1.45;
 }
 .st-policy .st-field {
-  grid-template-columns: 96px 100px 36px minmax(0, 1fr);
+  grid-template-columns: 108px 104px minmax(0, 1fr);
+  row-gap: var(--space-1);
+  column-gap: var(--space-3);
+}
+.st-policy .st-field__hint {
+  grid-column: 2 / -1;
+}
+.st-policy .st-field > select.input {
+  grid-column: 2 / -1;
+  width: 100%;
+  height: 36px;
+  padding-right: 28px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .st-switchrow {
   display: grid;
-  grid-template-columns: 96px auto minmax(0, 1fr);
-  gap: 12px;
+  grid-template-columns: 108px minmax(0, 1fr);
+  row-gap: var(--space-1);
+  column-gap: var(--space-3);
   align-items: center;
   padding: 10px 0;
   border-bottom: 1px solid var(--border-subtle);
@@ -5368,10 +5397,13 @@ body.has-web-fullscreen {
   color: var(--text-secondary);
   font-size: 13px;
   font-weight: 500;
+  white-space: nowrap;
 }
 .st-switchrow__hint {
+  grid-column: 2 / -1;
   color: var(--text-muted);
   font-size: 12px;
+  line-height: 1.45;
 }
 .st-save {
   margin-top: var(--space-4);
@@ -5418,10 +5450,18 @@ body.has-web-fullscreen {
   padding: var(--space-3) var(--space-5) var(--space-5);
 }
 .st-migrate .st-field {
-  grid-template-columns: 88px minmax(0, 1fr);
+  grid-template-columns: 92px minmax(0, 1fr);
 }
 .st-migrate .st-field--range {
-  grid-template-columns: 88px minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-columns: 92px minmax(0, 1fr) auto minmax(0, 1fr);
+}
+.st-migrate .st-field > select.input {
+  width: 100%;
+  height: 36px;
+  padding-right: 28px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .st-migrate__foot {
   display: flex;

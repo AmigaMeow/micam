@@ -10498,63 +10498,75 @@ function paintStorage(c, d, cleanup){
     // 录像策略页核心存储目录卡片
     + stRecDirCard(status, stLocs, stUnified)
 
-    // 摄像头 + 策略
+    // 摄像头 + 缓存（左列）| 策略（右列），避免左列单卡过短留白
     + '<div class="st-row st-row--2">'
-    +   '<div class="card">'
-    +     '<div class="card__head">'
-    +       '<span class="card__title">' + icon('camera',16) + '按摄像头统计</span>'
-    +       '<span class="badge" style="font-size:12px;">共 ' + cams.length + ' 台设备</span>'
-    +     '</div>'
-    +     '<div class="st-table-wrap">'
-    +       '<div class="st-table">'
-    +         '<div class="st-table__head">'
-    +           '<span>摄像头设备</span><span>已用容量与占比</span><span>录像文件</span><span>保留策略</span><span>预计可录</span>'
-    +         '</div>'
-    +         (cams.length ? cams.map(function(x){
-              var isLow = x.estDays != null && x.estDays < 3;
-              var estBadge = (x.estDays >= 999)
-                ? '<span class="st-tag">—</span>'
-                : ('<span class="st-tag ' + (isLow ? 'st-tag--warn' : 'st-tag--ok') + '">' + Math.round(x.estDays||0) + ' 天</span>');
-              return '<div class="st-table__row">'
-                + '<span class="st-cam">'
-                +   '<span class="status-dot ' + (x.online?'is-online':'') + '"></span>'
-                +   '<span class="st-cam__name" title="' + esc(x.name) + '">' + esc(formatDevName(x.name)) + '</span>'
-                + '</span>'
-                + '<span class="st-cell">'
-                +   '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">'
-                +     '<span class="st-cell__val">' + fmtGB(x.sizeGB) + '</span>'
-                +     '<span style="font-size:11px;color:var(--text-muted);">' + (x.pct||0).toFixed(1) + '%</span>'
-                +   '</div>'
-                +   '<span class="st-bar st-bar--sm"><span style="width:' + Math.min(100,(x.pct||0)) + '%"></span></span>'
-                + '</span>'
-                + '<span class="st-cell"><b>' + (x.files||0).toLocaleString() + '</b> <span style="font-size:11px;color:var(--text-muted)">个</span></span>'
-                + '<span class="st-cell">' + (x.keepDays||0) + ' 天</span>'
-                + '<span class="st-cell">' + estBadge + '</span>'
-                + '</div>';
-            }).join('') : emptyState('quiet', { title:'还没有录像', desc:'开启录像后这里会按摄像头列出占用', compact:true }))
+    +   '<div class="st-col-stack">'
+    +     '<div class="card">'
+    +       '<div class="card__head">'
+    +         '<span class="card__title">' + icon('camera',16) + '按摄像头统计</span>'
+    +         '<span class="badge" style="font-size:12px;">共 ' + cams.length + ' 台设备</span>'
     +       '</div>'
-    // 未归属的孤儿目录（已移出/已删除设备遗留）。
-    // 用途是**对账**：各台之和 + 本行 == 录像根目录实际占用。
-    // 用户反馈：改成以摄像头为基准后，这部分空间会「找不到是谁的」。
-    +       ((d.orphan && d.orphan.dirs > 0)
-              ? '<div class="st-table__row st-table__row--orphan" title="'
-                + esc((d.orphan.names || []).join('、')) + '">'
-                + '<span class="st-cam">'
-                +   '<span class="status-dot"></span>'
-                +   '<span class="st-cam__name">未归属（已移出设备）</span>'
-                +   '<span class="st-orphan-tag">' + d.orphan.dirs + ' 个目录</span>'
-                + '</span>'
-                + '<span class="st-cell"><span class="st-cell__val">' + fmtGB(d.orphan.sizeGB) + '</span></span>'
-                + '<span class="st-cell">' + (d.orphan.files || 0).toLocaleString() + '</span>'
-                + '<span class="st-cell">—</span>'
-                + '<span class="st-cell">—</span>'
-                + '</div>'
-              : '')
+    +       '<div class="st-table-wrap">'
+    +         '<div class="st-table">'
+    +           '<div class="st-table__head">'
+    +             '<span>摄像头设备</span><span>已用容量与占比</span><span>录像文件</span><span>保留策略</span><span>预计可录</span>'
+    +           '</div>'
+    +           (cams.length ? cams.map(function(x){
+                var isLow = x.estDays != null && x.estDays < 3;
+                var estBadge = (x.estDays >= 999)
+                  ? '<span class="st-tag">—</span>'
+                  : ('<span class="st-tag ' + (isLow ? 'st-tag--warn' : 'st-tag--ok') + '">' + Math.round(x.estDays||0) + ' 天</span>');
+                return '<div class="st-table__row">'
+                  + '<span class="st-cam">'
+                  +   '<span class="status-dot ' + (x.online?'is-online':'') + '"></span>'
+                  +   '<span class="st-cam__name" title="' + esc(x.name) + '">' + esc(formatDevName(x.name)) + '</span>'
+                  + '</span>'
+                  + '<span class="st-cell">'
+                  +   '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">'
+                  +     '<span class="st-cell__val">' + fmtGB(x.sizeGB) + '</span>'
+                  +     '<span style="font-size:11px;color:var(--text-muted);">' + (x.pct||0).toFixed(1) + '%</span>'
+                  +   '</div>'
+                  +   '<span class="st-bar st-bar--sm"><span style="width:' + Math.min(100,(x.pct||0)) + '%"></span></span>'
+                  + '</span>'
+                  + '<span class="st-cell"><b>' + (x.files||0).toLocaleString() + '</b> <span style="font-size:11px;color:var(--text-muted)">个</span></span>'
+                  + '<span class="st-cell">' + (x.keepDays||0) + ' 天</span>'
+                  + '<span class="st-cell">' + estBadge + '</span>'
+                  + '</div>';
+              }).join('') : emptyState('quiet', { title:'还没有录像', desc:'开启录像后这里会按摄像头列出占用', compact:true }))
+    +         '</div>'
+    +         ((d.orphan && d.orphan.dirs > 0)
+                ? '<div class="st-table__row st-table__row--orphan" title="'
+                  + esc((d.orphan.names || []).join('、')) + '">'
+                  + '<span class="st-cam">'
+                  +   '<span class="status-dot"></span>'
+                  +   '<span class="st-cam__name">未归属（已移出设备）</span>'
+                  +   '<span class="st-orphan-tag">' + d.orphan.dirs + ' 个目录</span>'
+                  + '</span>'
+                  + '<span class="st-cell"><span class="st-cell__val">' + fmtGB(d.orphan.sizeGB) + '</span></span>'
+                  + '<span class="st-cell">' + (d.orphan.files || 0).toLocaleString() + '</span>'
+                  + '<span class="st-cell">—</span>'
+                  + '<span class="st-cell">—</span>'
+                  + '</div>'
+                : '')
+    +       '</div>'
+    +     '</div>'
+
+    +     '<div class="card">'
+    +       '<div class="card__head">' + icon('layers',15) + '<span class="card__title">转码缓存管理</span></div>'
+    +       '<div class="st-cache">'
+    +         '<div class="st-kv"><span>缓存路径</span><b class="st-mono">' + esc(cache.dir||'—') + '</b></div>'
+    +         '<div class="st-kv"><span>当前大小</span><b>' + fmtGB(cache.sizeGB) + '</b></div>'
+    +         '<div class="st-kv"><span>最大限制</span><span style="display:inline-flex;align-items:center;gap:6px;"><input class="input st-field__num" id="stCacheMax" type="number" min="1" max="500" style="width:76px;height:28px;" value="' + Math.max(1, Math.round(cache.maxGB || pol.cacheMaxGB || 5)) + '"><span>GB</span></span></div>'
+    +         '<div class="st-kv"><span>上次清理</span><b>' + esc(cache.lastAt||'—') + '</b></div>'
+    +       '</div>'
+    +       '<div class="st-cache__acts">'
+    +         '<button class="btn btn--sm" id="stCacheClear">' + icon('trash',13) + '清空缓存</button>'
+    +         '<button class="btn btn--sm" id="stCacheSet">' + icon('settings',13) + '保存限制</button>'
+    +       '</div>'
     +     '</div>'
     +   '</div>'
 
-    +   '<div>'
-    +     '<div class="card">'
+    +   '<div class="card">'
     +     '<div class="card__head">' + icon('settings',15) + '<span class="card__title">存储策略</span></div>'
     +     '<div class="st-policy">'
     +       stField('分片时长', 'stSeg', pol.segmentSec || 300, '秒', '每个录像文件的时长')
@@ -10574,8 +10586,8 @@ function paintStorage(c, d, cleanup){
     +           (function(){
                   var lm = (pol.lowSpaceMode === 'none' ? 'neverDelete' : (pol.lowSpaceMode || 'protectAI'));
                   return [
-                    ['protectAI','智能保护（保护 AI 事件后删除最早）'],
-                    ['deleteOldest','循环覆盖（删除最早未标记录像）'],
+                    ['protectAI','智能保护（留 AI 删更早普通）'],
+                    ['deleteOldest','循环覆盖（删除最早未标记）'],
                     ['stopRecording','停止录像并发送告警'],
                     ['neverDelete','不自动删除（仅告警）']
                   ].map(function(x){
@@ -10586,21 +10598,6 @@ function paintStorage(c, d, cleanup){
     +         '<span class="st-field__hint">当空间不足或超过上限时的应对方式</span>'
     +       '</div>'
     +       '<button class="btn btn--primary st-save" id="stSave">保存策略</button>'
-    +     '</div>'
-    +     '</div>'
-
-    +     '<div class="card">'
-    +     '<div class="card__head">' + icon('layers',15) + '<span class="card__title">转码缓存管理</span></div>'
-    +     '<div class="st-cache">'
-    +       '<div class="st-kv"><span>缓存路径</span><b class="st-mono">' + esc(cache.dir||'—') + '</b></div>'
-    +       '<div class="st-kv"><span>当前大小</span><b>' + fmtGB(cache.sizeGB) + '</b></div>'
-    +       '<div class="st-kv"><span>最大限制</span><span style="display:inline-flex;align-items:center;gap:6px;"><input class="input st-field__num" id="stCacheMax" type="number" min="1" max="500" style="width:76px;height:28px;" value="' + Math.max(1, Math.round(cache.maxGB || pol.cacheMaxGB || 5)) + '"><span>GB</span></span></div>'
-    +       '<div class="st-kv"><span>上次清理</span><b>' + esc(cache.lastAt||'—') + '</b></div>'
-    +     '</div>'
-    +     '<div class="st-cache__acts">'
-    +       '<button class="btn btn--sm" id="stCacheClear">' + icon('trash',13) + '清空缓存</button>'
-    +       '<button class="btn btn--sm" id="stCacheSet">' + icon('settings',13) + '保存限制</button>'
-    +     '</div>'
     +     '</div>'
     +   '</div>'
     + '</div>'
@@ -10708,8 +10705,8 @@ function paintStorage(c, d, cleanup){
     +             (function(){
                     var lm = (pol.lowSpaceMode === 'none' ? 'neverDelete' : (pol.lowSpaceMode || 'protectAI'));
                     return [
-                      ['protectAI','智能保护（保护 AI 事件后删除最早）'],
-                      ['deleteOldest','循环覆盖（删除最早未标记录像）'],
+                      ['protectAI','智能保护（留 AI 删更早普通）'],
+                      ['deleteOldest','循环覆盖（删除最早未标记）'],
                       ['stopRecording','停止录像并发送告警'],
                       ['neverDelete','不自动删除（仅告警）']
                     ].map(function(x){
@@ -10740,10 +10737,10 @@ function paintStorage(c, d, cleanup){
                     }
                     if(curSrc){
                       var curPool = poolList.filter(function(x){ return x.path === curSrc; })[0];
-                      addSrcOpt(curSrc, (curPool ? (curPool.name + ' · ' + curPool.files + ' 文件 (' + fmtGB(curPool.sizeGB) + ')') : ('当前写入: ' + curSrc)));
+                      addSrcOpt(curSrc, (curPool ? (curPool.name.replace(/^存储空间 \d+ \/ /, '') + ' · ' + curPool.files + '个 (' + fmtGB(curPool.sizeGB) + ')') : ('当前: ' + curSrc)));
                     }
                     poolList.forEach(function(p){
-                      addSrcOpt(p.path, p.name + ' · ' + (p.files||0) + ' 文件 (' + fmtGB(p.sizeGB||0) + ')');
+                      addSrcOpt(p.path, p.name.replace(/^存储空间 \d+ \/ /, '') + ' · ' + (p.files||0) + '个 (' + fmtGB(p.sizeGB||0) + ')');
                     });
                     return opts.join('') || '<option value="' + esc(curSrc) + '">' + esc(curSrc || '未配置') + '</option>';
                   })()
