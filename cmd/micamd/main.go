@@ -24,6 +24,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -51,7 +52,7 @@ var appDestDir string
 // startedAt 进程启动时间（状态条显示「运行时间」用）
 var startedAt = time.Now()
 
-var appVersion = "0.41.40"
+var appVersion = "0.41.41"
 
 func main() {
 	checkMiotLib()
@@ -180,10 +181,11 @@ func main() {
 		QuietTo:   cfg.UI.QuietTo,
 	})
 
-	// 清理过期的片段导出文件
+	// 清理过期的片段导出文件与遗留临时二维码
 	srv.cleanExportsOnStart()
+	srv.cleanStaleQRFiles()
 
-	// 存储守护：定时检查磁盘，超阈值自动清理旧录像
+	// 存储守护：定时检查磁盘，超阈值自动清理旧录像与缓存
 	srv.startStorageGuard()
 	srv.initMotionRec()
 
@@ -196,8 +198,12 @@ func main() {
 	// 缩略图预热 + 定时刷新（设备列表页秒开）
 	srv.startThumbWarmer()
 
-	// 事件库 + 设备别名
-	srv.eventStore = event.NewStore(filepath.Join(*dataDir, "events"), 90)
+	// 事件库（保留天数按 AI 配置，默认 30 天）+ 设备别名
+	eventKeepDays := cfg.AI.ResultKeepDays
+	if eventKeepDays < 0 {
+		eventKeepDays = 30
+	}
+	srv.eventStore = event.NewStore(filepath.Join(*dataDir, "events"), eventKeepDays)
 	srv.meta = newMetaStore(*dataDir)
 	// 载入限流静默状态（避免重启后立刻又去撞限流）
 	loadThrottleState()
@@ -374,6 +380,10 @@ type Server struct {
 	finds      *findStore
 	poses      *poseStore
 	ai         *aiClient
+
+	lowSpacePaused      atomic.Bool
+	lastAppDataMaintain atomic.Int64
+	testRecRoots        []string
 }
 
 // ffmpegPath 返回 ffmpeg 路径。
@@ -608,7 +618,7 @@ func (s *Server) routes(mux *http.ServeMux) {
 	mux.HandleFunc("/api/devices/all", s.handleAllDevices)
 	mux.HandleFunc("/api/devices/cloud", s.handleDevicesCloud)  // 云端清单（含 managed 标记）
 	mux.HandleFunc("/api/devices/manage", s.handleDeviceManage) // 纳入 / 移出管理
-	mux.HandleFunc("/api/devices/rtsp", s.handleDevicesRTSP)   // 通用 RTSP 摄像机流接入
+	mux.HandleFunc("/api/devices/rtsp", s.handleDevicesRTSP)    // 通用 RTSP 摄像机流接入
 	mux.HandleFunc("/api/homes", s.handleHomes)
 
 	// 首页聚合 / 事件 / 设备别名

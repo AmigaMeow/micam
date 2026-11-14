@@ -21,8 +21,11 @@ package event
 // 夜间红外切换、树影、雨雪会产生误报，靠灵敏度和静默期抑制。
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/jpeg"
 	"log"
 	"os"
 	"path/filepath"
@@ -190,7 +193,8 @@ func (s *Store) Query(q Query) []Event {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	if q.Limit <= 0 {
+	noLimit := q.Limit < 0
+	if q.Limit == 0 {
 		q.Limit = 100
 	}
 	days := q.Days
@@ -200,7 +204,7 @@ func (s *Store) Query(q Query) []Event {
 
 	var out []Event
 	now := time.Now()
-	for i := 0; i < days && len(out) < q.Limit; i++ {
+	for i := 0; i < days && (noLimit || len(out) < q.Limit); i++ {
 		day := now.AddDate(0, 0, -i).Format("2006-01-02")
 		evs := s.readDayLocked(day)
 		for j := len(evs) - 1; j >= 0; j-- {
@@ -217,7 +221,7 @@ func (s *Store) Query(q Query) []Event {
 	sort.Slice(out, func(i, j int) bool {
 		return out[i].Time > out[j].Time
 	})
-	if len(out) > q.Limit {
+	if !noLimit && len(out) > q.Limit {
 		out = out[:q.Limit]
 	}
 	return out
@@ -247,11 +251,53 @@ func (s *Store) readDayLocked(day string) []Event {
 	return out
 }
 
+// compactThumbJPEG 对体积过大的事件抓拍图进行等比缩放与轻量 JPEG 压缩，控制事件缩略图体积。
+func compactThumbJPEG(data []byte, maxWidth int) []byte {
+	if len(data) <= 40*1024 || maxWidth <= 0 {
+		return data
+	}
+	src, _, err := image.Decode(bytes.NewReader(data))
+	if err != nil {
+		return data
+	}
+	b := src.Bounds()
+	srcW, srcH := b.Dx(), b.Dy()
+	if srcW <= 0 || srcH <= 0 {
+		return data
+	}
+	dstImg := src
+	if srcW > maxWidth {
+		dstW := maxWidth
+		dstH := srcH * maxWidth / srcW
+		if dstH < 1 {
+			dstH = 1
+		}
+		dst := image.NewRGBA(image.Rect(0, 0, dstW, dstH))
+		for y := 0; y < dstH; y++ {
+			sy := b.Min.Y + y*srcH/dstH
+			for x := 0; x < dstW; x++ {
+				sx := b.Min.X + x*srcW/dstW
+				dst.Set(x, y, src.At(sx, sy))
+			}
+		}
+		dstImg = dst
+	}
+	var buf bytes.Buffer
+	if err := jpeg.Encode(&buf, dstImg, &jpeg.Options{Quality: 75}); err != nil {
+		return data
+	}
+	if buf.Len() > 0 && buf.Len() < len(data) {
+		return buf.Bytes()
+	}
+	return data
+}
+
 // SaveThumb 保存事件缩略图，返回文件名。
 func (s *Store) SaveThumb(data []byte) string {
 	if len(data) == 0 {
 		return ""
 	}
+	data = compactThumbJPEG(data, 480)
 	name := fmt.Sprintf("%d.jpg", time.Now().UnixNano())
 	if err := os.WriteFile(filepath.Join(s.thumbDir, name), data, 0o644); err != nil {
 		log.Printf("[event] 写入缩略图 %s 失败: %v", name, err)
@@ -264,31 +310,105 @@ func (s *Store) ThumbPath(name string) string {
 	return filepath.Join(s.thumbDir, filepath.Base(name))
 }
 
-// Cleanup 清理过期事件文件。
+// Cleanup 清理过期事件文件与孤儿缩略图。
 func (s *Store) Cleanup() (int, error) {
+	n, _, _, err := s.CleanupWithRetention(s.keepDays, nil)
+	return n, err
+}
+
+// CleanupWithRetention 按指定保留天数清理过期事件日志、旧备份与无主事件缩略图。
+func (s *Store) CleanupWithRetention(keepDays int, protectedIDs map[string]bool) (int, int, int64, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	deadline := time.Now().AddDate(0, 0, -s.keepDays)
 	ents, err := os.ReadDir(s.dir)
 	if err != nil {
-		return 0, err
+		return 0, 0, 0, err
 	}
-	var n int
+
+	now := time.Now()
+	var logsRemoved, thumbsRemoved int
+	var freedBytes int64
+	var logDeadline time.Time
+	if keepDays > 0 {
+		logDeadline = now.AddDate(0, 0, -keepDays)
+	}
+	bakDeadline := now.AddDate(0, 0, -7)
+
+	referencedThumbs := make(map[string]bool)
 	for _, ent := range ents {
-		if ent.IsDir() || !strings.HasSuffix(ent.Name(), ".jsonl") {
+		if ent.IsDir() {
 			continue
 		}
-		day := strings.TrimSuffix(ent.Name(), ".jsonl")
-		t, err := time.Parse("2006-01-02", day)
-		if err != nil || !t.Before(deadline) {
+		name := ent.Name()
+		pth := filepath.Join(s.dir, name)
+		if strings.Contains(name, ".jsonl.bak") {
+			if info, e := ent.Info(); e == nil && info.ModTime().Before(bakDeadline) {
+				if os.Remove(pth) == nil {
+					logsRemoved++
+					freedBytes += info.Size()
+				}
+			}
 			continue
 		}
-		if os.Remove(filepath.Join(s.dir, ent.Name())) == nil {
-			n++
+		if !strings.HasSuffix(name, ".jsonl") {
+			continue
+		}
+		day := strings.TrimSuffix(name, ".jsonl")
+		dayTime, parseErr := time.Parse("2006-01-02", day)
+		shouldExpire := keepDays > 0 && parseErr == nil && dayTime.Before(logDeadline)
+		evs := s.readDayLocked(day)
+		hasProtected := false
+		if shouldExpire && len(protectedIDs) > 0 {
+			for _, ev := range evs {
+				if protectedIDs[ev.ID] {
+					hasProtected = true
+					break
+				}
+			}
+		}
+		if shouldExpire && !hasProtected {
+			var sz int64
+			if info, e := ent.Info(); e == nil {
+				sz = info.Size()
+			}
+			if os.Remove(pth) == nil {
+				logsRemoved++
+				freedBytes += sz
+			}
+			continue
+		}
+		for _, ev := range evs {
+			if ev.Thumb != "" {
+				referencedThumbs[filepath.Base(ev.Thumb)] = true
+			}
 		}
 	}
-	return n, nil
+
+	// 清理无主缩略图（避开最近 10 分钟刚写入、可能尚未落盘 jsonl 的新缩略图）
+	if thumbEnts, err := os.ReadDir(s.thumbDir); err == nil {
+		graceDeadline := now.Add(-10 * time.Minute)
+		for _, te := range thumbEnts {
+			if te.IsDir() {
+				continue
+			}
+			base := te.Name()
+			idNoExt := strings.TrimSuffix(base, filepath.Ext(base))
+			if referencedThumbs[base] || protectedIDs[idNoExt] {
+				continue
+			}
+			info, e := te.Info()
+			if e != nil || info.ModTime().After(graceDeadline) {
+				continue
+			}
+			if os.Remove(filepath.Join(s.thumbDir, base)) == nil {
+				thumbsRemoved++
+				freedBytes += info.Size()
+			}
+		}
+	}
+
+	return logsRemoved, thumbsRemoved, freedBytes, nil
 }
 
 // Days 返回有事件的日期（倒序）。

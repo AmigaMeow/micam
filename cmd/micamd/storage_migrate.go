@@ -33,6 +33,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/micam/micam/internal/record"
@@ -63,37 +64,55 @@ type migrateState struct {
 
 var mig = &migrateState{State: "idle"}
 
-// migrateCandidates 收集待迁移文件（按设备名与时间范围过滤）。
-func (s *Server) migrateCandidates(from, to, cam string) ([]string, error) {
-	root := s.rec.GetConfig().Dir
+func (s *Server) resolveMigrateSrc(src string) string {
+	if strings.TrimSpace(src) != "" {
+		return filepath.Clean(src)
+	}
+	return s.recRoot()
+}
+
+// migrateCandidates 收集待迁移文件（支持指定源录像池、按设备名与时间范围过滤，自动跳过正在录制的活跃分片）。
+func (s *Server) migrateCandidates(srcRoot, from, to, cam string) ([]string, int64, error) {
+	root := s.resolveMigrateSrc(srcRoot)
 	if root == "" {
-		return nil, fmt.Errorf("录像目录未配置")
+		return nil, 0, fmt.Errorf("录像目录未配置")
 	}
 
-	// 时间范围（date 输入，YYYY-MM-DD；含当天）
 	var lo, hi time.Time
 	var err error
 	if from != "" {
 		if lo, err = time.ParseInLocation("2006-01-02", from, time.Local); err != nil {
-			return nil, fmt.Errorf("起始日期格式错误")
+			return nil, 0, fmt.Errorf("起始日期格式错误")
 		}
 	}
 	if to != "" {
 		if hi, err = time.ParseInLocation("2006-01-02", to, time.Local); err != nil {
-			return nil, fmt.Errorf("结束日期格式错误")
+			return nil, 0, fmt.Errorf("结束日期格式错误")
 		}
-		hi = hi.AddDate(0, 0, 1) // 含结束当天
+		hi = hi.AddDate(0, 0, 1)
 	}
 
+	now := time.Now()
+	skipActive := (s != nil && s.rec != nil)
 	var out []string
+	var totalBytes int64
+
 	err = filepath.Walk(root, func(p string, info os.FileInfo, e error) error {
-		if e != nil || info == nil || info.IsDir() {
+		if e != nil || info == nil {
 			return nil
 		}
-		if filepath.Ext(p) != ".mkv" {
+		if info.IsDir() {
+			if p != root && strings.HasPrefix(info.Name(), ".") {
+				return filepath.SkipDir
+			}
 			return nil
 		}
-		// 设备过滤：录像在 <root>/<设备名>/... 下
+		if !isVideoFile(info.Name()) {
+			return nil
+		}
+		if skipActive && now.Sub(info.ModTime()) < 30*time.Second {
+			return nil
+		}
 		if cam != "" {
 			rel, _ := filepath.Rel(root, p)
 			if !strings.HasPrefix(rel, cam+string(os.PathSeparator)) {
@@ -108,32 +127,42 @@ func (s *Server) migrateCandidates(from, to, cam string) ([]string, error) {
 			return nil
 		}
 		out = append(out, p)
+		totalBytes += info.Size()
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 	sort.Strings(out)
-	return out, nil
+	return out, totalBytes, nil
 }
 
 // validateMigrate 校验源/目标，返回规范化后的绝对路径。
-func (s *Server) validateMigrate(dst string) (src, dstAbs string, err error) {
-	src = s.rec.GetConfig().Dir
+func (s *Server) validateMigrate(srcIn, dst string) (srcAbs, dstAbs string, err error) {
+	src := s.resolveMigrateSrc(srcIn)
 	if src == "" {
-		return "", "", fmt.Errorf("录像目录未配置")
+		return "", "", fmt.Errorf("源录像目录未配置")
 	}
 	if dst == "" {
 		return "", "", fmt.Errorf("请填写目标路径")
 	}
 
-	srcAbs, err := filepath.Abs(src)
+	srcAbs, err = filepath.Abs(src)
 	if err != nil {
 		return "", "", err
 	}
 	dstAbs, err = filepath.Abs(dst)
 	if err != nil {
 		return "", "", err
+	}
+
+	srcReal := srcAbs
+	if r, e := filepath.EvalSymlinks(srcAbs); e == nil {
+		srcReal = r
+	}
+	dstReal := dstAbs
+	if r, e := filepath.EvalSymlinks(dstAbs); e == nil {
+		dstReal = r
 	}
 
 	// 目标必须是已存在的目录（不自动创建 —— 防止打错字写到别处）
@@ -145,19 +174,18 @@ func (s *Server) validateMigrate(dst string) (src, dstAbs string, err error) {
 		return "", "", fmt.Errorf("目标路径不是目录：%s", dstAbs)
 	}
 
-	// 互相包含一律拒绝
+	// 互相包含一律拒绝（基于真实路径防符号链接绕过）
 	sep := string(os.PathSeparator)
-	if srcAbs == dstAbs {
+	if srcReal == dstReal || srcAbs == dstAbs {
 		return "", "", fmt.Errorf("目标路径不能与源路径相同")
 	}
-	if strings.HasPrefix(dstAbs+sep, srcAbs+sep) {
+	if strings.HasPrefix(dstReal+sep, srcReal+sep) {
 		return "", "", fmt.Errorf("目标路径不能位于源路径内部")
 	}
-	if strings.HasPrefix(srcAbs+sep, dstAbs+sep) {
+	if strings.HasPrefix(srcReal+sep, dstReal+sep) {
 		return "", "", fmt.Errorf("源路径不能位于目标路径内部")
 	}
 
-	// 目标可写测试
 	tf := filepath.Join(dstAbs, ".micam-write-test")
 	if err := os.WriteFile(tf, []byte("ok"), 0o600); err != nil {
 		return "", "", fmt.Errorf("目标路径不可写：%v", err)
@@ -167,47 +195,46 @@ func (s *Server) validateMigrate(dst string) (src, dstAbs string, err error) {
 	return srcAbs, dstAbs, nil
 }
 
-// crossDevice 判断两个路径是否在同一文件系统（决定是 rename 还是 copy）。
+// crossDevice 判断两个路径是否跨文件系统（通过 Linux stat.Dev 识别）。
 func crossDevice(a, b string) bool {
-	// 简化：逐个尝试 rename，失败再复制。这里只用于提示。
-	pa := filepath.VolumeName(a)
-	pb := filepath.VolumeName(b)
-	return pa != pb
+	var sa, sb syscall.Stat_t
+	if syscall.Stat(filepath.Clean(a), &sa) != nil || syscall.Stat(filepath.Clean(b), &sb) != nil {
+		return filepath.VolumeName(a) != filepath.VolumeName(b)
+	}
+	return sa.Dev != sb.Dev
 }
 
 // handleStorageMigratePlan GET /api/storage/migrate/plan
 func (s *Server) handleStorageMigratePlan(w http.ResponseWriter, r *http.Request) {
 	q := r.URL.Query()
+	src := s.resolveMigrateSrc(q.Get("src"))
 	dst := q.Get("dst")
-	files, err := s.migrateCandidates(q.Get("from"), q.Get("to"), q.Get("cam"))
+	files, total, err := s.migrateCandidates(src, q.Get("from"), q.Get("to"), q.Get("cam"))
 	if err != nil {
 		writeErr(w, 400, err.Error())
 		return
 	}
-	var total int64
-	for _, f := range files {
-		if st, e := os.Stat(f); e == nil {
-			total += st.Size()
-		}
-	}
 
 	var freeGB float64
 	var dstErr string
+	cross := false
 	if dst != "" {
-		if _, dstAbs, e := s.validateMigrate(dst); e == nil {
-			freeGB = record.DiskUsageOf(dstAbs).FreeGB
+		if srcAbs, dstAbs, e := s.validateMigrate(src, dst); e == nil {
+			freeGB = record.DiskUsageOfReadOnly(dstAbs).FreeGB
+			cross = crossDevice(srcAbs, dstAbs)
 		} else {
 			dstErr = e.Error()
 		}
 	}
 
 	writeJSON(w, 200, map[string]any{
+		"src":       src,
 		"files":     len(files),
 		"bytes":     total,
 		"sizeText":  humanSize(total),
 		"dstFreeGB": freeGB,
 		"enough":    freeGB*1024*1024*1024 >= float64(total),
-		"crossDev":  dst != "" && crossDevice(s.rec.GetConfig().Dir, dst),
+		"crossDev":  cross,
 		"dstErr":    dstErr,
 	})
 }
@@ -219,6 +246,7 @@ func (s *Server) handleStorageMigrateStart(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	var req struct {
+		Src          string `json:"src"`
 		Dst          string `json:"dst"`
 		From         string `json:"from"`
 		To           string `json:"to"`
@@ -238,13 +266,13 @@ func (s *Server) handleStorageMigrateStart(w http.ResponseWriter, r *http.Reques
 	}
 	mig.mu.Unlock()
 
-	_, dstAbs, err := s.validateMigrate(req.Dst)
+	srcAbs, dstAbs, err := s.validateMigrate(req.Src, req.Dst)
 	if err != nil {
 		writeErr(w, 400, err.Error())
 		return
 	}
 
-	files, err := s.migrateCandidates(req.From, req.To, req.Cam)
+	files, totalB, err := s.migrateCandidates(srcAbs, req.From, req.To, req.Cam)
 	if err != nil {
 		writeErr(w, 400, err.Error())
 		return
@@ -258,10 +286,10 @@ func (s *Server) handleStorageMigrateStart(w http.ResponseWriter, r *http.Reques
 	mig.mu.Lock()
 	mig.State = "running"
 	mig.Dst = dstAbs
-	mig.Src = s.rec.GetConfig().Dir
+	mig.Src = srcAbs
 	mig.Delete = req.DeleteSource
 	mig.Total = len(files)
-	mig.TotalB = 0
+	mig.TotalB = totalB
 	mig.Done, mig.DoneB, mig.Skipped, mig.Failed = 0, 0, 0, 0
 	mig.Errors = nil
 	mig.Message = ""
@@ -271,16 +299,26 @@ func (s *Server) handleStorageMigrateStart(w http.ResponseWriter, r *http.Reques
 	mig.cancel = cancel
 	mig.mu.Unlock()
 
-	logf("[mig] 开始迁移 %d 个文件 -> %s（删源=%v）", len(files), dstAbs, req.DeleteSource)
-	go s.runMigrate(ctx, files)
+	logf("[mig] 开始迁移 %d 个文件 (%.2f GB): %s -> %s（删源=%v）", len(files), float64(totalB)/(1<<30), srcAbs, dstAbs, req.DeleteSource)
+	go s.runMigrate(ctx, srcAbs, dstAbs, files)
 
-	writeJSON(w, 200, map[string]any{"ok": true, "total": len(files), "dst": dstAbs})
+	writeJSON(w, 200, map[string]any{"ok": true, "total": len(files), "totalBytes": totalB, "src": srcAbs, "dst": dstAbs})
+}
+
+func relocateRecMeta(oldPath, newPath string, removeOld bool) {
+	metaMu.Lock()
+	if m, ok := metaCache[oldPath]; ok {
+		metaCache[newPath] = m
+		if removeOld {
+			delete(metaCache, oldPath)
+		}
+	}
+	metaMu.Unlock()
 }
 
 // runMigrate 后台执行迁移。
-func (s *Server) runMigrate(ctx context.Context, files []string) {
-	srcRoot := s.rec.GetConfig().Dir
-	dstRoot := mig.Dst
+func (s *Server) runMigrate(ctx context.Context, srcRoot, dstRoot string, files []string) {
+	sameFS := !crossDevice(srcRoot, dstRoot)
 
 	fail := func(p, msg string) {
 		mig.mu.Lock()
@@ -329,23 +367,36 @@ func (s *Server) runMigrate(ctx context.Context, files []string) {
 		// 目标已存在：大小一致视为已迁移（跳过）
 		if ti, e := os.Stat(target); e == nil {
 			if ti.Size() == si.Size() {
+				relocateRecMeta(p, target, mig.Delete)
 				mig.mu.Lock()
 				mig.Skipped++
 				mig.Done++
 				mig.DoneB += si.Size()
 				mig.mu.Unlock()
-				// 注意：这里删源也可能失败（权限/只读），必须报告 ——
-				// 早期版本写成 `_ = os.Remove(p)` 把错误吞了，
-				// 界面显示"成功"但源文件还在（实测踩到）。
 				if mig.Delete {
 					if err := os.Remove(p); err != nil {
 						fail(rel, "副本已存在，但删除源文件失败: "+err.Error())
+					} else {
+						removeEmptyParentDirs(p, srcRoot)
 					}
 				}
 				continue
 			}
 			// 大小不同 -> 加序号，绝不覆盖
 			target = fmt.Sprintf("%s.%d.migrated", target, time.Now().UnixNano()%100000)
+		}
+
+		// 同文件系统且删源时优先使用零拷贝原子 Rename
+		if sameFS && mig.Delete {
+			if err := os.Rename(p, target); err == nil {
+				relocateRecMeta(p, target, true)
+				removeEmptyParentDirs(p, srcRoot)
+				mig.mu.Lock()
+				mig.Done++
+				mig.DoneB += si.Size()
+				mig.mu.Unlock()
+				continue
+			}
 		}
 
 		if err := copyFile(p, target); err != nil {
@@ -361,9 +412,12 @@ func (s *Server) runMigrate(ctx context.Context, files []string) {
 			continue
 		}
 
+		relocateRecMeta(p, target, mig.Delete)
 		if mig.Delete {
 			if err := os.Remove(p); err != nil {
 				fail(rel, "删除源文件失败（副本已就绪）")
+			} else {
+				removeEmptyParentDirs(p, srcRoot)
 			}
 		}
 
@@ -386,6 +440,9 @@ func (s *Server) runMigrate(ctx context.Context, files []string) {
 	}
 	mig.Message = msg
 	mig.mu.Unlock()
+	saveRecMeta()
+	invalidateRecRootsCache()
+	go s.checkStorageOnce()
 	logf("[mig] %s", msg)
 }
 
@@ -431,8 +488,9 @@ func (s *Server) handleStorageMigrateCancel(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, 200, map[string]any{"ok": true, "msg": "正在停止（当前文件完成后停止）"})
 }
 
-// copyFile 复制文件（带缓冲，避免大文件占内存）。
+// copyFile 复制文件并保留原始修改时间（保证迁移后的录像仍按真实录制日期参与保留期限统计与清理）。
 func copyFile(src, dst string) error {
+	info, statErr := os.Stat(src)
 	in, err := os.Open(src)
 	if err != nil {
 		return err
@@ -447,7 +505,13 @@ func copyFile(src, dst string) error {
 		out.Close()
 		return err
 	}
-	return out.Close()
+	if err := out.Close(); err != nil {
+		return err
+	}
+	if statErr == nil {
+		_ = os.Chtimes(dst, info.ModTime(), info.ModTime())
+	}
+	return nil
 }
 
 // humanSize 人类可读体积。

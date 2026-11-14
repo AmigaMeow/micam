@@ -99,8 +99,16 @@ func (s *Server) handleStorageDetail(w http.ResponseWriter, r *http.Request) {
 		FreeGB  float64 `json:"freeGB"`
 		UsedPct float64 `json:"usedPct"`
 	}
+	recRoot := s.recRoot()
+	recRoots := s.recRoots()
 	disk := diskInfo{}
-	if du := record.DiskUsageOf(base); du.Err == "" {
+	if du := record.DiskUsageOfReadOnly(recRoot); du.Err == "" {
+		disk.Path = du.Path
+		disk.TotalGB = du.TotalGB
+		disk.UsedGB = du.UsedGB
+		disk.FreeGB = du.FreeGB
+		disk.UsedPct = du.UsedPct
+	} else if du := record.DiskUsageOfReadOnly(base); du.Err == "" {
 		disk.Path = du.Path
 		disk.TotalGB = du.TotalGB
 		disk.UsedGB = du.UsedGB
@@ -109,8 +117,6 @@ func (s *Server) handleStorageDetail(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ---- 按类型统计（真实目录）----
-	recRoot := s.recRoot()
-	recRoots := s.recRoots()
 	cacheDir := s.transcodeCacheDir()
 	eventsDir := filepath.Join(base, "events")
 	modelsDir := filepath.Join(base, "models")
@@ -152,6 +158,37 @@ func (s *Server) handleStorageDetail(w http.ResponseWriter, r *http.Request) {
 	add("models", "AI 模型", modelsDir, false)
 	add("lpr", "车牌模型", lprDir, false)
 
+	// 运行缓存、抽帧图、缩略图、导出与日志统一计入“运行缓存与日志”
+	var appCacheBytes int64
+	var appCacheFiles int
+	for _, sub := range []string{"frames", "thumbs", "ai-cache", "exports"} {
+		b, n := dirUsage(filepath.Join(base, sub), false)
+		appCacheBytes += b
+		appCacheFiles += n
+	}
+	for _, r := range recRoots {
+		b1, n1 := dirUsage(filepath.Join(r, ".thumbs"), false)
+		b2, n2 := dirUsage(filepath.Join(r, ".frames"), false)
+		appCacheBytes += b1 + b2
+		appCacheFiles += n1 + n2
+	}
+	if logFiles, err := filepath.Glob(filepath.Join(base, "micamd.log*")); err == nil {
+		for _, lp := range logFiles {
+			if fi, e := os.Stat(lp); e == nil && !fi.IsDir() {
+				appCacheBytes += fi.Size()
+				appCacheFiles++
+			}
+		}
+	}
+	if appCacheBytes > 0 || appCacheFiles > 0 {
+		types = append(types, storageType{
+			Key:    "appcache",
+			Name:   "运行缓存与日志",
+			SizeGB: float64(appCacheBytes) / 1073741824,
+			Files:  appCacheFiles,
+		})
+	}
+
 	var totalGB float64
 	for _, t := range types {
 		totalGB += t.SizeGB
@@ -184,7 +221,11 @@ func (s *Server) handleStorageDetail(w http.ResponseWriter, r *http.Request) {
 		EstDays  float64 `json:"estDays"` // 按当前占用速度还能录多久
 		Thumb    string  `json:"thumb,omitempty"`
 	}
-	rawCams, _, _ := s.collectCamStorage(recRoot)
+	rawCams, _, _ := s.collectAllCamStorage()
+	seg := s.cfg.RecordSegment
+	if seg <= 0 {
+		seg = 300
+	}
 	cams := []camStat{}
 	for _, rc := range rawCams {
 		cs := camStat{
@@ -195,11 +236,19 @@ func (s *Server) handleStorageDetail(w http.ResponseWriter, r *http.Request) {
 			Files:    rc.Files,
 			KeepDays: s.cfg.RecordKeepDays,
 		}
-		// 预计可录天数：总可用 / 每天写入（用录像总时长估算）
+		// 按真实时间跨度与分片累计时长取较大者估算日均写入速率，防止断续/动体录制高估天数
 		if cs.SizeGB > 0 && disk.FreeGB > 0 {
-			hours := float64(rc.Files) * float64(s.cfg.RecordSegment) / 3600.0
-			if hours > 0 {
-				perHour := cs.SizeGB / hours
+			fileHours := float64(rc.Files) * float64(seg) / 3600.0
+			spanHours := 0.0
+			if !rc.oldestTime.IsZero() && rc.newestTime.After(rc.oldestTime) {
+				spanHours = rc.newestTime.Sub(rc.oldestTime).Hours()
+			}
+			effHours := fileHours
+			if spanHours >= 2.0 && spanHours > effHours {
+				effHours = spanHours
+			}
+			if effHours > 0 {
+				perHour := cs.SizeGB / effHours
 				if perHour > 0 {
 					cs.EstDays = disk.FreeGB / perHour / 24
 				}
@@ -230,22 +279,28 @@ func (s *Server) handleStorageDetail(w http.ResponseWriter, r *http.Request) {
 	orphanFiles := 0
 	orphanDirs := 0
 	orphanNames := []string{}
-	if entries, err := os.ReadDir(recRoot); err == nil {
-		for _, e := range entries {
-			if !e.IsDir() || strings.HasPrefix(e.Name(), ".") {
-				continue
+	orphanSeen := make(map[string]bool)
+	for _, root := range recRoots {
+		if entries, err := os.ReadDir(root); err == nil {
+			for _, e := range entries {
+				if !e.IsDir() || strings.HasPrefix(e.Name(), ".") || strings.HasPrefix(e.Name(), "@") {
+					continue
+				}
+				if known[e.Name()] {
+					continue
+				}
+				b, n := dirUsage(filepath.Join(root, e.Name()), true)
+				if b == 0 && n == 0 {
+					continue
+				}
+				orphanBytes += b
+				orphanFiles += n
+				orphanDirs++
+				if !orphanSeen[e.Name()] {
+					orphanSeen[e.Name()] = true
+					orphanNames = append(orphanNames, e.Name())
+				}
 			}
-			if known[e.Name()] {
-				continue
-			}
-			b, n := dirUsage(filepath.Join(recRoot, e.Name()), false)
-			if b == 0 && n == 0 {
-				continue // 空目录不算占用，不占一行
-			}
-			orphanBytes += b
-			orphanFiles += n
-			orphanDirs++
-			orphanNames = append(orphanNames, e.Name())
 		}
 	}
 	orphan := map[string]any{
@@ -255,8 +310,8 @@ func (s *Server) handleStorageDetail(w http.ResponseWriter, r *http.Request) {
 		"files":  orphanFiles,
 	}
 
-	// ---- 缓存 ----
-	cacheBytes, cacheCount := dirUsage(cacheDir, false)
+	// ---- 缓存（聚合全部缓存目录）----
+	cacheCount, cacheBytes := s.scanAllCacheUsage()
 	cache := map[string]any{
 		"dir":    cacheDir,
 		"sizeGB": float64(cacheBytes) / 1073741824,
@@ -348,14 +403,21 @@ func loadTrend(days int) []storageTrendPoint {
 
 // sampleStorageTrend 记一个采样点（每天一次即可，重复调用覆盖当天）
 func (s *Server) sampleStorageTrend() {
-	du := record.DiskUsageOf(dataDirPath)
+	du := record.DiskUsageOfReadOnly(s.recRoot())
+	if du.Err != "" {
+		du = record.DiskUsageOfReadOnly(dataDirPath)
+	}
 	if du.Err != "" {
 		return
 	}
 	total := du.TotalGB
 	used := du.UsedGB
-	// 与「录像数据」口径一致：跳过隐藏目录（否则趋势里会混入 .cache）
-	recB, _ := dirUsage(s.recRoot(), true)
+	// 与「录像数据」口径一致：跨全部纳管录像池聚合且跳过隐藏目录
+	var recB int64
+	for _, r := range s.recRoots() {
+		b, _ := dirUsage(r, true)
+		recB += b
+	}
 	recGB := float64(recB) / 1073741824
 
 	now := time.Now()
@@ -400,6 +462,12 @@ func (s *Server) lastScanTime() string {
 }
 
 func (s *Server) lastCacheClean() string {
+	if t := getLastCacheCleanTime(); !t.IsZero() {
+		return t.Format("2006-01-02 15:04")
+	}
+	if fi, err := os.Stat(s.transcodeCacheDir()); err == nil {
+		return fi.ModTime().Format("2006-01-02 15:04")
+	}
 	if fi, err := os.Stat(filepath.Join(s.recRoot(), ".cache")); err == nil {
 		return fi.ModTime().Format("2006-01-02 15:04")
 	}

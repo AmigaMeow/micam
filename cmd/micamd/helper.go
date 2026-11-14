@@ -7,17 +7,90 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
 
-// 日志文件句柄（daemon 化后 stdout 可能丢失，这里双写）
-var (
-	logFileMu sync.Mutex
-	logFile   *os.File
+const (
+	maxLogFileSize = 10 << 20 // 单日志文件上限 10 MB
+	maxLogBackups  = 2        // 最多保留 2 个历史备份（合计上限约 30 MB）
 )
 
-// initLogFile 打开日志文件。
+var (
+	logFileMu       sync.Mutex
+	logFile         *os.File
+	logFilePath     string
+	logCurSize      int64
+	logSameAsStderr bool
+)
+
+// rotateLogLocked 在持锁状态下执行日志轮转，并原地清空当前主日志文件以兼容已有 stdout/stderr 重定向句柄。
+func rotateLogLocked() {
+	if logFilePath == "" {
+		return
+	}
+	for i := maxLogBackups; i >= 1; i-- {
+		src := logFilePath
+		if i > 1 {
+			src = fmt.Sprintf("%s.%d", logFilePath, i-1)
+		}
+		dst := fmt.Sprintf("%s.%d", logFilePath, i)
+		if i == 1 {
+			// 复制后截断当前文件，防止重定向 >> micamd.log 的外部 fd 写入丢失节点
+			if data, err := os.Open(src); err == nil {
+				if out, oerr := os.OpenFile(dst, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644); oerr == nil {
+					_, _ = io.Copy(out, data)
+					_ = out.Close()
+				}
+				_ = data.Close()
+			}
+			if logFile != nil {
+				_ = logFile.Truncate(0)
+				_, _ = logFile.Seek(0, io.SeekEnd)
+			} else {
+				_ = os.Truncate(src, 0)
+			}
+			logCurSize = 0
+			continue
+		}
+		if _, err := os.Stat(src); err == nil {
+			_ = os.Rename(src, dst)
+		}
+	}
+}
+
+type micamLogWriter struct{}
+
+func (micamLogWriter) Write(p []byte) (int, error) {
+	line := strings.TrimRight(string(p), "\r\n")
+	if line != "" {
+		writeLogLine(line)
+	}
+	return len(p), nil
+}
+
+func writeLogLine(msg string) {
+	line := time.Now().Format("2006-01-02 15:04:05") + " " + msg + "\n"
+
+	logFileMu.Lock()
+	if logFile != nil {
+		if logCurSize+int64(len(line)) > maxLogFileSize {
+			rotateLogLocked()
+		}
+		if n, err := logFile.WriteString(line); err == nil {
+			logCurSize += int64(n)
+		}
+	}
+	same := logSameAsStderr
+	logFileMu.Unlock()
+
+	if !same {
+		_, _ = os.Stderr.WriteString(line)
+	}
+}
+
+// initLogFile 打开并托管单个旋转日志文件，消除重复双写与无限膨胀。
 func initLogFile(dir string) {
 	if dir == "" {
 		return
@@ -25,25 +98,40 @@ func initLogFile(dir string) {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		log.Printf("[log] 创建日志目录 %s 失败: %v", dir, err)
 	}
-	f, err := os.OpenFile(filepath.Join(dir, "micamd.log"),
-		os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
-	if err == nil {
-		logFileMu.Lock()
-		logFile = f
-		logFileMu.Unlock()
+	pth := filepath.Join(dir, "micamd.log")
+	f, err := os.OpenFile(pth, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	if err != nil {
+		return
 	}
+
+	var curSize int64
+	if fi, serr := f.Stat(); serr == nil {
+		curSize = fi.Size()
+	}
+	same := false
+	if fi, serr := f.Stat(); serr == nil {
+		if se, eerr := os.Stderr.Stat(); eerr == nil {
+			same = os.SameFile(fi, se)
+		}
+	}
+
+	logFileMu.Lock()
+	logFile = f
+	logFilePath = pth
+	logCurSize = curSize
+	logSameAsStderr = same
+	if logCurSize >= maxLogFileSize {
+		rotateLogLocked()
+	}
+	logFileMu.Unlock()
+
+	// 让标准库 log.Print/Printf 也走同一个带时间戳、限体积的单通道 writer
+	log.SetFlags(0)
+	log.SetOutput(micamLogWriter{})
 }
 
 func logf(f string, a ...any) {
-	msg := fmt.Sprintf(f, a...)
-	log.Print(msg)
-
-	logFileMu.Lock()
-	if logFile != nil {
-		_, _ = fmt.Fprintf(logFile, "%s %s\n", time.Now().Format("2006-01-02 15:04:05"), msg)
-		_ = logFile.Sync()
-	}
-	logFileMu.Unlock()
+	writeLogLine(fmt.Sprintf(f, a...))
 }
 
 func newPipe() (*io.PipeReader, *io.PipeWriter) {

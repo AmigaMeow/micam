@@ -11,10 +11,10 @@ package main
 // 两路就约 130% CPU。帧差法几乎零成本（图已在内存）。
 
 import (
-	"math"
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"math"
 	"net/http"
 	"os"
 	"os/exec"
@@ -406,7 +406,7 @@ func (s *Server) detectOnce() {
 			// 真实目标去抖保护（15 秒内不重复刷屏，但持续顺延录像）
 			if time.Since(lastTarget) < 15*time.Second {
 				motion.mu.Unlock()
-			s.renewMotionRecording(d)
+				s.renewMotionRecording(d)
 				continue
 			}
 			motion.lastTargetEvt[d.Did] = now
@@ -793,16 +793,10 @@ func (s *Server) handleHome(w http.ResponseWriter, r *http.Request) {
 	//   而且首页那个数还和面板里的「已用 278 GB / 412 GB」自相矛盾。
 	//
 	// 现在只暴露一套数，前端两处都用它渲染，结构上不可能再分叉。
-	du := record.DiskUsageOf(s.rec.GetConfig().Dir)
+	du := record.DiskUsageOfReadOnly(s.recRoot())
 
-	// 录像明细：每台设备的段数与占用。
-	// 与 /api/storage 共用 collectCamStorage，避免首页和存储页各算一遍
-	// 导致「首页 17 段、存储页 18 段」这类新分叉。
-	recDir := s.rec.GetConfig().Dir
-	if recDir == "" {
-		recDir = filepath.Join(s.dataDir, "recordings")
-	}
-	camRecs, recFiles, recBytes := s.collectCamStorage(recDir)
+	// 录像明细：每台设备的段数与占用（跨所有纳管录像池，与存储页同源）。
+	camRecs, recFiles, recBytes := s.collectAllCamStorage()
 	camRecsOut := make([]map[string]any, 0, len(camRecs))
 	for _, c := range camRecs {
 		camRecsOut = append(camRecsOut, map[string]any{

@@ -12,7 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/micam/micam/internal/event"
+	"github.com/micam/micam/internal/config"
+	"github.com/micam/micam/internal/record"
 	"github.com/micam/micam/internal/xiaomi"
 )
 
@@ -62,17 +63,7 @@ func (s *Server) handleRecordStop(w http.ResponseWriter, r *http.Request) {
 	}
 	json.NewDecoder(r.Body).Decode(&req)
 	if req.Did == "" {
-		// 停止全部：先停官方通道的看门狗，再停录制器
-		miotRecJobsMu.Lock()
-		dids := make([]string, 0, len(miotRecJobs))
-		for d := range miotRecJobs {
-			dids = append(dids, d)
-		}
-		miotRecJobsMu.Unlock()
-		for _, d := range dids {
-			s.stopRecordingMiot(d)
-		}
-		s.rec.StopAll()
+		s.stopAllRecordings()
 		writeJSON(w, 200, map[string]any{"ok": true, "stopped": "all"})
 		return
 	}
@@ -101,7 +92,7 @@ func (s *Server) handleRecordCleanup(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var req struct {
-		Days       any    `json:"days"`      // 3, 7, 14, 30, "all", "0", 或数值
+		Days       any    `json:"days"` // 3, 7, 14, 30, "all", "0", 或数值
 		KeepDays   int    `json:"keepDays"`
 		Device     string `json:"device"`
 		ProtectAI  bool   `json:"protectAI"`
@@ -122,22 +113,7 @@ func (s *Server) handleRecordCleanup(w http.ResponseWriter, r *http.Request) {
 		daysStr = v.String()
 	}
 
-	now := time.Now()
-	var deadline time.Time
-	cleanAll := false
-
-	if daysStr == "all" {
-		cleanAll = true
-		deadline = now.Add(24 * time.Hour)
-	} else if daysStr == "0" {
-		deadline = time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, now.Location())
-	} else if n, err := strconv.Atoi(daysStr); err == nil && n > 0 {
-		deadline = now.AddDate(0, 0, -n)
-	} else if req.KeepDays > 0 {
-		deadline = now.AddDate(0, 0, -req.KeepDays)
-	} else {
-		deadline = now.AddDate(0, 0, -7)
-	}
+	cleanAll, deadline := parseCleanupDeadline(daysStr, req.KeepDays)
 
 	allPools := true
 	if req.AllPools != nil {
@@ -151,92 +127,41 @@ func (s *Server) handleRecordCleanup(w http.ResponseWriter, r *http.Request) {
 		roots = []string{s.recRoot()}
 	}
 
-	aiFiles := make(map[string]bool)
-	if req.ProtectAI && s.eventStore != nil {
-		evs := s.eventStore.Query(event.Query{Days: 60})
-		for _, e := range evs {
-			if e.RecFile != "" {
-				aiFiles[e.RecFile] = true
-			}
-		}
+	var checker *fileProtectionChecker
+	if req.ProtectAI {
+		checker = newFileProtectionChecker(s)
 	}
+
+	items, _, protectedAICount, _, skippedActive := s.scanCleanableRecordings(roots, req.Device, cleanAll, deadline, req.ProtectAI, checker, 15)
 
 	var deletedCount int
 	var freedBytes int64
-	var protectedAICount int
+	for _, item := range items {
+		if err := os.Remove(item.Path); err == nil {
+			deletedCount++
+			freedBytes += item.SizeBytes
+			freedBytes += s.removeRecordingArtifacts(item.Path, item.Device, item.Name)
+			removeEmptyParentDirs(item.Path, item.Root)
+		}
+	}
+	if deletedCount > 0 {
+		saveRecMeta()
+	}
 
-	for _, root := range roots {
-		ents, err := os.ReadDir(root)
-		if err != nil {
-			continue
-		}
-		for _, de := range ents {
-			if !de.IsDir() || strings.HasPrefix(de.Name(), ".") || strings.HasPrefix(de.Name(), "@") {
-				continue
-			}
-			devName := de.Name()
-			if req.Device != "" && devName != req.Device {
-				continue
-			}
-			devDir := filepath.Join(root, devName)
-			dateEnts, err := os.ReadDir(devDir)
-			if err != nil {
-				continue
-			}
-			for _, dateE := range dateEnts {
-				if !dateE.IsDir() || strings.HasPrefix(dateE.Name(), ".") {
-					continue
+	if req.CleanCache {
+		for _, cDir := range s.allCacheDirs() {
+			_ = filepath.Walk(cDir, func(p string, fi os.FileInfo, err error) error {
+				if err == nil && fi != nil && !fi.IsDir() {
+					freedBytes += fi.Size()
+					_ = os.Remove(p)
 				}
-				dateDir := filepath.Join(devDir, dateE.Name())
-				fileEnts, err := os.ReadDir(dateDir)
-				if err != nil {
-					continue
-				}
-				for _, fe := range fileEnts {
-					if fe.IsDir() || !strings.HasSuffix(fe.Name(), ".mkv") {
-						continue
-					}
-					info, err := fe.Info()
-					if err != nil {
-						continue
-					}
-					if cleanAll || info.ModTime().Before(deadline) {
-						if req.ProtectAI && aiFiles[fe.Name()] {
-							protectedAICount++
-							continue
-						}
-						pth := filepath.Join(dateDir, fe.Name())
-						if err := os.Remove(pth); err == nil {
-							deletedCount++
-							freedBytes += info.Size()
-							_ = os.Remove(filepath.Join(root, ".thumbs", devName, fe.Name()+".jpg"))
-							for _, cd := range s.allCacheDirs() {
-								cacheMatches, _ := filepath.Glob(filepath.Join(cd, devName, dateE.Name(), fe.Name()+".*"))
-								for _, cp := range cacheMatches {
-									if cfi, err := os.Stat(cp); err == nil {
-										freedBytes += cfi.Size()
-										_ = os.Remove(cp)
-									}
-								}
-							}
-						}
-					}
-				}
-				_ = os.Remove(dateDir)
-			}
+				return nil
+			})
 		}
-
-		if req.CleanCache {
-			for _, cDir := range s.allCacheDirs() {
-				_ = filepath.Walk(cDir, func(p string, fi os.FileInfo, err error) error {
-					if err == nil && fi != nil && !fi.IsDir() {
-						freedBytes += fi.Size()
-						_ = os.Remove(p)
-					}
-					return nil
-				})
-			}
-		}
+		recordCacheCleanTime(time.Now())
+	}
+	if skippedActive > 0 {
+		logf("[storage] 清理跳过 %d 个正在录制的活跃分片", skippedActive)
 	}
 
 	logf("[storage] 手动清理执行完毕: 删除了 %d 个文件，释放 %.2f MB 空间 (保护 AI 事件 %d 个)",
@@ -256,7 +181,32 @@ var _ = time.Now
 // startRecording 为一台设备开始录像。
 //
 // 公共逻辑：建连接 -> 取 consumer -> 起后台协程喂数据 -> 交给录像器。
+func (s *Server) checkLowSpacePauseBeforeStart() error {
+	if !s.isPausedForLowSpace() {
+		return nil
+	}
+	lowMode := ""
+	minFree := 0
+	if s.cfg != nil {
+		lowMode = config.NormalizeLowSpaceMode(s.cfg.RecordLowSpaceMode)
+		minFree = s.cfg.RecordMinFreeGB
+	}
+	if lowMode != "stopRecording" {
+		s.setPausedForLowSpace(false)
+		return nil
+	}
+	du := record.DiskUsageOfReadOnly(s.recRoot())
+	if du.Err == "" && (minFree <= 0 || du.FreeGB >= float64(minFree)) {
+		s.setPausedForLowSpace(false)
+		return nil
+	}
+	return fmt.Errorf("磁盘剩余空间 %.1fGB 低于最低阈值 %dGB，已暂停录像", du.FreeGB, minFree)
+}
+
 func (s *Server) startRecording(dev *xiaomi.Device) error {
+	if err := s.checkLowSpacePauseBeforeStart(); err != nil {
+		return err
+	}
 	// ===== 优先走官方通道（2026-10-11）=====
 	//
 	// 旧路径 useConn() 依赖 miss_get_vendor（被限流）-> 录像文件数一直是 0。
@@ -290,6 +240,10 @@ func (s *Server) startRecording(dev *xiaomi.Device) error {
 // 为什么需要：配置里的「自动录像」开关原来只改标志位，不真的录。
 // 现在开关 = 真实行为：打开就录，关闭就停。
 func (s *Server) startAllRecordings() {
+	if err := s.checkLowSpacePauseBeforeStart(); err != nil {
+		logf("[rec] %v", err)
+		return
+	}
 	// 官方通道（OAuth2+PPCS）不受 miss_get_vendor 传统凭据限流影响。
 	// 仅在未授权官方通道且处于静默期时才跳过。
 	if _, ok := miotBound(); !ok && s.throttleSilenced() {
@@ -324,14 +278,33 @@ func (s *Server) startAllRecordings() {
 	logf("[rec] 自动录像已启动: %d 台成功, %d 台失败", started, failed)
 }
 
-// stopAllRecordings 停止所有录像。
+// stopAllRecordings 停止所有录像（包括官方通道 watchdog 与传统录制器）。
 func (s *Server) stopAllRecordings() {
-	n := 0
-	for _, st := range s.rec.List() {
-		if st.Running {
-			n++
+	miotRecJobsMu.Lock()
+	dids := make([]string, 0, len(miotRecJobs))
+	for d := range miotRecJobs {
+		dids = append(dids, d)
+	}
+	miotRecJobsMu.Unlock()
+	stoppedMiot := 0
+	for _, d := range dids {
+		if s.stopRecordingMiot(d) {
+			stoppedMiot++
 		}
 	}
-	s.rec.StopAll()
-	logf("[rec] 已停止全部录像（%d 路）", n)
+
+	n := 0
+	if s.rec != nil {
+		for _, st := range s.rec.List() {
+			if st.Running {
+				n++
+			}
+		}
+		s.rec.StopAll()
+	}
+	total := n
+	if stoppedMiot > total {
+		total = stoppedMiot
+	}
+	logf("[rec] 已停止全部录像（%d 路）", total)
 }

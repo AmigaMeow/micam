@@ -28,11 +28,12 @@ package main
 //   POST /api/recordings/delete                删除
 
 import (
-	"github.com/micam/micam/internal/record"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/micam/micam/internal/config"
+	"github.com/micam/micam/internal/record"
 	"io"
 	"math"
 	"net/http"
@@ -93,7 +94,20 @@ var (
 	recRootsTime time.Time
 )
 
+// invalidateRecRootsCache 在切换写入目录或完成迁移后失效录像池缓存，保证新路径立即生效。
+func invalidateRecRootsCache() {
+	recRootsMu.Lock()
+	cachedRoots = nil
+	recRootsTime = time.Time{}
+	recRootsMu.Unlock()
+}
+
 func (s *Server) recRoots() []string {
+	if s != nil && s.testRecRoots != nil {
+		out := make([]string, len(s.testRecRoots))
+		copy(out, s.testRecRoots)
+		return out
+	}
 	recRootsMu.Lock()
 	if len(cachedRoots) > 0 && time.Since(recRootsTime) < 30*time.Second {
 		out := make([]string, len(cachedRoots))
@@ -138,6 +152,11 @@ func (s *Server) recRoots() []string {
 		add(filepath.Join(s.dataDir, "recordings"))
 	}
 	if matches, err := filepath.Glob("/vol*/@appdata/micam/recordings"); err == nil {
+		for _, m := range matches {
+			add(m)
+		}
+	}
+	if matches, err := filepath.Glob("/vol*/@appshare/micam/data/recordings"); err == nil {
 		for _, m := range matches {
 			add(m)
 		}
@@ -1171,8 +1190,121 @@ func (s *Server) handleCacheClear(w http.ResponseWriter, r *http.Request) {
 			return nil
 		})
 	}
+	recordCacheCleanTime(time.Now())
 	logf("[cache] 手动清理 %d 个文件，释放 %.1fGB", n, float64(freed)/(1<<30))
 	writeJSON(w, 200, map[string]any{"ok": true, "count": n, "freedMB": float64(freed) / (1 << 20)})
+}
+
+// removeRecordingArtifacts 级联清理单条录像对应的转码缓存、缩略图、时间轴帧图及元数据记录。
+func (s *Server) removeRecordingArtifacts(src, devName, fileName string) int64 {
+	if s == nil || (s.dataDir == "" && s.rec == nil) {
+		return 0
+	}
+	var freed int64
+	if fileName == "" && src != "" {
+		fileName = filepath.Base(src)
+	}
+	if fileName == "" {
+		return 0
+	}
+	relDate := ""
+	var devCandidates []string
+	if devName != "" {
+		devCandidates = append(devCandidates, safeName(devName))
+		sDev := sanitizeName(devName)
+		if sDev != safeName(devName) {
+			devCandidates = append(devCandidates, sDev)
+		}
+	}
+	if src != "" {
+		parent := filepath.Dir(src)
+		relDate = filepath.Base(parent)
+		if dev := filepath.Base(filepath.Dir(parent)); dev != "" && dev != "." && dev != "/" {
+			found := false
+			for _, d := range devCandidates {
+				if d == dev {
+					found = true
+					break
+				}
+			}
+			if !found {
+				devCandidates = append(devCandidates, dev)
+			}
+		}
+	}
+
+	// 1. 删除转码缓存（dataDir/transcode_cache 与各录像池 .cache）
+	for _, cDir := range s.allCacheDirs() {
+		for _, dc := range devCandidates {
+			if relDate != "" {
+				if matches, err := filepath.Glob(filepath.Join(cDir, dc, relDate, fileName+".*")); err == nil {
+					for _, m := range matches {
+						if fi, e := os.Stat(m); e == nil && os.Remove(m) == nil {
+							freed += fi.Size()
+						}
+					}
+				}
+			} else if matches, err := filepath.Glob(filepath.Join(cDir, dc, "*", fileName+".*")); err == nil {
+				for _, m := range matches {
+					if fi, e := os.Stat(m); e == nil && os.Remove(m) == nil {
+						freed += fi.Size()
+					}
+				}
+			}
+		}
+	}
+
+	// 2. 删除录像缩略图（dataDir/thumbs 与各录像池 .thumbs）
+	var thumbRoots []string
+	if s.dataDir != "" {
+		thumbRoots = append(thumbRoots, filepath.Join(s.dataDir, "thumbs"))
+	}
+	for _, root := range s.recRoots() {
+		thumbRoots = append(thumbRoots, filepath.Join(root, ".thumbs"))
+	}
+	for _, tr := range thumbRoots {
+		for _, dc := range devCandidates {
+			p := filepath.Join(tr, dc, fileName+".jpg")
+			if fi, e := os.Stat(p); e == nil && os.Remove(p) == nil {
+				freed += fi.Size()
+			}
+		}
+	}
+
+	// 3. 删除时间轴帧图与预览条（frames / .frames）
+	var frameRoots []string
+	if s.dataDir != "" {
+		frameRoots = append(frameRoots, filepath.Join(s.dataDir, "frames"))
+	}
+	for _, root := range s.recRoots() {
+		frameRoots = append(frameRoots, filepath.Join(root, ".frames"))
+	}
+	for _, fr := range frameRoots {
+		if matches, err := filepath.Glob(filepath.Join(fr, fileName+".*")); err == nil {
+			for _, m := range matches {
+				if fi, e := os.Stat(m); e == nil && os.Remove(m) == nil {
+					freed += fi.Size()
+				}
+			}
+		}
+		for _, dc := range devCandidates {
+			if matches, err := filepath.Glob(filepath.Join(fr, dc, fileName+".*")); err == nil {
+				for _, m := range matches {
+					if fi, e := os.Stat(m); e == nil && os.Remove(m) == nil {
+						freed += fi.Size()
+					}
+				}
+			}
+		}
+	}
+
+	// 4. 清理元数据索引
+	if src != "" {
+		metaMu.Lock()
+		delete(metaCache, src)
+		metaMu.Unlock()
+	}
+	return freed
 }
 
 // findRecFile 定位录像文件（支持不传 date）。
@@ -1180,8 +1312,9 @@ func (s *Server) findRecFile(name, date, file string) (string, error) {
 	if file == "" {
 		return "", fmt.Errorf("缺少 file")
 	}
-	if !strings.HasSuffix(file, ".mkv") {
-		return "", fmt.Errorf("只支持 mkv")
+	ext := strings.ToLower(filepath.Ext(file))
+	if ext != ".mkv" && ext != ".mp4" {
+		return "", fmt.Errorf("只支持 mkv/mp4")
 	}
 
 	roots := s.recRoots()
@@ -1342,11 +1475,8 @@ func (s *Server) handleRecDelete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// 清掉缩略图和元数据缓存
-	_ = os.Remove(filepath.Join(s.recRoot(), ".thumbs", safeName(req.Name), safeName(req.File)+".jpg"))
-	metaMu.Lock()
-	delete(metaCache, src)
-	metaMu.Unlock()
+	// 级联清理转码缓存、缩略图、帧缓存和元数据索引
+	s.removeRecordingArtifacts(src, req.Name, req.File)
 	go saveRecMeta()
 
 	logf("[replay] 已删除 %s (%.1fMB)", req.File, float64(freed)/(1<<20))
@@ -1370,7 +1500,7 @@ func (s *Server) handleRecConfig(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		cfg := s.rec.GetConfig()
 		totalBytes, fileCount, _ := record.DirUsage(cfg.Dir)
-		du := record.DiskUsageOf(cfg.Dir)
+		du := record.DiskUsageOfReadOnly(cfg.Dir)
 		writeJSON(w, 200, map[string]any{
 			"enabled":           s.cfg.RecordEnabled,
 			"mode":              s.cfg.RecordMode,
@@ -1441,6 +1571,7 @@ func (s *Server) handleRecConfig(w http.ResponseWriter, r *http.Request) {
 					cur := s.rec.GetConfig()
 					cur.Dir = clean
 					s.rec.SetConfig(cur)
+					invalidateRecRootsCache()
 				}
 			}
 		}
@@ -1469,6 +1600,10 @@ func (s *Server) handleRecConfig(w http.ResponseWriter, r *http.Request) {
 		}
 		s.rec.SetConfig(cur)
 
+		if req.LowSpaceMode != nil && config.NormalizeLowSpaceMode(*req.LowSpaceMode) != "stopRecording" {
+			s.setPausedForLowSpace(false)
+		}
+
 		// 模式响应变更
 		newMode := s.cfg.RecordMode
 		newEnabled := s.cfg.RecordEnabled
@@ -1483,6 +1618,7 @@ func (s *Server) handleRecConfig(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 
+		go s.checkStorageOnce()
 		writeJSON(w, 200, map[string]any{"ok": true, "enabled": s.cfg.RecordEnabled, "mode": s.cfg.RecordMode})
 		return
 	}
@@ -1528,34 +1664,39 @@ func (s *Server) handleRecBatchDelete(w http.ResponseWriter, r *http.Request) {
 		}
 	} else if req.Name != "" {
 		name := safeName(req.Name)
-		base := filepath.Join(s.recRoot(), name)
-
-		_ = filepath.Walk(base, func(pth string, info os.FileInfo, err error) error {
-			if err != nil || info == nil || info.IsDir() {
-				return nil
+		sName := sanitizeName(req.Name)
+		for _, root := range s.recRoots() {
+			candNames := []string{name}
+			if sName != name {
+				candNames = append(candNames, sName)
 			}
-			ext := strings.ToLower(filepath.Ext(pth))
-			if ext != ".mkv" && ext != ".mp4" && ext != ".265" && ext != ".264" {
-				return nil
+			for _, cn := range candNames {
+				base := filepath.Join(root, cn)
+				_ = filepath.Walk(base, func(pth string, info os.FileInfo, err error) error {
+					if err != nil || info == nil || info.IsDir() {
+						return nil
+					}
+					ext := strings.ToLower(filepath.Ext(pth))
+					if ext != ".mkv" && ext != ".mp4" && ext != ".265" && ext != ".264" {
+						return nil
+					}
+					rel, _ := filepath.Rel(base, pth)
+					parts := strings.Split(rel, string(filepath.Separator))
+					dirDate := ""
+					if len(parts) >= 2 {
+						dirDate = parts[0]
+					}
+					if req.Date != "" && dirDate != req.Date {
+						return nil
+					}
+					if req.Before != "" && dirDate >= req.Before {
+						return nil
+					}
+					targets = append(targets, pth)
+					return nil
+				})
 			}
-			rel, _ := filepath.Rel(base, pth)
-			parts := strings.Split(rel, string(filepath.Separator))
-			dirDate := ""
-			if len(parts) >= 2 {
-				dirDate = parts[0]
-			}
-
-			// 按日期筛选
-			if req.Date != "" && dirDate != req.Date {
-				return nil
-			}
-			// 按「之前」筛选
-			if req.Before != "" && dirDate >= req.Before {
-				return nil
-			}
-			targets = append(targets, pth)
-			return nil
-		})
+		}
 	}
 
 	var freed int64
@@ -1568,7 +1709,7 @@ func (s *Server) handleRecBatchDelete(w http.ResponseWriter, r *http.Request) {
 			continue
 		}
 		if err := os.Remove(pth); err == nil {
-			freed += fi.Size()
+			freed += fi.Size() + s.removeRecordingArtifacts(pth, req.Name, filepath.Base(pth))
 			n++
 		} else {
 			// 记录失败原因（常见：文件属主不是服务用户）
@@ -1577,6 +1718,7 @@ func (s *Server) handleRecBatchDelete(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
+	go saveRecMeta()
 	logf("[replay] 批量删除 %d/%d 个文件，释放 %.1fMB", n, len(targets), float64(freed)/(1<<20))
 
 	resp := map[string]any{
@@ -1736,32 +1878,63 @@ func (s *Server) handleRecFrameStrip(w http.ResponseWriter, r *http.Request) {
 	serveJPEG(w, dst)
 }
 
-
-// startRecCacheWorker 后台自动把最新录像转码成快开 MP4 缓存。
+// startRecCacheWorker 后台受控预热：仅对最近 24 小时内的最新录像做轻量快开缓存，
+// 严格遵守缓存配额（60% 水位停止后台预热，彻底杜绝旧文件“生成-驱逐-再生成”死循环）和低空间熔断。
 func (s *Server) startRecCacheWorker() {
 	go func() {
-		time.Sleep(3 * time.Second)
+		time.Sleep(15 * time.Second)
 		for {
 			s.preCacheRecentRecordings()
-			time.Sleep(25 * time.Second)
+			time.Sleep(60 * time.Second)
 		}
 	}()
 }
 
 func (s *Server) preCacheRecentRecordings() {
+	if s == nil || s.cfg == nil || !s.cfg.RecordEnabled {
+		return
+	}
+	// 用户正在交互回放时让路
+	cacheJobMu.Lock()
+	active := len(activeCacheJobs) >= 1 || time.Now().Before(userActiveUntil)
+	cacheJobMu.Unlock()
+	if active {
+		return
+	}
+
 	root := s.recRoot()
+	// 低磁盘可用空间熔断：留足最低保留空间 + 2GB 缓冲时不进行非必要后台预转码
+	if minFree := s.cfg.RecordMinFreeGB; minFree > 0 {
+		if du := record.DiskUsageOfReadOnly(root); du.Err == "" && du.FreeGB < float64(minFree)+2.0 {
+			return
+		}
+		if duCache := record.DiskUsageOfReadOnly(s.transcodeCacheDir()); duCache.Err == "" && duCache.FreeGB < float64(minFree)+2.0 {
+			return
+		}
+	}
+
+	// 缓存配额防抖水位：后台预热占用达到上限 60% 即止，留 40% 给点播回放，永不触发驱逐震荡
+	maxBytes := s.cacheMaxBytes()
+	preBudget := maxBytes * 6 / 10
+	usedBytes, _ := s.cacheUsedBytes()
+	if usedBytes >= preBudget {
+		return
+	}
+
 	entries, err := os.ReadDir(root)
 	if err != nil {
 		return
 	}
-	today := time.Now().Format("2006-01-02")
-	var dates []string
-	for d := 0; d < 7; d++ {
-		dates = append(dates, time.Now().AddDate(0, 0, -d).Format("2006-01-02"))
+	cutoff := time.Now().Add(-24 * time.Hour)
+	dates := []string{
+		time.Now().Format("2006-01-02"),
+		time.Now().AddDate(0, 0, -1).Format("2006-01-02"),
 	}
 
+	built := 0
+	const maxPerCycle = 2
 	for _, devEntry := range entries {
-		if !devEntry.IsDir() || strings.HasPrefix(devEntry.Name(), ".") {
+		if !devEntry.IsDir() || strings.HasPrefix(devEntry.Name(), ".") || strings.HasPrefix(devEntry.Name(), "@") {
 			continue
 		}
 		devName := devEntry.Name()
@@ -1773,25 +1946,36 @@ func (s *Server) preCacheRecentRecordings() {
 			}
 			for i := len(files) - 1; i >= 0; i-- {
 				f := files[i]
-				if f.IsDir() || !strings.HasSuffix(f.Name(), ".mkv") {
+				if f.IsDir() || !strings.HasSuffix(strings.ToLower(f.Name()), ".mkv") {
 					continue
 				}
 				info, err := f.Info()
-				if err != nil || (d == today && time.Since(info.ModTime()) < 10*time.Second) {
+				if err != nil || info.Size() < 64*1024 {
 					continue
+				}
+				// 跳过正在写入的新分片，以及超过 24 小时的历史录像（历史录像改为按需点击转码）
+				if time.Since(info.ModTime()) < 20*time.Second || info.ModTime().Before(cutoff) {
+					continue
+				}
+				curUsed, _ := s.cacheUsedBytes()
+				if curUsed >= preBudget {
+					return
 				}
 				src := filepath.Join(dateDir, f.Name())
 				enc, encArgs := s.pickFileEncoder(src)
 				dst := s.findCachePath(enc, devName, d, f.Name(), src)
 				if !cacheValid(dst, src) {
 					cacheJobMu.Lock()
-					busy := len(activeCacheJobs) >= 1
+					busy := len(activeCacheJobs) >= 1 || time.Now().Before(userActiveUntil)
 					cacheJobMu.Unlock()
 					if busy {
-						time.Sleep(2 * time.Second)
-						continue
+						return
 					}
 					s.buildCache(src, dst, encArgs, enc, f.Name(), false)
+					built++
+					if built >= maxPerCycle {
+						return
+					}
 				}
 			}
 		}

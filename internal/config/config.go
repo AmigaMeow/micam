@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 	"os"
+	"strings"
 	"sync"
 )
 
@@ -193,19 +194,19 @@ type Config struct {
 // Default 返回默认配置。
 func Default() *Config {
 	return &Config{
-		Subtype:            "3",
-		RecordEnabled:      false,
-		RecordSegment:      300,
-		RecordKeepDays:     7,
-		RecordMinFreeGB:    10,
-		TranscodeCacheGB:   5,
+		Subtype:                 "3",
+		RecordEnabled:           false,
+		RecordSegment:           300,
+		RecordKeepDays:          7,
+		RecordMinFreeGB:         10,
+		TranscodeCacheGB:        5,
 		RecordMode:              "always",
 		RecordMaxStorageGB:      0,
 		RecordPostRollSec:       30,
 		RecordMotionSensitivity: "medium",
 		RecordAutoClean:         true,
 		RecordLowSpaceMode:      "deleteOldest",
-		LogLevel:           "info",
+		LogLevel:                "info",
 		AI: AIConfig{
 			Enabled:       false,
 			Model:         "yolov8n",
@@ -323,9 +324,7 @@ func Load(path string) *Config {
 	if cfg.RecordMotionSensitivity == "" {
 		cfg.RecordMotionSensitivity = "medium"
 	}
-	if cfg.RecordLowSpaceMode == "" {
-		cfg.RecordLowSpaceMode = "deleteOldest"
-	}
+	cfg.RecordLowSpaceMode = NormalizeLowSpaceMode(cfg.RecordLowSpaceMode)
 	return cfg
 }
 
@@ -337,7 +336,7 @@ func Load(path string) *Config {
 
 func applyUIFlagDefaults(raw []byte, cfg *Config) {
 	var probe struct {
-		UI map[string]json.RawMessage `json:"ui"` 
+		UI map[string]json.RawMessage `json:"ui"`
 	}
 	if err := json.Unmarshal(raw, &probe); err != nil {
 		return
@@ -398,6 +397,9 @@ func (c *Config) Save(path string) error {
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.path == "" {
+		c.path = path
+	}
 	raw, err := json.MarshalIndent(c, "", "  ")
 	if err != nil {
 		return err
@@ -411,6 +413,20 @@ func (c *Config) SaveSelf() error {
 }
 
 // ---- 录像策略设置 ----
+
+// NormalizeLowSpaceMode 规范化低空间应对策略，统一历史值与前后端别名。
+func NormalizeLowSpaceMode(m string) string {
+	switch strings.TrimSpace(m) {
+	case "", "deleteOldest":
+		return "deleteOldest"
+	case "protectAI", "stopRecording":
+		return strings.TrimSpace(m)
+	case "neverDelete", "none":
+		return "neverDelete"
+	default:
+		return "deleteOldest"
+	}
+}
 
 // SetRecordPolicy 更新录像策略并落盘。
 func (c *Config) SetRecordPolicy(enabled *bool, mode *string, segment, keepDays, maxStorageGB, minFreeGB, postRollSec, cacheGB *int, autoClean *bool, lowSpaceMode, motionSensitivity *string) error {
@@ -448,7 +464,7 @@ func (c *Config) SetRecordPolicy(enabled *bool, mode *string, segment, keepDays,
 		c.RecordAutoClean = *autoClean
 	}
 	if lowSpaceMode != nil && *lowSpaceMode != "" {
-		c.RecordLowSpaceMode = *lowSpaceMode
+		c.RecordLowSpaceMode = NormalizeLowSpaceMode(*lowSpaceMode)
 	}
 	if motionSensitivity != nil && *motionSensitivity != "" {
 		c.RecordMotionSensitivity = *motionSensitivity

@@ -18,7 +18,9 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"syscall"
+	"time"
 )
 
 type storageLocation struct {
@@ -99,7 +101,7 @@ func scanRecDirUsage(root string) recDirUsage {
 				continue
 			}
 			for _, fe := range dayFiles {
-				if fe.IsDir() || !strings.HasSuffix(fe.Name(), ".mkv") {
+				if fe.IsDir() || !isVideoFile(fe.Name()) {
 					continue
 				}
 				u.Files++
@@ -149,37 +151,20 @@ func (s *Server) handleStorageLocations(w http.ResponseWriter, r *http.Request) 
 		cur = filepath.Join(s.dataDir, "recordings")
 	}
 
-	var out []storageLocation
+	type locCand struct {
+		path, name, kind, desc, badge string
+	}
+	var cands []locCand
 	seen := map[string]bool{}
+	remoteMounts := loadRemoteMountPoints()
 
 	add := func(path, name, kind, desc, badge string) {
-		if path == "" || seen[path] {
+		path = filepath.Clean(strings.TrimSpace(path))
+		if path == "" || path == "." || path == "/" || seen[path] {
 			return
 		}
 		seen[path] = true
-
-		st := syscall.Statfs_t{}
-		var freeGB, totalGB float64
-		if syscall.Statfs(path, &st) == nil {
-			freeGB = float64(st.Bavail) * float64(st.Bsize) / (1 << 30)
-			totalGB = float64(st.Blocks) * float64(st.Bsize) / (1 << 30)
-		} else if parent := filepath.Dir(path); syscall.Statfs(parent, &st) == nil {
-			freeGB = float64(st.Bavail) * float64(st.Bsize) / (1 << 30)
-			totalGB = float64(st.Blocks) * float64(st.Bsize) / (1 << 30)
-		}
-
-		u := scanRecDirUsage(path)
-		out = append(out, storageLocation{
-			Path: path, Name: name, Kind: kind, Desc: desc, Badge: badge,
-			FreeGB: freeGB, TotalGB: totalGB,
-			Writable: isWritable(path),
-			Current:  path == cur,
-			RecFiles: u.Files,
-			RecGB:    u.SizeGB,
-			HasRec:   u.Files > 0,
-			Dates:    u.Dates,
-			Cams:     u.Cams,
-		})
+		cands = append(cands, locCand{path: path, name: name, kind: kind, desc: desc, badge: badge})
 	}
 
 	// 1. 飞牛应用共享目录（TRIM_APPSHARE 环境变量）
@@ -249,18 +234,27 @@ func (s *Server) handleStorageLocations(w http.ResponseWriter, r *http.Request) 
 					continue
 				}
 
+				subDir := filepath.Join(vr, name)
+				// 远程 FUSE/网盘挂载（如 fuse.rclone）不枚举全部云端根目录，只探测标准 recordings 子目录，避免大量 WebDAV 往返拖慢接口
+				if isUnderMountSet(subDir, remoteMounts) {
+					cand := filepath.Join(subDir, "recordings")
+					if fi, err := os.Stat(cand); err == nil && fi.IsDir() {
+						add(cand, volName+" / recordings", "share", "远程存储池录像目录", "")
+					}
+					continue
+				}
 				// 若为用户 UID 目录（如 1000），扫描其下的实际文件夹
-				subEnts, subErr := os.ReadDir(filepath.Join(vr, name))
+				subEnts, subErr := os.ReadDir(subDir)
 				if subErr == nil && len(subEnts) > 0 {
 					for _, se := range subEnts {
 						if !se.IsDir() || strings.HasPrefix(se.Name(), ".") || strings.HasPrefix(se.Name(), "@") {
 							continue
 						}
-						p := filepath.Join(vr, name, se.Name())
+						p := filepath.Join(subDir, se.Name())
 						add(p, volName+" / "+se.Name(), "share", "飞牛个人文件夹", "")
 					}
 				} else {
-					cand := filepath.Join(vr, name, "recordings")
+					cand := filepath.Join(subDir, "recordings")
 					add(cand, volName+" / "+name, "volume", "存储池 "+volName+" 文件夹", "")
 				}
 			}
@@ -269,6 +263,49 @@ func (s *Server) handleStorageLocations(w http.ResponseWriter, r *http.Request) 
 
 	// 6. 当前配置的路径始终包含
 	add(cur, "当前使用路径", "custom", "当前生效的录像存储目录", "")
+
+	out := make([]storageLocation, len(cands))
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, 6)
+	for i, cand := range cands {
+		wg.Add(1)
+		go func(idx int, c locCand) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			st := syscall.Statfs_t{}
+			var freeGB, totalGB float64
+			if syscall.Statfs(c.path, &st) == nil {
+				freeGB = float64(st.Bavail) * float64(st.Bsize) / (1 << 30)
+				totalGB = float64(st.Blocks) * float64(st.Bsize) / (1 << 30)
+			} else if parent := filepath.Dir(c.path); syscall.Statfs(parent, &st) == nil {
+				freeGB = float64(st.Bavail) * float64(st.Bsize) / (1 << 30)
+				totalGB = float64(st.Blocks) * float64(st.Bsize) / (1 << 30)
+			}
+
+			writable := isLocationWritable(c.path)
+			var u recDirUsage
+			// 不可写且非当前/非录像命名的普通共享目录跳过深扫，避免权限错误和无谓遍历
+			baseLower := strings.ToLower(filepath.Base(c.path))
+			if writable || c.path == cur || c.kind == "appshare" || c.kind == "appdata" || baseLower == "recordings" || strings.Contains(c.path, "小米") || strings.Contains(c.path, "摄像头") {
+				u = scanRecDirUsage(c.path)
+			}
+
+			out[idx] = storageLocation{
+				Path: c.path, Name: c.name, Kind: c.kind, Desc: c.desc, Badge: c.badge,
+				FreeGB: freeGB, TotalGB: totalGB,
+				Writable: writable,
+				Current:  c.path == cur,
+				RecFiles: u.Files,
+				RecGB:    u.SizeGB,
+				HasRec:   u.Files > 0,
+				Dates:    u.Dates,
+				Cams:     u.Cams,
+			}
+		}(i, cand)
+	}
+	wg.Wait()
 
 	sort.Slice(out, func(i, j int) bool {
 		if out[i].Current != out[j].Current {
@@ -304,7 +341,7 @@ func (s *Server) handleStorageLocations(w http.ResponseWriter, r *http.Request) 
 	}
 	var pools []unifiedPoolInfo
 	var totalRecFiles int
-	var totalRecBytes float64
+	var totalRecGB float64
 
 	for _, l := range out {
 		if l.HasRec || l.Current {
@@ -318,7 +355,7 @@ func (s *Server) handleStorageLocations(w http.ResponseWriter, r *http.Request) 
 				Cams:    l.Cams,
 			})
 			totalRecFiles += l.RecFiles
-			totalRecBytes += l.RecGB
+			totalRecGB += l.RecGB
 		}
 	}
 
@@ -327,18 +364,15 @@ func (s *Server) handleStorageLocations(w http.ResponseWriter, r *http.Request) 
 		"current":   cur,
 		"unified": map[string]any{
 			"totalFiles": totalRecFiles,
-			"totalGB":    totalRecBytes,
+			"totalGB":    totalRecGB,
 			"pools":      pools,
 		},
 		"note": "飞牛系统提示：所有录像存储位置已由系统整体统一纳管，无论您如何切换新录像写入目录，历史录像全部统一聚合、在回放时间轴中完整呈现。",
 	})
 }
 
-// isWritable 测试目录是否可写（实际创建临时文件）。
-func isWritable(dir string) bool {
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return false
-	}
+func testTempWrite(dir string) bool {
+	cleanStaleWriteProbeFiles(dir, time.Now().Add(-5*time.Minute))
 	f, err := os.CreateTemp(dir, ".micam-wtest-*")
 	if err != nil {
 		return false
@@ -347,6 +381,36 @@ func isWritable(dir string) bool {
 	_ = f.Close()
 	_ = os.Remove(name)
 	return true
+}
+
+// isLocationWritable 非破坏性检测目录是否可写：不存在时向上探测已存在父目录，不在用户目录自动创建空文件夹。
+func isLocationWritable(dir string) bool {
+	p := filepath.Clean(dir)
+	for p != "" && p != "." {
+		if fi, err := os.Stat(p); err == nil {
+			if !fi.IsDir() {
+				return false
+			}
+			if p == "/" {
+				return false
+			}
+			return testTempWrite(p)
+		}
+		next := filepath.Dir(p)
+		if next == p {
+			break
+		}
+		p = next
+	}
+	return false
+}
+
+// isWritable 测试目录是否可写（允许按需创建目标目录后写入临时文件，仅在用户主动切换目录时调用）。
+func isWritable(dir string) bool {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return false
+	}
+	return testTempWrite(dir)
 }
 
 // handleSetRecordDir 切换录像目录。
@@ -393,7 +457,42 @@ func (s *Server) handleSetRecordDir(w http.ResponseWriter, r *http.Request) {
 	cur := s.rec.GetConfig()
 	cur.Dir = clean
 	s.rec.SetConfig(cur)
+	invalidateRecRootsCache()
 
 	logf("[storage] 录像目录已成功切换至: %s", clean)
 	writeJSON(w, 200, map[string]any{"ok": true, "dir": clean})
+}
+
+// loadRemoteMountPoints 读取 /proc/mounts 中的远程/网盘 FUSE 挂载路径集合。
+func loadRemoteMountPoints() map[string]bool {
+	out := make(map[string]bool)
+	raw, err := os.ReadFile("/proc/mounts")
+	if err != nil {
+		return out
+	}
+	for _, line := range strings.Split(string(raw), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 3 {
+			continue
+		}
+		mp := strings.ReplaceAll(fields[1], "\\040", " ")
+		fs := strings.ToLower(fields[2])
+		if strings.Contains(fs, "rclone") || strings.Contains(fs, "davfs") || fs == "cifs" || fs == "smbfs" || fs == "nfs" || fs == "nfs4" || fs == "9p" || strings.HasPrefix(fs, "fuse.sshfs") || strings.HasPrefix(fs, "fuse.s3fs") {
+			out[filepath.Clean(mp)] = true
+		}
+	}
+	return out
+}
+
+func isUnderMountSet(dir string, mounts map[string]bool) bool {
+	if len(mounts) == 0 {
+		return false
+	}
+	d := filepath.Clean(dir)
+	for mp := range mounts {
+		if d == mp || strings.HasPrefix(d, mp+string(os.PathSeparator)) {
+			return true
+		}
+	}
+	return false
 }

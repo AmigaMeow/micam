@@ -31,20 +31,46 @@ package main
 
 import (
 	"bytes"
-	"encoding/binary"
-	"io"
 	"context"
+	"encoding/binary"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/micam/micam/internal/hardware"
 )
+
+var lastCacheCleanUnix atomic.Int64
+
+func recordCacheCleanTime(t time.Time) {
+	if t.IsZero() {
+		t = time.Now()
+	}
+	lastCacheCleanUnix.Store(t.Unix())
+	if dataDirPath != "" {
+		stamp := filepath.Join(dataDirPath, "cache_clean.stamp")
+		_ = os.WriteFile(stamp, []byte(t.Format(time.RFC3339)), 0o644)
+	}
+}
+
+func getLastCacheCleanTime() time.Time {
+	if ts := lastCacheCleanUnix.Load(); ts > 0 {
+		return time.Unix(ts, 0)
+	}
+	if dataDirPath != "" {
+		if fi, err := os.Stat(filepath.Join(dataDirPath, "cache_clean.stamp")); err == nil {
+			return fi.ModTime()
+		}
+	}
+	return time.Time{}
+}
 
 // ---- 缓存的编码器指纹 ----
 
@@ -118,13 +144,13 @@ func (s *Server) pickFileEncoder(sample string) (string, []string) {
 func encoderArgs(name string) []string {
 	switch {
 	case strings.HasSuffix(name, "_qsv"):
-		return []string{"-c:v", "h264_qsv", "-preset", "veryfast", "-global_quality", "26"}
+		return []string{"-c:v", "h264_qsv", "-preset", "veryfast", "-global_quality", "29"}
 	case strings.HasSuffix(name, "_nvenc"):
-		return []string{"-c:v", "h264_nvenc", "-preset", "p1", "-cq", "26"}
+		return []string{"-c:v", "h264_nvenc", "-preset", "p1", "-cq", "29"}
 	case strings.HasSuffix(name, "_vaapi"):
-		return []string{"-vaapi_device", vaapiDevice(), "-vf", "format=nv12,hwupload", "-c:v", "h264_vaapi", "-qp", "26"}
+		return []string{"-vaapi_device", vaapiDevice(), "-vf", "format=nv12,hwupload", "-c:v", "h264_vaapi", "-qp", "29"}
 	case strings.HasSuffix(name, "_amf"):
-		return []string{"-c:v", "h264_amf", "-quality", "speed", "-qp_i", "26", "-qp_p", "26"}
+		return []string{"-c:v", "h264_amf", "-quality", "speed", "-qp_i", "29", "-qp_p", "29"}
 	default:
 		return []string{"-c:v", "libx264", "-preset", "ultrafast", "-crf", "28", "-tune", "zerolatency"}
 	}
@@ -335,13 +361,33 @@ func cacheValid(dst, src string) bool {
 
 // ---- 缓存清理 ----
 
-// cacheMaxBytes 缓存上限（从配置读，默认 50GB）。
+// cacheMaxBytes 缓存上限（从配置读，与 config 默认值 5GB 一致）。
 func (s *Server) cacheMaxBytes() int64 {
-	gb := s.cfg.TranscodeCacheGB
+	gb := 0
+	if s != nil && s.cfg != nil {
+		gb = s.cfg.TranscodeCacheGB
+	}
 	if gb <= 0 {
-		gb = 50
+		gb = 5
 	}
 	return int64(gb) << 30
+}
+
+// cacheUsedBytes 返回全部转码缓存目录的当前总字节数和文件数。
+func (s *Server) cacheUsedBytes() (int64, int) {
+	var total int64
+	var count int
+	for _, dir := range s.allCacheDirs() {
+		_ = filepath.Walk(dir, func(pth string, info os.FileInfo, err error) error {
+			if err != nil || info == nil || info.IsDir() {
+				return nil
+			}
+			total += info.Size()
+			count++
+			return nil
+		})
+	}
+	return total, count
 }
 
 // allCacheDirs 返回所有可能存放转码缓存的目录列表（包含首选本地高速 SSD 缓存与各存储池 .cache）
@@ -404,6 +450,7 @@ func (s *Server) evictCache() {
 		}
 	}
 	if freed > 0 {
+		recordCacheCleanTime(time.Now())
 		logf("[cache] 清理转码缓存 %.1fGB", float64(freed)/(1<<30))
 	}
 }

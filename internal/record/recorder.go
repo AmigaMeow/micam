@@ -14,13 +14,13 @@ package record
 
 import (
 	"context"
-	"strings"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 )
@@ -63,7 +63,7 @@ func NewManager(cfg Config) *Manager {
 	if cfg.Segment <= 0 {
 		cfg.Segment = 5 * time.Minute
 	}
-	if cfg.KeepDays <= 0 {
+	if cfg.KeepDays < 0 {
 		cfg.KeepDays = 7
 	}
 	if cfg.MinFreeGB <= 0 {
@@ -337,6 +337,11 @@ func (m *Manager) ListFiles(name string, limit int) ([]File, error) {
 }
 
 // Cleanup 清理过期录像。
+func isRecExt(name string) bool {
+	ext := strings.ToLower(filepath.Ext(name))
+	return ext == ".mkv" || ext == ".mp4" || ext == ".265" || ext == ".264"
+}
+
 func (m *Manager) Cleanup() (int, int64, error) {
 	m.mu.Lock()
 	cfg := m.cfg
@@ -349,8 +354,22 @@ func (m *Manager) Cleanup() (int, int64, error) {
 
 	var n int
 	var freed int64
+	var dirs []string
 	err := filepath.Walk(cfg.Dir, func(p string, info os.FileInfo, err error) error {
-		if err != nil || info == nil || info.IsDir() {
+		if err != nil || info == nil {
+			return nil
+		}
+		if info.IsDir() {
+			base := filepath.Base(p)
+			if p != cfg.Dir && (strings.HasPrefix(base, ".") || strings.HasPrefix(base, "@")) {
+				return filepath.SkipDir
+			}
+			if p != cfg.Dir {
+				dirs = append(dirs, p)
+			}
+			return nil
+		}
+		if !isRecExt(info.Name()) || strings.Contains(info.Name(), ".tmp.") || strings.HasPrefix(info.Name(), ".") {
 			return nil
 		}
 		if info.ModTime().Before(deadline) {
@@ -361,6 +380,11 @@ func (m *Manager) Cleanup() (int, int64, error) {
 		}
 		return nil
 	})
+	for i := len(dirs) - 1; i >= 0; i-- {
+		if ents, e := os.ReadDir(dirs[i]); e == nil && len(ents) == 0 {
+			_ = os.Remove(dirs[i])
+		}
+	}
 	return n, freed, err
 }
 
@@ -372,6 +396,40 @@ type DiskUsage struct {
 	UsedPct float64 `json:"usedPercent"`
 	Path    string  `json:"path"`
 	Err     string  `json:"err,omitempty"`
+}
+
+// DiskUsageOfReadOnly 只读查询目录所在磁盘的使用情况，绝不自动创建不存在的目录。
+func DiskUsageOfReadOnly(dir string) DiskUsage {
+	du := DiskUsage{Path: dir}
+	probe := dir
+	for probe != "" && probe != "/" && probe != "." {
+		if _, err := os.Stat(probe); err == nil {
+			break
+		}
+		parent := filepath.Dir(probe)
+		if parent == probe {
+			break
+		}
+		probe = parent
+	}
+	if probe == "" {
+		probe = "/"
+	}
+
+	var st syscallStatfs
+	if err := statfs(probe, &st); err != nil {
+		du.Err = err.Error()
+		return du
+	}
+
+	bs := float64(st.Bsize)
+	du.TotalGB = float64(st.Blocks) * bs / (1 << 30)
+	du.FreeGB = float64(st.Bavail) * bs / (1 << 30)
+	du.UsedGB = du.TotalGB - float64(st.Bfree)*bs/(1<<30)
+	if du.TotalGB > 0 {
+		du.UsedPct = du.UsedGB / du.TotalGB * 100
+	}
+	return du
 }
 
 // DiskUsageOf 查询目录所在磁盘的使用情况。

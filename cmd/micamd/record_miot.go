@@ -20,7 +20,6 @@ package main
 // 成功跑够 30 秒就重置退避（说明连接是好的，只是会被踢）。
 
 import (
-	"syscall"
 	"context"
 	"fmt"
 	"os"
@@ -29,6 +28,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/micam/micam/internal/miot"
@@ -136,6 +136,11 @@ func (j *miotRecJob) run(ctx context.Context, s *Server, libPath, sidecar, model
 		case <-ctx.Done():
 			return
 		default:
+		}
+
+		if s.isPausedForLowSpace() {
+			logf("[rec] 磁盘低空间暂停中，退出官方通道看门狗 did=%s", j.did)
+			return
 		}
 
 		token, ok := miotBound()
@@ -341,7 +346,6 @@ func sanitizeName(s string) string {
 	}
 	return s
 }
-
 
 // startRecordingTutkCloud 为 TUTK 早期协议机型启动云端 HLS 兼容录像。
 func (s *Server) startRecordingTutkCloud(dev *xiaomi.Device, model string) error {
