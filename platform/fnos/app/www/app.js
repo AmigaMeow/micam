@@ -10559,30 +10559,31 @@ function paintStorage(c, d, cleanup){
     +     '<div class="st-policy">'
     +       stField('分片时长', 'stSeg', pol.segmentSec || 300, '秒', '每个录像文件的时长')
     +       stField('保留天数', 'stKeep', (pol.keepDays != null ? pol.keepDays : 7), '天', '超过后将被自动清理（0 表示永久保留）')
+    +       stField('存储容量上限', 'stMaxGB', (pol.maxStorageGB != null ? pol.maxStorageGB : 0), 'GB', '全部纳管录像池总占用上限（0 表示不限）')
     +       stField('最低保留空间', 'stThresh', (pol.minFreeGB != null ? pol.minFreeGB : 10), 'GB',
-    // 用户反馈 #2：可编辑项应该是 **GB**，百分比只做只读派生展示。
-    //
-    // 原来的做法是编辑百分比、保存时换算回 GB：
-    //     minFree = Math.round(totalGB * (1 - thPct/100))
-    // 问题：① 精度有损，413GB 上 97% 反推得 10,4GB 并四舍五入成 10GB，
-    //          想精确设某个 GB 值只能靠试；
-    //       ② 换盘/扩容后同一百分比含义漂移（百分比随容量变，GB 才是策略）。
-    // 现在直接编辑 GB —— 源与配置项（RecordMinFreeGB）同名同单位，无换算。
               '剩余空间低于此值时触发清理（当前磁盘容量下约合 '
               + Math.round(pol.thresholdPct || 0) + '%）')
     +       '<div class="st-switchrow">'
     +         '<span class="st-switchrow__label">自动清理</span>'
     +         '<label class="switch"><input type="checkbox" id="stAuto"' + (pol.autoClean!==false?' checked':'') + '><span class="switch__track"></span></label>'
-    +         '<span class="st-switchrow__hint">自动删除过期录像文件</span>'
+    +         '<span class="st-switchrow__hint">自动删除过期与超限录像文件</span>'
     +       '</div>'
     +       '<div class="st-field">'
     +         '<span class="st-field__label">低空间策略</span>'
     +         '<select class="input" id="stLow">'
-    +           [['deleteOldest','删除最早的录像'],['stopRecording','停止录像'],['none','不处理']].map(function(x){
-                  return '<option value="'+x[0]+'"' + (pol.lowSpaceMode===x[0]?' selected':'') + '>'+x[1]+'</option>';
-                }).join('')
+    +           (function(){
+                  var lm = (pol.lowSpaceMode === 'none' ? 'neverDelete' : (pol.lowSpaceMode || 'protectAI'));
+                  return [
+                    ['protectAI','智能保护（保护 AI 事件后删除最早）'],
+                    ['deleteOldest','循环覆盖（删除最早未标记录像）'],
+                    ['stopRecording','停止录像并发送告警'],
+                    ['neverDelete','不自动删除（仅告警）']
+                  ].map(function(x){
+                    return '<option value="'+x[0]+'"' + (lm===x[0]?' selected':'') + '>'+x[1]+'</option>';
+                  }).join('');
+                })()
     +         '</select>'
-    +         '<span class="st-field__hint">当空间不足时的处理策略</span>'
+    +         '<span class="st-field__hint">当空间不足或超过上限时的应对方式</span>'
     +       '</div>'
     +       '<button class="btn btn--primary st-save" id="stSave">保存策略</button>'
     +     '</div>'
@@ -10593,12 +10594,12 @@ function paintStorage(c, d, cleanup){
     +     '<div class="st-cache">'
     +       '<div class="st-kv"><span>缓存路径</span><b class="st-mono">' + esc(cache.dir||'—') + '</b></div>'
     +       '<div class="st-kv"><span>当前大小</span><b>' + fmtGB(cache.sizeGB) + '</b></div>'
-    +       '<div class="st-kv"><span>最大限制</span><b>' + fmtGB(cache.maxGB) + '</b></div>'
+    +       '<div class="st-kv"><span>最大限制</span><span style="display:inline-flex;align-items:center;gap:6px;"><input class="input st-field__num" id="stCacheMax" type="number" min="1" max="500" style="width:76px;height:28px;" value="' + Math.max(1, Math.round(cache.maxGB || pol.cacheMaxGB || 5)) + '"><span>GB</span></span></div>'
     +       '<div class="st-kv"><span>上次清理</span><b>' + esc(cache.lastAt||'—') + '</b></div>'
     +     '</div>'
     +     '<div class="st-cache__acts">'
     +       '<button class="btn btn--sm" id="stCacheClear">' + icon('trash',13) + '清空缓存</button>'
-    +       '<button class="btn btn--sm" id="stCacheSet">' + icon('settings',13) + '设置限制</button>'
+    +       '<button class="btn btn--sm" id="stCacheSet">' + icon('settings',13) + '保存限制</button>'
     +     '</div>'
     +     '</div>'
     +   '</div>'
@@ -10620,14 +10621,15 @@ function paintStorage(c, d, cleanup){
     +         '<div class="st-clean-field">'
     +           '<label class="st-clean-label" for="stCleanDaysSelect">清理时间范围</label>'
     +           '<select class="input st-clean-select" id="stCleanDaysSelect">'
-    +             '<option value="3" selected>清理 3 天以前的录像 (释放约 1.7 GB · 259 个文件)</option>'
-    +             '<option value="1">清理 1 天以前的录像 (释放约 8.9 GB · 406 个文件)</option>'
-    +             '<option value="7">清理 7 天以前的录像 (当前录像仅存 6 天，暂无过期)</option>'
-    +             '<option value="14">清理 14 天以前的录像 (无过期视频)</option>'
-    +             '<option value="30">清理 30 天以前的录像 (无过期视频)</option>'
-    +             '<option value="0">清理全部历史录像 (清空全部 11.8 GB · 542 个文件)</option>'
+    +             '<option value="3" selected>清理 3 天以前的录像</option>'
+    +             '<option value="1">清理 1 天以前的录像</option>'
+    +             '<option value="7">清理 7 天以前的录像</option>'
+    +             '<option value="14">清理 14 天以前的录像</option>'
+    +             '<option value="30">清理 30 天以前的录像</option>'
+    +             '<option value="0">清理今天零点之前的历史录像</option>'
+    +             '<option value="all">清理全部历史录像</option>'
     +           '</select>'
-    +           '<span class="st-clean-hint">超出所选保留天数的常规录像将被释放</span>'
+    +           '<span class="st-clean-hint">超出所选范围的常规录像将被释放（自动跳过正在写入分片）</span>'
     +         '</div>'
     +         '<div class="st-clean-field">'
     +           '<label class="st-clean-label" for="stCleanDevSelect">选择摄像头设备</label>'
@@ -10693,20 +10695,29 @@ function paintStorage(c, d, cleanup){
     +       '<div class="card__head"><span class="card__title">自动清理与安全保障策略</span></div>'
     +       '<div class="st-policy">'
     +         stField('保留天数', 'stKeepClean', (pol.keepDays != null ? pol.keepDays : 7), '天', '超过后系统后台将自动调度清理（0 表示永久保留）')
+    +         stField('存储容量上限', 'stMaxGBClean', (pol.maxStorageGB != null ? pol.maxStorageGB : 0), 'GB', '全部纳管录像池总占用上限（0 表示不限）')
     +         stField('最低保留空间', 'stThreshClean', (pol.minFreeGB != null ? pol.minFreeGB : 10), 'GB', '剩余空间低于此值时触发紧急清理保障系统运行')
     +         '<div class="st-switchrow">'
     +           '<span class="st-switchrow__label">启用定时自动清理</span>'
     +           '<label class="switch"><input type="checkbox" id="stAutoClean"' + (pol.autoClean!==false?' checked':'') + '><span class="switch__track"></span></label>'
-    +           '<span class="st-switchrow__hint">每天凌晨自动删除过期录像文件</span>'
+    +           '<span class="st-switchrow__hint">定期自动清理超期或超限录像与附属缓存</span>'
     +         '</div>'
     +         '<div class="st-field">'
     +           '<span class="st-field__label">低空间应急策略</span>'
     +           '<select class="input" id="stLowClean">'
-    +             [['deleteOldest','删除最早的录像'],['stopRecording','停止录像'],['none','不处理']].map(function(x){
-                    return '<option value="'+x[0]+'"' + (pol.lowSpaceMode===x[0]?' selected':'') + '>'+x[1]+'</option>';
-                  }).join('')
+    +             (function(){
+                    var lm = (pol.lowSpaceMode === 'none' ? 'neverDelete' : (pol.lowSpaceMode || 'protectAI'));
+                    return [
+                      ['protectAI','智能保护（保护 AI 事件后删除最早）'],
+                      ['deleteOldest','循环覆盖（删除最早未标记录像）'],
+                      ['stopRecording','停止录像并发送告警'],
+                      ['neverDelete','不自动删除（仅告警）']
+                    ].map(function(x){
+                      return '<option value="'+x[0]+'"' + (lm===x[0]?' selected':'') + '>'+x[1]+'</option>';
+                    }).join('');
+                  })()
     +           '</select>'
-    +           '<span class="st-field__hint">当磁盘剩余空间不足预设值时的应对方式</span>'
+    +           '<span class="st-field__hint">当磁盘剩余空间不足或配额超限时的应对方式</span>'
     +         '</div>'
     +         '<button class="btn btn--primary st-save" id="stSaveClean">保存守护策略</button>'
     +       '</div>'
@@ -10715,8 +10726,28 @@ function paintStorage(c, d, cleanup){
     +     '<div class="card" style="margin-top:var(--space-4);">'
     +       '<div class="card__head"><span class="card__title">录像跨存储池搬家迁移</span></div>'
     +       '<div class="st-migrate">'
-    +         '<div class="st-field"><span class="st-field__label">源路径</span>'
-    +           '<input class="input" value="' + esc(status.recPath||'') + '" readonly></div>'
+    +         '<div class="st-field"><span class="st-field__label">源存储池</span>'
+    +           '<select class="input" id="stMigSrc">'
+    +             (function(){
+                    var curSrc = status.recPath || '';
+                    var poolList = (stUnified && stUnified.pools) ? stUnified.pools : [];
+                    var opts = [];
+                    var seenSrc = {};
+                    function addSrcOpt(p, label){
+                      if(!p || seenSrc[p]) return;
+                      seenSrc[p] = true;
+                      opts.push('<option value="' + esc(p) + '"' + (p===curSrc?' selected':'') + '>' + esc(label) + '</option>');
+                    }
+                    if(curSrc){
+                      var curPool = poolList.filter(function(x){ return x.path === curSrc; })[0];
+                      addSrcOpt(curSrc, (curPool ? (curPool.name + ' · ' + curPool.files + ' 文件 (' + fmtGB(curPool.sizeGB) + ')') : ('当前写入: ' + curSrc)));
+                    }
+                    poolList.forEach(function(p){
+                      addSrcOpt(p.path, p.name + ' · ' + (p.files||0) + ' 文件 (' + fmtGB(p.sizeGB||0) + ')');
+                    });
+                    return opts.join('') || '<option value="' + esc(curSrc) + '">' + esc(curSrc || '未配置') + '</option>';
+                  })()
+    +           '</select></div>'
     +         '<div class="st-field"><span class="st-field__label">目标路径</span>'
     +           '<input class="input" id="stMigDst" placeholder="/vol02/1000/backups"></div>'
     +         '<div class="st-field st-field--range"><span class="st-field__label">时间范围</span>'
@@ -10736,7 +10767,7 @@ function paintStorage(c, d, cleanup){
     +           '<div class="st-hint" id="stMigMsg"></div>'
     +         '</div>'
     +         '<div class="st-migrate__foot">'
-    +           '<span class="st-hint" id="stMigHint">支持断点续传与完整校验</span>'
+    +           '<span class="st-hint" id="stMigHint">同盘原子移动，跨盘校验后删除源文件</span>'
     +           '<button class="btn btn--primary" id="stMigGo">开始迁移</button>'
     +         '</div>'
     +       '</div>'
@@ -10787,6 +10818,7 @@ var stUnified = {};         // /api/storage/locations（可选的录像目录）
 // 安全：后端会拒绝「目标在源内部 / 目标不存在 / 目标不可写」，
 //       且【先复制、校验大小、再删源】—— 大小不一致时保留源文件。
 function bindMigrate(){
+  var src  = document.getElementById('stMigSrc');
   var dst  = document.getElementById('stMigDst');
   var from = document.getElementById('stMigFrom');
   var to   = document.getElementById('stMigTo');
@@ -10807,7 +10839,8 @@ function bindMigrate(){
   function refreshEst(){
     var d = dst ? dst.value.trim() : '';
     if(!d){ if(est) est.innerHTML = '<span class="st-hint">填写目标路径后可预估大小</span>'; return; }
-    var q = '/api/storage/migrate/plan?dst=' + encodeURIComponent(d)
+    var q = '/api/storage/migrate/plan?src=' + encodeURIComponent(src ? src.value : '')
+          + '&dst='  + encodeURIComponent(d)
           + '&from=' + encodeURIComponent(from ? from.value : '')
           + '&to='   + encodeURIComponent(to ? to.value : '')
           + '&cam='  + encodeURIComponent(cam ? cam.value : '');
@@ -10816,13 +10849,14 @@ function bindMigrate(){
       if(r.dstErr){ if(est) est.innerHTML = '<span class="st-hint" style="color:var(--destructive)">' + esc(r.dstErr) + '</span>'; return; }
       if(!r.files){ if(est) est.innerHTML = '<span class="st-hint">该条件下没有可迁移的录像</span>'; return; }
       var freeTxt = r.dstFreeGB ? (' · 目标可用 ' + r.dstFreeGB.toFixed(1) + ' GB') : '';
+      var modeTxt = r.crossDev ? ' · 跨盘校验复制' : ' · 同盘极速移动';
       var warn = r.enough ? '' : ' <b style="color:var(--destructive)">空间可能不足</b>';
       if(est) est.innerHTML = '<span class="st-hint">预计 <b>' + esc(r.sizeText) + '</b> · '
-        + r.files + ' 个文件' + esc(freeTxt) + warn + '</span>';
+        + r.files + ' 个文件' + esc(freeTxt) + esc(modeTxt) + warn + '</span>';
     }).catch(function(){ if(est) est.innerHTML = '<span class="st-hint">预估失败</span>'; });
   }
 
-  [dst, from, to, cam].forEach(function(el){
+  [src, dst, from, to, cam].forEach(function(el){
     if(!el) return;
     el.addEventListener('change', refreshEst);
     if(el === dst) el.addEventListener('blur', refreshEst);
@@ -10833,7 +10867,9 @@ function bindMigrate(){
   function pollStatus(){
     api('/api/storage/migrate/status').then(function(s){
       if(!s) return;
-      var pct = s.totalFiles ? Math.round((s.doneFiles + s.failed) / s.totalFiles * 100) : 0;
+      var pct = s.totalBytes > 0
+        ? Math.round(s.doneBytes / s.totalBytes * 100)
+        : (s.totalFiles ? Math.round((s.doneFiles + s.failed) / s.totalFiles * 100) : 0);
       if(bar) bar.style.width = pct + '%';
       if(prog) prog.style.display = 'block';
       var head = s.state === 'running' ? ('迁移中 ' + (s.doneFiles + s.failed) + '/' + s.totalFiles)
@@ -10867,6 +10903,7 @@ function bindMigrate(){
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({
+        src: src ? src.value : '',
         dst: d,
         from: from ? from.value : '',
         to: to ? to.value : '',
@@ -11049,16 +11086,19 @@ function bindStorage(c, cams){
   });
   var seg = document.getElementById('stSeg');
   var keep = document.getElementById('stKeep');
+  var maxGBEl = document.getElementById('stMaxGB');
   var th = document.getElementById('stThresh');
   var auto = document.getElementById('stAuto');
   var low = document.getElementById('stLow');
 
   var sv = document.getElementById('stSave');
   if(sv) sv.onclick = function(){
-    var minFree = parseInt((th||{}).value, 10) || 10;
-    if(minFree < 1) minFree = 1;
+    var minFree = parseInt((th||{}).value, 10);
+    if(isNaN(minFree) || minFree < 0) minFree = 10;
     var keepVal = parseInt((keep||{}).value, 10);
     if(isNaN(keepVal) || keepVal < 0) keepVal = 7;
+    var maxGB = parseInt((maxGBEl||{}).value, 10);
+    if(isNaN(maxGB) || maxGB < 0) maxGB = 0;
     var autoVal = auto ? auto.checked : true;
     var lowVal = low ? low.value : 'protectAI';
 
@@ -11068,13 +11108,14 @@ function bindStorage(c, cams){
       body: JSON.stringify({
         segmentSec: parseInt((seg||{}).value,10) || 300,
         keepDays: keepVal,
+        maxStorageGB: maxGB,
         minFreeGB: minFree,
         autoClean: autoVal,
         lowSpaceMode: lowVal,
       })
     })
     .then(function(){
-      toast('策略已保存（保留 ' + (keepVal === 0 ? '永久' : keepVal + ' 天') + '，最低保留 ' + minFree + ' GB）', 'ok');
+      toast('策略已保存（保留 ' + (keepVal === 0 ? '永久' : keepVal + ' 天') + '，上限 ' + (maxGB === 0 ? '不限' : maxGB + ' GB') + '，最低保留 ' + minFree + ' GB）', 'ok');
       render();
     }).catch(function(e){ toast('保存失败：' + e.message, 'err'); });
   };
@@ -11087,7 +11128,26 @@ function bindStorage(c, cams){
       .catch(function(e){ toast('失败：' + e.message, 'err'); });
   };
   var cs = document.getElementById('stCacheSet');
-  if(cs) cs.onclick = function(){ toast('缓存上限请在「存储策略」里调整', 'warn'); };
+  if(cs) cs.onclick = function(){
+    var inp = document.getElementById('stCacheMax');
+    var v = parseInt((inp||{}).value, 10);
+    if(isNaN(v) || v < 1 || v > 500){
+      toast('转码缓存上限需在 1 - 500 GB 之间', 'err');
+      return;
+    }
+    cs.disabled = true;
+    api('/api/storage/policy', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ cacheGB: v })
+    }).then(function(){
+      toast('转码缓存上限已设置为 ' + v + ' GB', 'ok');
+      render();
+    }).catch(function(e){
+      toast('保存失败：' + e.message, 'err');
+      cs.disabled = false;
+    });
+  };
 
   var cg = document.getElementById('stCleanGo');
   if(cg) cg.onclick = function(){
@@ -11180,31 +11240,42 @@ function bindStorage(c, cams){
 
     api('/api/storage/cleanup-preview' + query).then(function(r){
       if(cleanEstStatus) cleanEstStatus.textContent = '就绪';
-      var gb = r.totalGB || ((r.totalMB || 0) / 1024);
+      var recGB = r.totalGB || ((r.totalMB || 0) / 1024);
       var files = r.fileCount || 0;
-      if(cleanEstGB) cleanEstGB.textContent = fmtGB(gb);
-      if(cleanEstFiles) cleanEstFiles.textContent = '(' + files.toLocaleString() + ' 个文件)';
+      var incCache = (cleanCache && cleanCache.checked);
+      var cacheGB = incCache && r.cacheMB > 0 ? (r.cacheMB / 1024) : 0;
+      var releaseGB = recGB + cacheGB;
+      var totalFiles = files + (incCache ? (r.cacheFiles || 0) : 0);
+      var hasWork = (files > 0 || (incCache && ((r.cacheFiles || 0) > 0 || (r.cacheMB || 0) > 0)));
+
+      if(cleanEstGB) cleanEstGB.textContent = fmtGB(releaseGB);
+      if(cleanEstFiles) cleanEstFiles.textContent = '(' + totalFiles.toLocaleString() + ' 个文件)';
       if(cleanSubmitTxt){
-        cleanSubmitTxt.textContent = (gb > 0 || files > 0)
-          ? ('确认执行清理 (' + fmtGB(gb) + ')')
+        cleanSubmitTxt.textContent = hasWork
+          ? ('确认执行清理 (' + fmtGB(releaseGB) + ')')
           : '所选范围暂无可清理文件';
       }
-      cleanSubmit.disabled = (gb <= 0 && files <= 0);
+      cleanSubmit.disabled = !hasWork;
 
       var details = [];
-      if(r.deadline) details.push('清理截止时间点：' + r.deadline + ' 以前的常规视频');
+      if(days === 'all'){
+        details.push('将清理全部可删除的历史录像分片（自动跳过正在写入分片）');
+      } else if(r.deadline){
+        details.push('清理截止时间点：' + esc(r.deadline) + ' 以前的常规视频');
+      }
       if(r.protectedAICount > 0){
         details.push('已智能保护 ' + r.protectedAICount + ' 个重要 AI 告警事件录像（约 ' + fmtGB(r.protectedAIGB || 0) + '，安全保留）');
       } else if(ai === 'true'){
         details.push('AI 告警事件保护已开启');
       }
-      if(cleanCache && cleanCache.checked && r.cacheMB > 0){
-        details.push('包含清空 ' + Math.round(r.cacheMB) + ' MB 转码切片缓存');
+      if(incCache && r.cacheMB > 0){
+        details.push('包含清空 ' + Math.round(r.cacheMB) + ' MB 转码切片缓存（' + (r.cacheFiles||0) + ' 个文件）');
       }
-      if(files === 0){
+      if(!hasWork){
+        var uFiles = (stUnified && stUnified.totalFiles) || 0;
+        var uGB = (stUnified && stUnified.totalGB) || 0;
         details.push('<span style="color:var(--text-secondary);font-size:12px;margin-top:6px;display:block;line-height:1.6;border-top:1px dashed var(--border-subtle);padding-top:6px;">'
-          + '💡 <b>录像存储现状说明</b>：系统历史录像录制于 <b>2026-10-11 至今（共 542 个文件，11.8 GB）</b>，全部都在最近 6 天以内。<br>'
-          + '若选择「7 天以前」因尚未到期因此暂无旧文件。如需立即释放存储空间，请在上方选择 <b>「清理 3 天以前」</b> 或 <b>「清理 1 天以前」</b>。'
+          + '当前共纳管 <b>' + uFiles.toLocaleString() + ' 个录像文件（' + fmtGB(uGB) + '）</b>，所选时间范围内暂无到期可删录像；可调短天数或勾选清空转码缓存。'
           + '</span>');
       }
       if(cleanEstDetail) cleanEstDetail.innerHTML = details.join('<br>') || '可立即释放存储空间';
@@ -11235,9 +11306,10 @@ function bindStorage(c, cams){
       var cache = cleanCache ? cleanCache.checked : false;
       var pools = cleanPools ? cleanPools.checked : true;
       var gbTxt = cleanEstGB ? cleanEstGB.textContent : '';
+      var rangeTxt = (days === 'all' ? '全部历史录像' : (days === '0' ? '今天零点以前的历史录像' : (days + ' 天以前的录像')));
 
       var confirmMsg = '确认执行深度录像清理？\n\n'
-        + '· 清理范围: ' + (days === '0' ? '全部历史录像' : (days + ' 天以前的录像')) + '\n'
+        + '· 清理范围: ' + rangeTxt + '\n'
         + '· 目标设备: ' + (dev || '全部摄像头') + '\n'
         + '· 预计释放: ' + gbTxt + '\n'
         + '· AI 事件保护: ' + (ai ? '已保护（不删除告警片段）' : '未保护') + '\n\n'
@@ -11270,8 +11342,12 @@ function bindStorage(c, cams){
   var saveClean = document.getElementById('stSaveClean');
   if(saveClean){
     saveClean.onclick = function(){
-      var keepVal = parseInt(document.getElementById('stKeepClean').value, 10) || 7;
-      var threshVal = parseFloat(document.getElementById('stThreshClean').value) || 10;
+      var keepVal = parseInt((document.getElementById('stKeepClean')||{}).value, 10);
+      if(isNaN(keepVal) || keepVal < 0) keepVal = 7;
+      var maxGBVal = parseInt((document.getElementById('stMaxGBClean')||{}).value, 10);
+      if(isNaN(maxGBVal) || maxGBVal < 0) maxGBVal = 0;
+      var threshVal = parseInt((document.getElementById('stThreshClean')||{}).value, 10);
+      if(isNaN(threshVal) || threshVal < 0) threshVal = 10;
       var autoVal = document.getElementById('stAutoClean').checked;
       var lowVal = document.getElementById('stLowClean').value;
       saveClean.disabled = true;
@@ -11280,6 +11356,7 @@ function bindStorage(c, cams){
         headers: {'Content-Type': 'application/json'},
         body: JSON.stringify({
           keepDays: keepVal,
+          maxStorageGB: maxGBVal,
           minFreeGB: threshVal,
           autoClean: autoVal,
           lowSpaceMode: lowVal,
@@ -14044,7 +14121,7 @@ function paintSetMain(){
     var curSeg = rc.segmentSec || 300;
     var curPostRoll = rc.postRollSec || 30;
     var curSens = rc.motionSensitivity || 'medium';
-    var curLowSpace = rc.lowSpaceMode || 'deleteOldest';
+    var curLowSpace = (rc.lowSpaceMode === 'none' ? 'neverDelete' : (rc.lowSpaceMode || 'deleteOldest'));
     var curAutoClean = rc.autoClean !== false;
     var usedGB = (rc.usedGB || 0).toFixed(1);
     var diskFreeGB = (rc.diskFreeGB || 0).toFixed(1);
