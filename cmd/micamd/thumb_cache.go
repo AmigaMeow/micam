@@ -39,7 +39,7 @@ type thumbEntry struct {
 var (
 	thumbMu    sync.Mutex
 	thumbCache = map[string]*thumbEntry{}
-	thumbTTL   = 3 * time.Minute  // 3分钟内新鲜；超过3分钟且有人浏览时在后台异步刷新
+	thumbTTL   = 3 * time.Minute // 3分钟内新鲜；超过3分钟且有人浏览时在后台异步刷新
 )
 
 // handleLiveThumb 返回缓存的实时缩略图。
@@ -352,7 +352,7 @@ func (s *Server) captureThumb(did string, width int) ([]byte, error) {
 
 	// 官方通道优先（PPCS 局域网直连，不走传统凭据申请，不触发限流）
 	if _, ok := miotBound(); ok {
-		return s.grabFrameViaMiot(did)
+		return s.grabFrameViaMiotWidth(did, width)
 	}
 
 	args := []string{

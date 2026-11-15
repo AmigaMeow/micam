@@ -30,6 +30,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -124,8 +125,35 @@ func defaultaiConfig() aiConfig {
 		ConfThreshold: 0.45,
 		Classes:       []string{"person", "vehicle"},
 		MaxPerMinute:  12,
-		Threads:       4,
+		Threads:       defaultAIThreads(),
 	}
+}
+
+// defaultAIThreads 根据宿主核心数给出保守的默认推理线程数，避免占满低功耗 NAS CPU。
+func defaultAIThreads() int {
+	n := runtime.NumCPU() / 2
+	if n < 1 {
+		return 1
+	}
+	if n > 2 {
+		return 2
+	}
+	return n
+}
+
+// resolveAIThreads 规范化推理线程数，并限制不超过宿主核心数。
+func resolveAIThreads(configured int) int {
+	t := configured
+	if t <= 0 {
+		t = defaultAIThreads()
+	}
+	if cpus := runtime.NumCPU(); cpus > 0 && t > cpus {
+		t = cpus
+	}
+	if t < 1 {
+		return 1
+	}
+	return t
 }
 
 // aiObject 一个检测结果
@@ -176,7 +204,7 @@ type aiClient struct {
 type aiProvider struct {
 	Name    string `json:"name"` // deepseek / openai / gemini / qwen / ollama
 	BaseURL string `json:"baseUrl"`
-	APIKey  string `json:"-"`     // **绝不序列化给前端**
+	APIKey  string `json:"-"`      // **绝不序列化给前端**
 	HasKey  bool   `json:"hasKey"` // 前端只看「有没有配」
 	Model   string `json:"model"`
 	Vision  bool   `json:"vision"`
@@ -382,6 +410,7 @@ func findAIScript(name string) string {
 	}
 	return ""
 }
+
 // findPythonPath 自动探测飞牛 AI 运行时。
 //
 // 飞牛自带 AI 应用会装 onnxruntime 到 @sysappmeta，
@@ -503,6 +532,9 @@ func (a *aiClient) startLocked(cfg aiConfig) error {
 	}
 	a.cfg.Enabled = true
 
+	// 先停止旧的推理子进程，避免修改配置或切换模式时残留重复进程
+	a.stopLocked()
+
 	// 纯云端/私有大模型模式（cloud）不强制依赖本地 YOLO 进程
 	if cfg.Mode == "cloud" {
 		a.status = "ready"
@@ -531,16 +563,16 @@ func (a *aiClient) startLocked(cfg aiConfig) error {
 		}
 	}
 
-	threads := cfg.Threads
-	if threads <= 0 {
-		threads = 4
-	}
+	threads := resolveAIThreads(cfg.Threads)
 
 	cmd := exec.Command(pythonExe, a.scriptPath, actualModel, a.modelDir)
 	cmd.Env = append(os.Environ(),
 		"PYTHONPATH="+pythonPath,
 		fmt.Sprintf("MICAM_MODEL_DIR=%s", a.modelDir),
+		fmt.Sprintf("MICAM_AI_THREADS=%d", threads),
 		fmt.Sprintf("OMP_NUM_THREADS=%d", threads),
+		"OPENBLAS_NUM_THREADS=1",
+		"MKL_NUM_THREADS=1",
 	)
 
 	stdin, err := cmd.StdinPipe()
@@ -634,8 +666,8 @@ func (a *aiClient) watch() {
 
 	a.mu.Lock()
 	defer a.mu.Unlock()
-	if !a.ready {
-		return // 已经被主动停了
+	if !a.ready || a.cmd != cmd {
+		return // 已经被主动停了或已重启为新进程
 	}
 	a.ready = false
 	a.restarts++

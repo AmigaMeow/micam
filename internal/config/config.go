@@ -213,7 +213,7 @@ func Default() *Config {
 			ConfThreshold: 0.45,
 			Classes:       []string{"person", "vehicle"},
 			MaxPerMinute:  12,
-			Threads:       4,
+			Threads:       2,
 
 			Mode:           "local",
 			DetectPerson:   true,

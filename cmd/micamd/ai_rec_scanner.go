@@ -1,6 +1,8 @@
 package main
 
 import (
+	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"os"
@@ -9,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/micam/micam/internal/event"
@@ -28,15 +31,88 @@ type trackedObject struct {
 	EmittedCount int       `json:"emittedCount"`
 }
 
+const (
+	recScanRetainDuration = 4 * 24 * time.Hour
+	recScanActiveAge      = 25 * time.Second
+)
+
 var (
-	recScanMu      sync.Mutex
-	recScannedMap  = make(map[string]bool)
-	recScanRunning bool
+	recScanMu            sync.Mutex
+	recScannedMap        = make(map[string]int64) // key -> unix timestamp
+	recScannedLoadedPath string
+	recScanRunning       bool
+	recScanPaceDelay     = 350 * time.Millisecond
 
 	trackerMu      sync.Mutex
 	cameraTrackers = make(map[string][]*trackedObject)
 )
 
+func (s *Server) recScannedFilePath() string {
+	if s.dataDir != "" {
+		return filepath.Join(s.dataDir, "rec_scanned.json")
+	}
+	return "/vol1/@appdata/micam/rec_scanned.json"
+}
+
+func pruneRecScannedLocked(nowUnix int64) {
+	cutoff := nowUnix - int64(recScanRetainDuration/time.Second)
+	for k, ts := range recScannedMap {
+		if ts < cutoff {
+			delete(recScannedMap, k)
+		}
+	}
+}
+
+func (s *Server) loadRecScannedLocked(now time.Time) bool {
+	path := s.recScannedFilePath()
+	if recScannedLoadedPath == path {
+		return false
+	}
+	recScannedMap = make(map[string]int64)
+	recScannedLoadedPath = path
+
+	nowUnix := now.Unix()
+	if raw, err := os.ReadFile(path); err == nil {
+		var disk map[string]int64
+		if json.Unmarshal(raw, &disk) == nil {
+			for k, ts := range disk {
+				recScannedMap[k] = ts
+			}
+		}
+	}
+
+	before := len(recScannedMap)
+	pruneRecScannedLocked(nowUnix)
+	dirty := len(recScannedMap) != before
+
+	if s.eventStore != nil {
+		for _, ev := range s.eventStore.Query(event.Query{Days: 2, Limit: 5000}) {
+			if ev.RecFile != "" && len(ev.Time) >= 10 {
+				k := filepath.Join(ev.Device, ev.Time[:10], ev.RecFile)
+				if _, ok := recScannedMap[k]; !ok {
+					recScannedMap[k] = nowUnix
+					dirty = true
+				}
+			}
+		}
+	}
+	return dirty
+}
+
+func saveRecScannedSnapshot(path string, snap map[string]int64) error {
+	raw, err := json.Marshal(snap)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return err
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, raw, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, path)
+}
 
 // matchDetectionZone 电子围栏区域判定
 func matchDetectionZone(devName string, box []int) string {
@@ -106,8 +182,11 @@ func (s *Server) extractRecFrameByPath(src string, t float64, w0 int) ([]byte, e
 	if w0 <= 0 {
 		w0 = 1280
 	}
-	cmd := exec.Command(s.ffmpegPath(),
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, s.ffmpegPath(),
 		"-hide_banner", "-loglevel", "error",
+		"-threads", "1",
 		"-ss", fmt.Sprintf("%.2f", t),
 		"-i", src,
 		"-frames:v", "1",
@@ -115,6 +194,14 @@ func (s *Server) extractRecFrameByPath(src string, t float64, w0 int) ([]byte, e
 		"-f", "image2", "-c:v", "mjpeg",
 		"pipe:1",
 	)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	cmd.Cancel = func() error {
+		if cmd.Process != nil && cmd.Process.Pid > 0 {
+			return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		}
+		return nil
+	}
+	cmd.WaitDelay = 2 * time.Second
 	return cmd.Output()
 }
 
@@ -147,43 +234,43 @@ func (s *Server) scanSingleRecFile(devName, date, file string) ([]event.Event, e
 	}
 
 	var newEvents []event.Event
+	if s.ai == nil || !s.ai.IsReady() {
+		// 本地视觉模型未就绪时，直接用 320px 帧差，避免先无意义解码一帧 1280p
+		if len(offsets) >= 2 {
+			f1, e1 := s.extractRecFrameByPath(fullPath, offsets[0], 320)
+			f2, e2 := s.extractRecFrameByPath(fullPath, offsets[1], 320)
+			if e1 == nil && e2 == nil && len(f1) > 1024 && len(f2) > 1024 {
+				g1 := s.downscaleGray(f1, 160, 90)
+				g2 := s.downscaleGray(f2, 160, 90)
+				if g1 != nil && g2 != nil {
+					diffScore := meanAbsDiff(g1, g2)
+					if diffScore >= 6.0 {
+						thumbName := s.eventStore.SaveThumb(f2)
+						ev := event.Event{
+							Did:      did,
+							Device:   devName,
+							Type:     event.TypeMotion,
+							Desc:     "检测到画面变化",
+							Thumb:    thumbName,
+							Score:    diffScore,
+							Duration: int(fi.Size() / (256 * 1024)),
+							Conf:     85.0,
+							RecFile:  file,
+							RecOff:   offsets[0],
+						}
+						s.eventStore.Add(ev)
+						newEvents = append(newEvents, ev)
+					}
+				}
+			}
+		}
+		return newEvents, nil
+	}
+
 	for _, off := range offsets {
 		frame, err := s.extractRecFrameByPath(fullPath, off, 1280)
 		if err != nil || len(frame) < 1024 {
 			continue
-		}
-
-		if s.ai == nil || !s.ai.IsReady() {
-			// 本地视觉模型未就绪时，采用帧差算法提取画面变动，确保录像能生成事件
-			if len(offsets) >= 2 {
-				f1, e1 := s.extractRecFrameByPath(fullPath, offsets[0], 320)
-				f2, e2 := s.extractRecFrameByPath(fullPath, offsets[1], 320)
-				if e1 == nil && e2 == nil && len(f1) > 1024 && len(f2) > 1024 {
-					g1 := s.downscaleGray(f1, 160, 90)
-					g2 := s.downscaleGray(f2, 160, 90)
-					if g1 != nil && g2 != nil {
-						diffScore := meanAbsDiff(g1, g2)
-						if diffScore >= 6.0 {
-							thumbName := s.eventStore.SaveThumb(f2)
-							ev := event.Event{
-								Did:      did,
-								Device:   devName,
-								Type:     event.TypeMotion,
-								Desc:     "检测到画面变化",
-								Thumb:    thumbName,
-								Score:    diffScore,
-								Duration: int(fi.Size() / (256 * 1024)),
-								Conf:     85.0,
-								RecFile:  file,
-								RecOff:   offsets[0],
-							}
-							s.eventStore.Add(ev)
-							newEvents = append(newEvents, ev)
-						}
-					}
-				}
-			}
-			return newEvents, nil
 		}
 
 		res, err := s.ai.Detect(frame)
@@ -441,17 +528,28 @@ func (s *Server) scanAllRecordings(maxFiles int) (int, int, error) {
 	scannedCount := 0
 	newEventsCount := 0
 
-	// 预热已扫描的录像索引缓存，避免服务重启后全量重复扫描
+	// 预热持久化已扫描分片缓存，避免服务重启后对无事件录像全量重复扫描
+	now := time.Now()
 	recScanMu.Lock()
-	if len(recScannedMap) == 0 {
-		for _, ev := range s.eventStore.Query(event.Query{Days: 2, Limit: 5000}) {
-			if ev.RecFile != "" && len(ev.Time) >= 10 {
-				k := filepath.Join(ev.Device, ev.Time[:10], ev.RecFile)
-				recScannedMap[k] = true
-			}
-		}
-	}
+	dirty := s.loadRecScannedLocked(now)
 	recScanMu.Unlock()
+
+	defer func() {
+		if !dirty {
+			return
+		}
+		recScanMu.Lock()
+		pruneRecScannedLocked(time.Now().Unix())
+		snap := make(map[string]int64, len(recScannedMap))
+		for k, ts := range recScannedMap {
+			snap[k] = ts
+		}
+		path := s.recScannedFilePath()
+		recScanMu.Unlock()
+		if err := saveRecScannedSnapshot(path, snap); err != nil {
+			logf("[ai-scan] 保存扫描索引失败: %v", err)
+		}
+	}()
 
 	// 查今天和昨天的目录
 	dates := []string{
@@ -479,17 +577,26 @@ func (s *Server) scanAllRecordings(maxFiles int) (int, int, error) {
 				if !strings.HasSuffix(f.Name(), ".mkv") {
 					continue
 				}
+				// 跳过仍在持续写入中的当前分片，避免未写完就被误标为已扫描
+				if fi, fiErr := f.Info(); fiErr == nil && time.Since(fi.ModTime()) < recScanActiveAge {
+					continue
+				}
 				key := filepath.Join(dev.Name(), d, f.Name())
 				recScanMu.Lock()
-				already := recScannedMap[key]
+				_, already := recScannedMap[key]
 				recScanMu.Unlock()
 				if already {
 					continue
 				}
 
+				if scannedCount > 0 && recScanPaceDelay > 0 {
+					time.Sleep(recScanPaceDelay)
+				}
+
 				evs, err := s.scanSingleRecFile(dev.Name(), d, f.Name())
 				recScanMu.Lock()
-				recScannedMap[key] = true
+				recScannedMap[key] = time.Now().Unix()
+				dirty = true
 				recScanMu.Unlock()
 
 				scannedCount++
@@ -518,15 +625,15 @@ func (s *Server) scanAllRecordings(maxFiles int) (int, int, error) {
 // startRecordingAIScanner 启动录像 AI 周期性扫描器
 func (s *Server) startRecordingAIScanner() {
 	go func() {
-		// 启动 10 秒后执行首轮扫描
-		time.Sleep(10 * time.Second)
-		s.scanAllRecordings(100)
+		// 启动 30 秒后执行首轮扫描，避开启动并发高峰
+		time.Sleep(30 * time.Second)
+		s.scanAllRecordings(25)
 
 		// 之后每 60 秒检查并索引最新录像分片
 		tk := time.NewTicker(60 * time.Second)
 		defer tk.Stop()
 		for range tk.C {
-			s.scanAllRecordings(20)
+			s.scanAllRecordings(10)
 		}
 	}()
 }

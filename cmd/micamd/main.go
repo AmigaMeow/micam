@@ -52,7 +52,7 @@ var appDestDir string
 // startedAt 进程启动时间（状态条显示「运行时间」用）
 var startedAt = time.Now()
 
-var appVersion = "0.41.41"
+var appVersion = "0.41.42"
 
 func main() {
 	checkMiotLib()

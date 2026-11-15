@@ -44,6 +44,7 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 )
 
@@ -213,10 +214,28 @@ type recMeta struct {
 	ModTime  int64   `json:"modTime"`
 }
 
+const (
+	probeMaxConcurrent = 2
+	probeMaxQueued     = 16
+)
+
 var (
+	metaSaveDebounce  = 2 * time.Second
+	probePathEligible = func(path string) bool {
+		return strings.HasPrefix(path, "/vol1/") && !strings.HasPrefix(path, "/vol02/")
+	}
+
 	metaMu    sync.Mutex
 	metaCache = map[string]recMeta{}
 	metaFile  string
+
+	metaWriteMu   sync.Mutex
+	metaSaveMu    sync.Mutex
+	metaSaveTimer *time.Timer
+
+	probeSem      = make(chan struct{}, probeMaxConcurrent)
+	probePending  sync.Mutex
+	probeInFlight = map[string]bool{}
 )
 
 func (s *Server) metaFilePath() string {
@@ -257,9 +276,30 @@ func saveRecMeta() {
 	raw, err := json.Marshal(metaCache)
 	path := metaFile
 	metaMu.Unlock()
-	if err == nil && path != "" {
-		_ = os.WriteFile(path, raw, 0o644)
+	if err != nil || path == "" {
+		return
 	}
+	metaWriteMu.Lock()
+	defer metaWriteMu.Unlock()
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, raw, 0o644); err == nil {
+		_ = os.Rename(tmp, path)
+	}
+}
+
+func scheduleSaveRecMeta() {
+	metaSaveMu.Lock()
+	defer metaSaveMu.Unlock()
+	if metaSaveTimer != nil {
+		metaSaveTimer.Reset(metaSaveDebounce)
+		return
+	}
+	metaSaveTimer = time.AfterFunc(metaSaveDebounce, func() {
+		saveRecMeta()
+	})
 }
 
 // probeDuration 取时长（带元数据缓存与智能码率估算，0毫秒极速响应，绝不阻塞任何 HTTP 请求）。
@@ -294,20 +334,49 @@ func (s *Server) probeDuration(path string) float64 {
 	metaCache[path] = recMeta{Duration: dur, Size: fi.Size(), ModTime: fi.ModTime().Unix()}
 	metaMu.Unlock()
 
-	// 对本地 SSD 录像异步后台精确探测，不阻断当前请求
-	if strings.HasPrefix(path, "/vol1/") && !strings.HasPrefix(path, "/vol02/") {
+	// 对本地 SSD 录像异步后台精确探测，限制并发与排队上限，避免列表加载拉起大量 ffprobe 进程
+	if probePathEligible(path) {
+		probePending.Lock()
+		queued := probeInFlight[path] || len(probeInFlight) >= probeMaxQueued
+		if !queued {
+			probeInFlight[path] = true
+		}
+		probePending.Unlock()
+		if queued {
+			return dur
+		}
+
 		go func(pth string, sz, mt int64) {
-			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer func() {
+				probePending.Lock()
+				delete(probeInFlight, pth)
+				probePending.Unlock()
+			}()
+
+			probeSem <- struct{}{}
+			defer func() { <-probeSem }()
+
+			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 			defer cancel()
-			out, perr := exec.CommandContext(ctx, s.ffprobePath(), "-v", "error",
+			cmd := exec.CommandContext(ctx, s.ffprobePath(), "-v", "error",
+				"-threads", "1",
 				"-show_entries", "format=duration",
-				"-of", "csv=p=0", pth).Output()
+				"-of", "csv=p=0", pth)
+			cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+			cmd.Cancel = func() error {
+				if cmd.Process != nil && cmd.Process.Pid > 0 {
+					return syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+				}
+				return nil
+			}
+			cmd.WaitDelay = 500 * time.Millisecond
+			out, perr := cmd.Output()
 			if perr == nil {
 				if realDur, _ := strconv.ParseFloat(strings.TrimSpace(string(out)), 64); realDur > 0 {
 					metaMu.Lock()
 					metaCache[pth] = recMeta{Duration: realDur, Size: sz, ModTime: mt}
 					metaMu.Unlock()
-					go saveRecMeta()
+					scheduleSaveRecMeta()
 				}
 			}
 		}(path, fi.Size(), fi.ModTime().Unix())

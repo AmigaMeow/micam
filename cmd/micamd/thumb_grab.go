@@ -28,10 +28,11 @@ package main
 //   新: 只在有人看时抓，且节流
 
 import (
-	"syscall"
 	"context"
 	"os/exec"
+	"strconv"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/micam/micam/internal/miot"
@@ -80,11 +81,21 @@ func thumbGrabDone(did string) {
 	thumbGateMu.Unlock()
 }
 
-// grabFrameViaMiot 用官方通道抓一帧 JPEG。
+// grabFrameViaMiot 用官方通道抓一帧 JPEG（默认 960 宽）。
 //
 // 走 sidecar（PPCS + ffmpeg），拿到第一个 JPEG 就返回。
 // 不依赖 miss_get_vendor，所以不受限流影响。
 func (s *Server) grabFrameViaMiot(did string) ([]byte, error) {
+	return s.grabFrameViaMiotWidth(did, 960)
+}
+
+// grabFrameViaMiotWidth 按指定最大宽度抓取单帧 JPEG（传 --max-frames 1 与 --threads 1 控制 CPU）。
+func (s *Server) grabFrameViaMiotWidth(did string, width int) ([]byte, error) {
+	if width <= 0 {
+		width = 960
+	} else if width < 320 {
+		width = 320
+	}
 	// 如果设备正在进行实时预览，或者缓存内有极新鲜图片（6秒内），直接复用缓存，绝不抢占 PPCS 连接槽
 	thumbMu.Lock()
 	if c, ok := thumbCache[did]; ok && len(c.Data) > 0 {
@@ -160,7 +171,7 @@ func (s *Server) grabFrameViaMiot(did string) ([]byte, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), thumbGrabTimeout)
 	defer cancel()
 
-	// fps=1 只要一帧就够；ffmpeg 输出 MJPEG，我们取第一个完整 JPEG
+	// 单线程只解码/输出首帧后立即退出，避免后台抓图多帧编码打满 CPU
 	cmd := exec.CommandContext(ctx, miot.PythonBin(),
 		sidecar,
 		"--lib", libPath,
@@ -172,8 +183,10 @@ func (s *Server) grabFrameViaMiot(did string) ([]byte, error) {
 		"--quality", "3", // 高清抓帧（LOW 只有 640x360，太糊）
 		"--ffmpeg", s.ffmpegPath(),
 		"--infmt", "auto",
-		"--w", "1280", // 缩略图 1280 宽更清晰
-		"--fps", "2",
+		"--w", strconv.Itoa(width),
+		"--fps", "1",
+		"--threads", "1",
+		"--max-frames", "1",
 		"--out", "-",
 	)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}

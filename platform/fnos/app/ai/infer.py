@@ -88,11 +88,33 @@ def log(msg):
     sys.stderr.flush()
 
 
+def resolve_threads(default=2):
+    """从环境变量读取推理线程数，避免默认占满 NAS 全核"""
+    for key in ("MICAM_AI_THREADS", "OMP_NUM_THREADS"):
+        raw = os.environ.get(key, "").strip()
+        if raw:
+            try:
+                return max(1, min(int(raw), 8))
+            except ValueError:
+                pass
+    return max(1, min(int(default), 8))
+
+
+def _configure_cv2():
+    """限制 OpenCV 内部线程池，防止图像编解码与推理抢占 CPU"""
+    try:
+        import cv2
+        if hasattr(cv2, "setNumThreads"):
+            cv2.setNumThreads(1)
+    except Exception:
+        pass
+
+
 class Detector:
-    def __init__(self, model_name, threads=4):
+    def __init__(self, model_name, threads=None):
         self.model_name = os.path.splitext(model_name)[0]
         self.path = self._resolve_path(self.model_name)
-        self.threads = threads
+        self.threads = max(1, min(int(threads), 8)) if threads is not None else resolve_threads()
         self.session = None
         self.input_name = None
         self.input_h = 640
@@ -121,9 +143,19 @@ class Detector:
         if not os.path.exists(self.path):
             raise FileNotFoundError("模型不存在: %s" % self.path)
 
+        _configure_cv2()
+
         so = ort.SessionOptions()
         so.intra_op_num_threads = self.threads
         so.inter_op_num_threads = 1
+        if hasattr(ort, "ExecutionMode"):
+            so.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+        if hasattr(so, "add_session_config_entry"):
+            try:
+                so.add_session_config_entry("session.intra_op.allow_spinning", "0")
+                so.add_session_config_entry("session.inter_op.allow_spinning", "0")
+            except Exception:
+                pass
         so.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
 
         t0 = time.time()
@@ -284,9 +316,10 @@ def main():
     if len(sys.argv) > 2:
         globals()["MODEL_DIR"] = sys.argv[2]
 
+    threads = resolve_threads()
     det = None
     try:
-        det = Detector(model_name)
+        det = Detector(model_name, threads=threads)
     except Exception as e:
         log("模型加载失败: %s" % e)
         sys.stdout.write(json.dumps({"ready": False, "error": str(e), "model": model_name}) + "\n")
@@ -320,7 +353,7 @@ def main():
 
             elif cmd == "switch":
                 new_model = req.get("model")
-                det = Detector(new_model)
+                det = Detector(new_model, threads=threads)
                 model_name = new_model
                 out = {"id": rid, "ok": True, "model": new_model}
 

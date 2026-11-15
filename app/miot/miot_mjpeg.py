@@ -40,6 +40,10 @@ def main():
     ap.add_argument("--ffmpeg", default="/usr/bin/ffmpeg")
     ap.add_argument("--fps", type=int, default=8)
     ap.add_argument("--width", "--w", type=int, default=640)
+    ap.add_argument("--threads", type=int, default=2,
+                    help="ffmpeg 解码与缩放线程数，单帧抓图建议传 1")
+    ap.add_argument("--max-frames", type=int, default=0,
+                    help="最多输出帧数后退出（0=不限制，单帧抓图传 1）")
     ap.add_argument("--out", default="-")
     ap.add_argument("--qv", type=int, default=6,
                     help="JPEG 质量（2=最好最大，31=最差最小）。默认 6")
@@ -152,19 +156,24 @@ def main():
                 vf = "scale='min(%d,iw)':-2" % args.width
             else:
                 vf = "scale='min(2560,iw)':-2"
+            if args.max_frames <= 0 and 0 < args.fps < 15:
+                vf += ",fps=%d" % int(args.fps)
+            threads = max(1, min(int(args.threads), 8))
             cmd = [
                 args.ffmpeg, "-hide_banner", "-loglevel", "warning",
                 "-fflags", "nobuffer+flush_packets+fastseek",
                 "-flags", "low_delay",
                 "-probesize", "65536",
                 "-analyzeduration", "100000",
-                "-threads", "2",
+                "-threads", str(threads),
                 "-f", fmt, "-i", "pipe:0",
                 "-fps_mode", "passthrough",
                 "-vf", vf,
                 "-c:v", "mjpeg", "-q:v", str(args.qv),
-                "-f", "mjpeg", "-",
             ]
+            if args.max_frames > 0:
+                cmd.extend(["-frames:v", str(int(args.max_frames))])
+            cmd.extend(["-f", "mjpeg", "-"])
             sys.stderr.write("[ffmpeg] 动态启动转码: channel=%d input=%s (codec=%d) qv=%d\n" % (want + 1, fmt, codec, args.qv))
             sys.stderr.flush()
             ff = subprocess.Popen(cmd, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
@@ -213,6 +222,9 @@ def main():
                 continue
             chunk = p.stdout.read(4096)
             if not chunk:
+                if args.max_frames > 0 and p.poll() is not None:
+                    stop["v"] = True
+                    break
                 time.sleep(0.01)
                 continue
             out.write(chunk)

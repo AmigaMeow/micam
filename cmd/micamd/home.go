@@ -14,10 +14,11 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"image"
+	"image/jpeg"
 	"math"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -183,7 +184,7 @@ var motion = &motionState{
 }
 
 const (
-	motionInterval = 8 * time.Second  // 采样间隔：缩短为 8 秒，提高人员与宠物快速跑动捕捉灵敏度
+	motionInterval = 15 * time.Second // 采样间隔：15 秒，兼顾移动侦测灵敏度与低功耗 NAS CPU 占用
 	motionSilence  = 45 * time.Second // 纯变动静默期基准：45 秒
 	motionThresh   = 6.0              // 平均绝对差阈值（0-255）
 	motionW        = 160              // 降采样宽度
@@ -224,8 +225,8 @@ func (s *Server) detectOnce() {
 			continue
 		}
 		// 关键：侦测器必须自己触发刷新，否则缓存是静止的，
-		// 两张图永远一样，score 恒为 0。
-		s.refreshThumbAsync(d.Did, motionW*2)
+		// 两张图永远一样，score 恒为 0；640 宽既满足 YOLO 检测又大幅降低抓帧解码开销。
+		s.refreshThumbAsync(d.Did, 640)
 
 		data, at := s.getThumbAt(d.Did)
 		if len(data) == 0 {
@@ -469,15 +470,74 @@ func (s *Server) detectOnce() {
 	}
 }
 
-// downscaleGray 把 JPEG 降采样成灰度（用 ffmpeg，几乎瞬时）。
-func (s *Server) downscaleGray(jpeg []byte, w, h int) []uint8 {
-	cmd := exec.Command(s.ffmpegPath(), "-hide_banner", "-loglevel", "error",
-		"-i", "pipe:0", "-vf", fmt.Sprintf("scale=%d:%d,format=gray", w, h),
-		"-f", "rawvideo", "pipe:1")
-	cmd.Stdin = bytes.NewReader(jpeg)
-	out, err := cmd.Output()
-	if err != nil || len(out) != w*h {
+// downscaleGray 使用纯 Go 解码 JPEG 并降采样成 w*h 灰度图，避免频繁 fork ffmpeg 子进程。
+func (s *Server) downscaleGray(jpegBytes []byte, w, h int) []uint8 {
+	if len(jpegBytes) == 0 || w <= 0 || h <= 0 {
 		return nil
+	}
+	img, err := jpeg.Decode(bytes.NewReader(jpegBytes))
+	if err != nil {
+		return nil
+	}
+	b := img.Bounds()
+	sw, sh := b.Dx(), b.Dy()
+	if sw <= 0 || sh <= 0 {
+		return nil
+	}
+
+	out := make([]uint8, w*h)
+	switch src := img.(type) {
+	case *image.YCbCr:
+		for y := 0; y < h; y++ {
+			sy := b.Min.Y + ((2*y+1)*sh)/(2*h)
+			if sy >= b.Max.Y {
+				sy = b.Max.Y - 1
+			}
+			row := y * w
+			for x := 0; x < w; x++ {
+				sx := b.Min.X + ((2*x+1)*sw)/(2*w)
+				if sx >= b.Max.X {
+					sx = b.Max.X - 1
+				}
+				out[row+x] = src.Y[src.YOffset(sx, sy)]
+			}
+		}
+	case *image.Gray:
+		for y := 0; y < h; y++ {
+			sy := b.Min.Y + ((2*y+1)*sh)/(2*h)
+			if sy >= b.Max.Y {
+				sy = b.Max.Y - 1
+			}
+			row := y * w
+			for x := 0; x < w; x++ {
+				sx := b.Min.X + ((2*x+1)*sw)/(2*w)
+				if sx >= b.Max.X {
+					sx = b.Max.X - 1
+				}
+				out[row+x] = src.GrayAt(sx, sy).Y
+			}
+		}
+	default:
+		for y := 0; y < h; y++ {
+			sy := b.Min.Y + ((2*y+1)*sh)/(2*h)
+			if sy >= b.Max.Y {
+				sy = b.Max.Y - 1
+			}
+			row := y * w
+			for x := 0; x < w; x++ {
+				sx := b.Min.X + ((2*x+1)*sw)/(2*w)
+				if sx >= b.Max.X {
+					sx = b.Max.X - 1
+				}
+				r, g, bl, _ := img.At(sx, sy).RGBA()
+				// BT.601 亮度公式（RGBA 返回 16-bit 值，右移 8 位转为 uint8）
+				yVal := (299*(r>>8) + 587*(g>>8) + 114*(bl>>8) + 500) / 1000
+				if yVal > 255 {
+					yVal = 255
+				}
+				out[row+x] = uint8(yVal)
+			}
+		}
 	}
 	return out
 }
